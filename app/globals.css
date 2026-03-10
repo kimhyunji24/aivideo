@@ -329,7 +329,7 @@
 
   /* Scene card styles */
   .scene-card {
-    @apply glass-card transition-all duration-300 hover:border-primary/30;
+    @apply bg-card/60 backdrop-blur-xl border border-border/50 shadow-lg transition-all duration-300 hover:border-primary/30;
   }
 
   .scene-card:hover {
@@ -337,7 +337,8 @@
   }
 
   .scene-card-selected {
-    @apply selected-purple;
+    @apply ring-2 ring-primary/50 border-primary/60;
+    box-shadow: 0 0 20px oklch(0.6 0.2 280 / 0.2);
   }
 
   /* Loading animation */
