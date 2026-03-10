@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils"
 import { Check } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface Step {
   id: number
@@ -27,38 +28,43 @@ export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowPr
 
           return (
             <div key={step.id} className="flex items-center flex-1">
-              <button
-                onClick={() => isClickable && onStepClick(step.id)}
-                disabled={!isClickable}
-                className={cn(
-                  "flex items-center gap-2 group",
-                  isClickable ? "cursor-pointer" : "cursor-not-allowed opacity-50"
-                )}
-              >
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-colors",
-                    isCompleted && "bg-primary border-primary text-primary-foreground",
-                    isCurrent && "border-primary text-primary",
-                    !isCompleted && !isCurrent && "border-muted-foreground/30 text-muted-foreground"
-                  )}
-                >
-                  {isCompleted ? <Check className="h-4 w-4" /> : step.id}
-                </div>
-                <div className="text-left">
-                  <p className={cn(
-                    "text-sm font-medium",
-                    isCurrent && "text-primary",
-                    !isCurrent && !isCompleted && "text-muted-foreground"
-                  )}>
-                    {step.name}
-                  </p>
-                </div>
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => isClickable && onStepClick(step.id)}
+                    disabled={!isClickable}
+                    className={cn(
+                      "flex items-center gap-2 group",
+                      isClickable ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium border transition-colors",
+                        isCompleted && "bg-foreground border-foreground text-background",
+                        isCurrent && "border-foreground text-foreground",
+                        !isCompleted && !isCurrent && "border-muted-foreground/30 text-muted-foreground"
+                      )}
+                    >
+                      {isCompleted ? <Check className="h-3 w-3" /> : step.id}
+                    </div>
+                    <div className="text-left">
+                      <p className={cn(
+                        "text-xs font-medium",
+                        isCurrent && "text-foreground",
+                        !isCurrent && !isCompleted && "text-muted-foreground"
+                      )}>
+                        {step.name}
+                      </p>
+                    </div>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{step.description}</TooltipContent>
+              </Tooltip>
               {index < steps.length - 1 && (
                 <div className={cn(
-                  "flex-1 h-0.5 mx-3",
-                  isCompleted ? "bg-primary" : "bg-muted-foreground/20"
+                  "flex-1 h-px mx-3",
+                  isCompleted ? "bg-foreground" : "bg-muted-foreground/20"
                 )} />
               )}
             </div>
@@ -69,10 +75,10 @@ export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowPr
       {/* Mobile view */}
       <div className="md:hidden">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">
-            Step {currentStep} of {steps.length}
+          <span className="text-xs font-medium">
+            단계 {currentStep} / {steps.length}
           </span>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {steps[currentStep - 1]?.name}
           </span>
         </div>
@@ -81,9 +87,9 @@ export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowPr
             <div
               key={step.id}
               className={cn(
-                "h-1.5 flex-1 rounded-full",
-                step.id < currentStep && "bg-primary",
-                step.id === currentStep && "bg-primary/50",
+                "h-1 flex-1 rounded-full",
+                step.id < currentStep && "bg-foreground",
+                step.id === currentStep && "bg-foreground/50",
                 step.id > currentStep && "bg-muted-foreground/20"
               )}
             />

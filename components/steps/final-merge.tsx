@@ -2,12 +2,11 @@
 
 import type { ProjectState } from "@/app/page"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
-import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Select,
   SelectContent,
@@ -26,7 +25,6 @@ import {
   Film,
   Share2,
   RotateCcw,
-  Settings,
   Volume2,
 } from "lucide-react"
 import { useState } from "react"
@@ -57,9 +55,8 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
     setIsMerging(true)
     setMergeProgress(0)
 
-    // Simulate merge progress
     for (let i = 0; i <= 100; i += 5) {
-      await new Promise((resolve) => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 100))
       setMergeProgress(i)
     }
 
@@ -68,49 +65,48 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
   }
 
   const handleDownload = () => {
-    // Simulate download
-    alert("Download started! (This is a prototype)")
+    alert("다운로드가 시작되었습니다! (프로토타입)")
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold">Final Merge</h2>
-        <p className="text-muted-foreground">
-          Combine your video clips into one final video. Add music and transitions.
+        <h2 className="text-xl font-semibold">최종 병합</h2>
+        <p className="text-sm text-muted-foreground">
+          영상 클립을 하나로 합치고 배경음악과 전환 효과를 추가하세요.
         </p>
       </div>
 
       {/* Summary */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="py-4">
           <div className="flex items-center justify-around text-center">
             <div>
-              <div className="flex items-center justify-center gap-2 text-2xl font-bold">
-                <Film className="h-6 w-6 text-muted-foreground" />
+              <div className="flex items-center justify-center gap-2 text-xl font-semibold">
+                <Film className="h-5 w-5 text-muted-foreground" />
                 {videosReady}
               </div>
-              <p className="text-sm text-muted-foreground">Video Clips</p>
+              <p className="text-xs text-muted-foreground">영상 클립</p>
             </div>
-            <div className="h-12 w-px bg-border" />
+            <div className="h-10 w-px bg-border" />
             <div>
-              <div className="flex items-center justify-center gap-2 text-2xl font-bold">
-                <Clock className="h-6 w-6 text-muted-foreground" />
-                {totalDuration}s
+              <div className="flex items-center justify-center gap-2 text-xl font-semibold">
+                <Clock className="h-5 w-5 text-muted-foreground" />
+                {totalDuration}초
               </div>
-              <p className="text-sm text-muted-foreground">Total Duration</p>
+              <p className="text-xs text-muted-foreground">총 재생시간</p>
             </div>
-            <div className="h-12 w-px bg-border" />
+            <div className="h-10 w-px bg-border" />
             <div>
-              <div className="flex items-center justify-center gap-2 text-2xl font-bold">
+              <div className="flex items-center justify-center gap-2 text-xl font-semibold">
                 {isMerged ? (
-                  <Check className="h-6 w-6 text-green-600" />
+                  <Check className="h-5 w-5" />
                 ) : (
-                  <Settings className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-muted-foreground">-</span>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">
-                {isMerged ? "Ready!" : "Configure"}
+              <p className="text-xs text-muted-foreground">
+                {isMerged ? "완료!" : "대기 중"}
               </p>
             </div>
           </div>
@@ -119,18 +115,14 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
 
       {/* Scene Timeline Preview */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Timeline Preview</CardTitle>
-          <CardDescription>Your scenes in order</CardDescription>
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm">타임라인 미리보기</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pb-4">
           <div className="flex gap-2 overflow-x-auto pb-2">
             {project.scenes.map((scene, index) => (
-              <div
-                key={scene.id}
-                className="flex-shrink-0 w-24 space-y-1"
-              >
-                <div className="aspect-video bg-muted rounded overflow-hidden">
+              <div key={scene.id} className="flex-shrink-0 w-20">
+                <div className="aspect-video bg-muted rounded overflow-hidden mb-1">
                   {scene.imageUrl ? (
                     <img
                       src={scene.imageUrl}
@@ -143,15 +135,8 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
                     </div>
                   )}
                 </div>
-                <div className="text-center">
-                  <p className="text-xs font-medium truncate">{scene.title}</p>
-                  <p className="text-xs text-muted-foreground">{scene.duration}s</p>
-                </div>
-                {index < project.scenes.length - 1 && transition !== "none" && (
-                  <Badge variant="outline" className="text-xs w-full justify-center">
-                    {transition}
-                  </Badge>
-                )}
+                <p className="text-xs text-center truncate">{scene.title}</p>
+                <p className="text-xs text-center text-muted-foreground">{scene.duration}초</p>
               </div>
             ))}
           </div>
@@ -162,46 +147,42 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
       <div className="grid gap-4 md:grid-cols-2">
         {/* Music Settings */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Music className="h-4 w-4" />
-              Background Music
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Music className="h-3.5 w-3.5" />
+              배경음악
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pb-4 space-y-4">
             <div className="flex items-center justify-between">
-              <Label htmlFor="add-music">Add Music</Label>
-              <Switch
-                id="add-music"
-                checked={addMusic}
-                onCheckedChange={setAddMusic}
-              />
+              <label className="text-sm">음악 추가</label>
+              <Switch checked={addMusic} onCheckedChange={setAddMusic} />
             </div>
 
             {addMusic && (
               <>
                 <div className="space-y-2">
-                  <Label>Music Track</Label>
+                  <label className="text-xs font-medium">음악 트랙</label>
                   <Select value={musicTrack} onValueChange={setMusicTrack}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="epic-orchestral">Epic Orchestral</SelectItem>
-                      <SelectItem value="emotional-piano">Emotional Piano</SelectItem>
-                      <SelectItem value="upbeat-electronic">Upbeat Electronic</SelectItem>
-                      <SelectItem value="ambient-chill">Ambient Chill</SelectItem>
-                      <SelectItem value="dramatic-tension">Dramatic Tension</SelectItem>
+                      <SelectItem value="epic-orchestral">웅장한 오케스트라</SelectItem>
+                      <SelectItem value="emotional-piano">감성 피아노</SelectItem>
+                      <SelectItem value="upbeat-electronic">업비트 일렉트로닉</SelectItem>
+                      <SelectItem value="ambient-chill">앰비언트 칠</SelectItem>
+                      <SelectItem value="dramatic-tension">드라마틱 텐션</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-2">
-                      <Volume2 className="h-4 w-4" />
-                      Volume: {musicVolume}%
-                    </Label>
+                    <label className="text-xs font-medium flex items-center gap-1">
+                      <Volume2 className="h-3 w-3" />
+                      볼륨: {musicVolume}%
+                    </label>
                   </div>
                   <Slider
                     value={[musicVolume]}
@@ -217,33 +198,30 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
 
         {/* Output Settings */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Output Settings
-            </CardTitle>
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm">출력 설정</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pb-4 space-y-4">
             <div className="space-y-2">
-              <Label>Transition Style</Label>
+              <label className="text-xs font-medium">전환 스타일</label>
               <Select value={transition} onValueChange={setTransition}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="crossfade">Crossfade</SelectItem>
-                  <SelectItem value="cut">Hard Cut</SelectItem>
-                  <SelectItem value="fade-black">Fade to Black</SelectItem>
-                  <SelectItem value="slide">Slide</SelectItem>
-                  <SelectItem value="none">No Transition</SelectItem>
+                  <SelectItem value="crossfade">크로스페이드</SelectItem>
+                  <SelectItem value="cut">하드 컷</SelectItem>
+                  <SelectItem value="fade-black">페이드 투 블랙</SelectItem>
+                  <SelectItem value="slide">슬라이드</SelectItem>
+                  <SelectItem value="none">없음</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label>Output Quality</Label>
+              <label className="text-xs font-medium">출력 품질</label>
               <Select value={outputQuality} onValueChange={setOutputQuality}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -259,66 +237,86 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
 
       {/* Merge Progress / Actions */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="py-4">
           {isMerging ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="font-medium">Merging video clips...</span>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm font-medium">영상 클립 병합 중...</span>
                 </div>
-                <span className="text-sm text-muted-foreground">{mergeProgress}%</span>
+                <span className="text-xs text-muted-foreground">{mergeProgress}%</span>
               </div>
-              <Progress value={mergeProgress} className="h-2" />
+              <Progress value={mergeProgress} className="h-1.5" />
             </div>
           ) : isMerged ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-center gap-2 text-green-600">
-                <Check className="h-6 w-6" />
-                <span className="font-medium text-lg">Video Ready!</span>
+              <div className="flex items-center justify-center gap-2">
+                <Check className="h-5 w-5" />
+                <span className="text-sm font-medium">영상 준비 완료!</span>
               </div>
 
               {/* Video Preview Placeholder */}
-              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-                <div className="text-center space-y-2">
-                  <div className="h-16 w-16 rounded-full bg-muted-foreground/20 flex items-center justify-center mx-auto">
-                    <Play className="h-8 w-8 text-muted-foreground ml-1" />
+              <div className="aspect-video bg-muted rounded flex items-center justify-center">
+                <div className="text-center">
+                  <div className="h-12 w-12 rounded-full bg-foreground/10 flex items-center justify-center mx-auto mb-2">
+                    <Play className="h-6 w-6 ml-0.5" />
                   </div>
-                  <p className="text-sm text-muted-foreground">Click to preview</p>
+                  <p className="text-xs text-muted-foreground">클릭하여 미리보기</p>
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                <Button className="flex-1" size="lg" onClick={handleDownload}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download Video
-                </Button>
-                <Button variant="outline" size="lg">
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share
-                </Button>
+              <div className="flex gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button className="flex-1" onClick={handleDownload}>
+                      <Download className="h-4 w-4 mr-2" />
+                      다운로드
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>영상 파일 다운로드</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline">
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>공유하기</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" onClick={() => setIsMerged(false)}>
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>다시 병합</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <Button className="w-full" size="lg" onClick={handleMerge}>
-                <Film className="h-4 w-4 mr-2" />
-                Merge & Create Final Video
-              </Button>
-            </div>
+            <Button className="w-full" onClick={handleMerge}>
+              <Film className="h-4 w-4 mr-2" />
+              최종 영상 생성
+            </Button>
           )}
         </CardContent>
       </Card>
 
       {/* Navigation */}
       <div className="flex justify-between pt-4">
-        <Button variant="outline" onClick={onBack}>
-          Back to Videos
+        <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
+          영상 생성으로 돌아가기
         </Button>
-        <Button variant="outline" onClick={onRestart}>
-          <RotateCcw className="h-4 w-4 mr-2" />
-          Start New Project
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="outline" size="sm" onClick={onRestart} className="h-8">
+              <RotateCcw className="h-3.5 w-3.5 mr-2" />
+              새 프로젝트 시작
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>처음부터 새 영상 만들기</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )

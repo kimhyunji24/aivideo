@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
-import { Label } from "@/components/ui/label"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Select,
   SelectContent,
@@ -42,12 +42,10 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
       const scene = project.scenes[i]
       if (!scene.imageUrl || scene.videoUrl) continue
 
-      // Set current scene to generating
       const updatingScenes = [...project.scenes]
       updatingScenes[i] = { ...scene, status: "generating" }
       setProject({ ...project, scenes: updatingScenes })
 
-      // Simulate video generation (longer than images)
       await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1500))
 
       const success = Math.random() > 0.05
@@ -82,63 +80,62 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
     setProject({ ...project, scenes: finalScenes })
   }
 
-  const getStatusIcon = (scene: Scene) => {
-    if (scene.videoUrl) return <Check className="h-4 w-4 text-green-600" />
-    if (scene.status === "generating") return <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-    if (scene.status === "error") return <AlertCircle className="h-4 w-4 text-red-600" />
-    return <Video className="h-4 w-4 text-muted-foreground" />
+  const regenerateAll = () => {
+    const resetScenes = project.scenes.map((s) => ({
+      ...s,
+      videoUrl: undefined,
+      status: s.imageUrl ? "pending" as const : s.status
+    }))
+    setProject({ ...project, scenes: resetScenes })
   }
 
-  const getStatusBadge = (scene: Scene) => {
-    if (scene.videoUrl) return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Done</Badge>
-    if (scene.status === "generating") return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Generating</Badge>
-    if (scene.status === "error") return <Badge variant="destructive">Error</Badge>
-    return <Badge variant="secondary">Pending</Badge>
+  const getStatusIcon = (scene: Scene) => {
+    if (scene.videoUrl) return <Check className="h-3.5 w-3.5" />
+    if (scene.status === "generating") return <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    if (scene.status === "error") return <AlertCircle className="h-3.5 w-3.5" />
+    return <Video className="h-3.5 w-3.5" />
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold">Video Generation</h2>
-        <p className="text-muted-foreground">
-          Animate your images into video clips. Adjust motion settings if needed.
+        <h2 className="text-xl font-semibold">영상 생성</h2>
+        <p className="text-sm text-muted-foreground">
+          이미지를 영상 클립으로 애니메이션화합니다.
         </p>
       </div>
 
       {/* Settings (Advanced Mode) */}
       {project.mode === "advanced" && (
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Video Settings
+              <Settings className="h-3.5 w-3.5" />
+              영상 설정
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-3">
-                <Label>Motion Strength: {motionStrength}%</Label>
+          <CardContent className="pb-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium">모션 강도: {motionStrength}%</label>
                 <Slider
                   value={[motionStrength]}
                   onValueChange={([v]) => setMotionStrength(v)}
                   max={100}
                   step={10}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Higher values create more dramatic camera movement
-                </p>
               </div>
-              <div className="space-y-3">
-                <Label>Animation Style</Label>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">애니메이션 스타일</label>
                 <Select value={videoStyle} onValueChange={setVideoStyle}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-8 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="smooth">Smooth & Cinematic</SelectItem>
-                    <SelectItem value="dynamic">Dynamic & Energetic</SelectItem>
-                    <SelectItem value="subtle">Subtle & Minimal</SelectItem>
-                    <SelectItem value="parallax">Parallax Depth</SelectItem>
+                    <SelectItem value="smooth">부드러운 시네마틱</SelectItem>
+                    <SelectItem value="dynamic">다이나믹 에너지</SelectItem>
+                    <SelectItem value="subtle">미니멀 섬세함</SelectItem>
+                    <SelectItem value="parallax">패럴랙스 깊이감</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -149,62 +146,83 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
 
       {/* Progress Summary */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
+        <CardContent className="py-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">
-                  {completedCount} of {scenesWithImages.length} videos generated
-                </p>
-              </div>
+              <p className="text-sm font-medium">
+                {completedCount} / {scenesWithImages.length} 영상 생성됨
+              </p>
               <div className="flex items-center gap-2">
                 {isGenerating ? (
-                  <Button variant="outline" onClick={() => setIsGenerating(false)}>
-                    <Pause className="h-4 w-4 mr-2" />
-                    Pause
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => setIsGenerating(false)}>
+                    <Pause className="h-3.5 w-3.5 mr-2" />
+                    일시정지
                   </Button>
                 ) : allDone ? (
-                  <Button variant="outline" onClick={() => {
-                    const resetScenes = project.scenes.map((s) => ({ ...s, videoUrl: undefined, status: s.imageUrl ? "pending" as const : s.status }))
-                    setProject({ ...project, scenes: resetScenes })
-                  }}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Regenerate All
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8" onClick={regenerateAll}>
+                        <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                        전체 재생성
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>모든 영상 재생성</TooltipContent>
+                  </Tooltip>
                 ) : (
-                  <Button onClick={generateVideos}>
-                    <Play className="h-4 w-4 mr-2" />
-                    {completedCount > 0 ? "Continue" : "Start"} Generation
+                  <Button size="sm" className="h-8" onClick={generateVideos}>
+                    <Play className="h-3.5 w-3.5 mr-2" />
+                    {completedCount > 0 ? "계속" : "시작"}
                   </Button>
                 )}
               </div>
             </div>
-            <Progress value={progress} className="h-2" />
+            <Progress value={progress} className="h-1.5" />
           </div>
         </CardContent>
       </Card>
 
       {/* Scene Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {project.scenes.map((scene, index) => {
           if (!scene.imageUrl) return null
 
           return (
             <Card key={scene.id} className={cn(
-              scene.status === "error" && !scene.videoUrl && "border-red-200 bg-red-50/50"
+              scene.status === "error" && !scene.videoUrl && "border-destructive/50"
             )}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
+              <CardContent className="py-3">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {getStatusIcon(scene)}
-                    <CardTitle className="text-sm">Scene {index + 1}</CardTitle>
+                    <div className={cn(
+                      "h-5 w-5 rounded-full flex items-center justify-center",
+                      scene.videoUrl && "bg-foreground text-background",
+                      scene.status === "generating" && "bg-muted text-foreground",
+                      scene.status === "error" && !scene.videoUrl && "bg-destructive text-destructive-foreground",
+                      !scene.videoUrl && scene.status !== "generating" && scene.status !== "error" && "bg-muted text-muted-foreground"
+                    )}>
+                      {getStatusIcon(scene)}
+                    </div>
+                    <span className="text-sm font-medium">씬 {index + 1}</span>
                   </div>
-                  {getStatusBadge(scene)}
+                  {scene.videoUrl && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => regenerateVideo(scene.id)}
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>이 영상 재생성</TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
+
                 {/* Video/Image Preview */}
-                <div className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden relative">
+                <div className="aspect-video bg-muted rounded flex items-center justify-center overflow-hidden relative mb-2">
                   {scene.videoUrl ? (
                     <div className="relative w-full h-full">
                       <img
@@ -212,12 +230,12 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                         alt={scene.title}
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                        <div className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center">
-                          <Play className="h-6 w-6 text-black ml-1" />
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                        <div className="h-10 w-10 rounded-full bg-background/90 flex items-center justify-center">
+                          <Play className="h-5 w-5 ml-0.5" />
                         </div>
                       </div>
-                      <Badge className="absolute top-2 right-2 bg-green-600">Video Ready</Badge>
+                      <Badge className="absolute top-1.5 right-1.5 text-xs bg-foreground text-background">완료</Badge>
                     </div>
                   ) : scene.status === "generating" ? (
                     <div className="relative w-full h-full">
@@ -227,8 +245,8 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                         className="w-full h-full object-cover opacity-50"
                       />
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
-                        <Loader2 className="h-8 w-8 animate-spin text-white" />
-                        <span className="text-xs text-white mt-2">Animating...</span>
+                        <Loader2 className="h-6 w-6 animate-spin text-background" />
+                        <span className="text-xs text-background mt-1">애니메이션 중...</span>
                       </div>
                     </div>
                   ) : (
@@ -240,34 +258,21 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                   )}
                 </div>
 
-                <p className="text-xs text-muted-foreground">{scene.duration}s duration</p>
-
-                {/* Actions */}
-                {scene.videoUrl && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => regenerateVideo(scene.id)}
-                  >
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                    Regenerate Video
-                  </Button>
-                )}
+                <p className="text-xs text-muted-foreground">{scene.duration}초</p>
               </CardContent>
             </Card>
           )
         })}
       </div>
 
-      {/* Continue Button */}
+      {/* Navigation */}
       <div className="flex justify-between pt-4">
-        <Button variant="outline" onClick={onBack}>
-          Back
+        <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
+          이전
         </Button>
-        <Button size="lg" onClick={onNext} disabled={completedCount === 0}>
-          Continue to Final Merge
-          <ArrowRight className="h-4 w-4 ml-2" />
+        <Button size="sm" onClick={onNext} disabled={completedCount === 0} className="h-8">
+          최종 병합으로 계속
+          <ArrowRight className="h-3.5 w-3.5 ml-2" />
         </Button>
       </div>
     </div>

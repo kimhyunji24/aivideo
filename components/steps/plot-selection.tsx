@@ -2,11 +2,11 @@
 
 import type { ProjectState, Plot } from "@/app/page"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Check, RefreshCw, Edit2, ArrowRight, Film } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Check, RefreshCw, Pencil, ArrowRight, Film, CircleCheck } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
@@ -35,7 +35,6 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
   const handleRegenerate = async () => {
     setIsRegenerating(true)
     await new Promise((resolve) => setTimeout(resolve, 1500))
-    // In real app, would call AI to regenerate
     setIsRegenerating(false)
   }
 
@@ -46,141 +45,177 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold">Choose Your Plot</h2>
-        <p className="text-muted-foreground">
-          Select one of the AI-generated plots, or customize your own.
+        <h2 className="text-xl font-semibold">플롯 선택</h2>
+        <p className="text-sm text-muted-foreground">
+          AI가 생성한 플롯 중 하나를 선택하거나 직접 작성하세요.
         </p>
       </div>
 
       {/* Original Idea Reference */}
       <Card className="bg-muted/50">
-        <CardContent className="pt-4">
+        <CardContent className="py-3">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Your original idea:</p>
-              <p className="text-sm font-medium">{project.idea}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground mb-1">원본 아이디어:</p>
+              <p className="text-sm truncate">{project.idea}</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <Edit2 className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={onBack}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>아이디어 수정</TooltipContent>
+            </Tooltip>
           </div>
         </CardContent>
       </Card>
 
       {/* Plot Options */}
-      <div className="grid gap-4 md:grid-cols-1">
+      <div className="space-y-3">
         {project.generatedPlots.map((plot) => (
           <Card
             key={plot.id}
             className={cn(
-              "cursor-pointer transition-all hover:shadow-md",
-              selectedId === plot.id && "ring-2 ring-primary"
+              "cursor-pointer transition-all hover:shadow-sm",
+              selectedId === plot.id && "ring-1 ring-foreground"
             )}
             onClick={() => handleSelectPlot(plot)}
           >
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <Film className="h-5 w-5 text-muted-foreground" />
-                  <CardTitle className="text-lg">{plot.title}</CardTitle>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{plot.tone}</Badge>
-                  <Badge variant="outline">{plot.scenes.length} scenes</Badge>
-                  {selectedId === plot.id && (
-                    <div className="h-6 w-6 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="h-4 w-4 text-primary-foreground" />
+            <CardContent className="py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Film className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <h3 className="text-sm font-medium">{plot.title}</h3>
+                    <Badge variant="secondary" className="text-xs">{plot.tone}</Badge>
+                    <Badge variant="outline" className="text-xs">{plot.sceneCount}개 씬</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{plot.summary}</p>
+                  
+                  {/* Scene Preview - Advanced Mode */}
+                  {project.mode === "advanced" && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-xs text-muted-foreground mb-2">씬 구성:</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {plot.scenes.map((scene, index) => (
+                          <Badge key={scene.id} variant="outline" className="text-xs font-normal">
+                            {index + 1}. {scene.title}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{plot.summary}</p>
-              
-              {/* Scene Preview */}
-              {project.mode === "advanced" && (
-                <div className="mt-4 pt-4 border-t">
-                  <p className="text-xs text-muted-foreground mb-2">Scene breakdown:</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {plot.scenes.map((scene, index) => (
-                      <Badge key={scene.id} variant="outline" className="text-xs">
-                        {index + 1}. {scene.title}
-                      </Badge>
-                    ))}
-                  </div>
+                
+                <div className="flex-shrink-0">
+                  {selectedId === plot.id ? (
+                    <div className="h-6 w-6 rounded-full bg-foreground flex items-center justify-center">
+                      <Check className="h-3.5 w-3.5 text-background" />
+                    </div>
+                  ) : (
+                    <div className="h-6 w-6 rounded-full border border-muted-foreground/30" />
+                  )}
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
       {/* Regenerate & Custom Options */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Button
-          variant="outline"
-          onClick={handleRegenerate}
-          disabled={isRegenerating}
-          className="flex-1"
-        >
-          <RefreshCw className={cn("h-4 w-4 mr-2", isRegenerating && "animate-spin")} />
-          {isRegenerating ? "Regenerating..." : "Generate Different Options"}
-        </Button>
+      <div className="flex gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRegenerate}
+              disabled={isRegenerating}
+              className="h-8"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 mr-2", isRegenerating && "animate-spin")} />
+              {isRegenerating ? "재생성 중..." : "다른 옵션 생성"}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>모든 플롯 옵션 재생성</TooltipContent>
+        </Tooltip>
         
         {project.mode === "advanced" && (
-          <Button
-            variant="outline"
-            onClick={() => setIsCustomizing(!isCustomizing)}
-            className="flex-1"
-          >
-            <Edit2 className="h-4 w-4 mr-2" />
-            Write Custom Plot
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsCustomizing(!isCustomizing)}
+                className="h-8"
+              >
+                <Pencil className="h-3.5 w-3.5 mr-2" />
+                직접 작성
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>나만의 플롯 직접 작성</TooltipContent>
+          </Tooltip>
         )}
       </div>
 
       {/* Custom Plot Input (Advanced Mode) */}
       {isCustomizing && project.mode === "advanced" && (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Custom Plot</CardTitle>
-            <CardDescription>
-              Write your own plot outline. The AI will generate scenes based on your description.
-            </CardDescription>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">커스텀 플롯</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="custom-plot">Plot Description</Label>
-              <Textarea
-                id="custom-plot"
-                placeholder="Describe your plot structure, key moments, and the overall flow of the video..."
-                value={customPlot}
-                onChange={(e) => setCustomPlot(e.target.value)}
-                rows={4}
-              />
-            </div>
-            <Button disabled={!customPlot.trim()}>
-              Generate Scenes from Custom Plot
+          <CardContent className="space-y-3">
+            <Textarea
+              placeholder="플롯 구조, 주요 장면, 전체적인 흐름을 설명해주세요..."
+              value={customPlot}
+              onChange={(e) => setCustomPlot(e.target.value)}
+              rows={3}
+              className="text-sm"
+            />
+            <Button size="sm" disabled={!customPlot.trim()} className="h-8">
+              <Sparkles className="h-3.5 w-3.5 mr-2" />
+              커스텀 플롯으로 씬 생성
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Continue Button */}
-      <div className="flex justify-end pt-4">
-        <Button
-          size="lg"
-          onClick={handleContinue}
-          disabled={!selectedId}
-        >
-          Continue to Storyboard
-          <ArrowRight className="h-4 w-4 ml-2" />
+      {/* Navigation */}
+      <div className="flex justify-between pt-4">
+        <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
+          이전
+        </Button>
+        <Button size="sm" onClick={handleContinue} disabled={!selectedId} className="h-8">
+          스토리보드로 계속
+          <ArrowRight className="h-3.5 w-3.5 ml-2" />
         </Button>
       </div>
     </div>
+  )
+}
+
+function Sparkles(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+      <path d="M5 3v4" />
+      <path d="M19 17v4" />
+      <path d="M3 5h4" />
+      <path d="M17 19h4" />
+    </svg>
   )
 }
