@@ -75,7 +75,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback', system-ui, sans-serif;
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -121,10 +121,99 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'ss01' on, 'ss02' on;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Korean typography improvements */
+  html {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  /* Improved line heights for Korean text */
+  p, span, div, li {
+    line-height: 1.7;
+    letter-spacing: -0.01em;
+  }
+
+  /* Headings with proper weight hierarchy */
+  h1 {
+    @apply text-3xl font-semibold tracking-tight;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    @apply text-2xl font-semibold tracking-tight;
+    line-height: 1.35;
+    letter-spacing: -0.02em;
+  }
+
+  h3 {
+    @apply text-xl font-medium tracking-tight;
+    line-height: 1.4;
+    letter-spacing: -0.015em;
+  }
+
+  h4 {
+    @apply text-lg font-medium;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+  }
+
+  h5 {
+    @apply text-base font-medium;
+    line-height: 1.5;
+  }
+
+  h6 {
+    @apply text-sm font-medium;
+    line-height: 1.5;
+  }
+
+  /* Button and label text */
+  button, label, input, textarea, select {
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  /* Small text */
+  small, .text-xs, .text-sm {
+    line-height: 1.6;
+    letter-spacing: 0;
   }
 }
 
 @layer components {
+  /* Typography utility classes */
+  .text-title {
+    @apply font-semibold tracking-tight;
+    letter-spacing: -0.02em;
+  }
+
+  .text-subtitle {
+    @apply font-medium;
+    letter-spacing: -0.015em;
+  }
+
+  .text-body {
+    @apply font-normal;
+    line-height: 1.7;
+    letter-spacing: -0.01em;
+  }
+
+  .text-caption {
+    @apply text-sm text-muted-foreground;
+    line-height: 1.6;
+  }
+
+  .text-label {
+    @apply text-sm font-medium;
+    letter-spacing: -0.01em;
+  }
+
   /* Glassmorphism card styles */
   .glass-card {
     @apply bg-card/80 backdrop-blur-xl border border-border/50 shadow-sm;
@@ -164,5 +253,14 @@
 
   .hover-actions {
     @apply absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-all duration-200 group-hover:opacity-100;
+  }
+
+  /* Scene card hover state */
+  .scene-card {
+    @apply transition-all duration-200 hover:shadow-md hover:border-border;
+  }
+
+  .scene-card-selected {
+    @apply ring-2 ring-primary/20 border-primary/40;
   }
 }
