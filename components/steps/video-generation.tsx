@@ -14,7 +14,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ArrowRight, RefreshCw, Check, Loader2, AlertCircle, Video, Play, Pause, Settings } from "lucide-react"
+import { 
+  ArrowRight, 
+  RefreshCw, 
+  Check, 
+  Loader2, 
+  AlertCircle, 
+  Video, 
+  Play, 
+  Pause, 
+  Settings,
+  Layers,
+  Zap
+} from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
@@ -97,18 +109,26 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="text-center space-y-2">
-        <h2 className="text-xl font-semibold">영상 생성</h2>
-        <p className="text-sm text-muted-foreground">
-          이미지를 영상 클립으로 애니메이션화합니다.
-        </p>
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">영상 생성</h2>
+          <p className="text-sm text-muted-foreground">
+            이미지를 영상 클립으로 애니메이션화합니다
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="text-xs gap-1">
+            <Layers className="h-3 w-3" />
+            {completedCount} / {scenesWithImages.length}
+          </Badge>
+        </div>
       </div>
 
       {/* Settings (Advanced Mode) */}
       {project.mode === "advanced" && (
-        <Card>
-          <CardHeader className="py-3">
+        <Card className="glass-card">
+          <CardHeader className="py-3 pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Settings className="h-3.5 w-3.5" />
               영상 설정
@@ -117,7 +137,10 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
           <CardContent className="pb-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-xs font-medium">모션 강도: {motionStrength}%</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium">모션 강도</label>
+                  <span className="text-xs text-muted-foreground">{motionStrength}%</span>
+                </div>
                 <Slider
                   value={[motionStrength]}
                   onValueChange={([v]) => setMotionStrength(v)}
@@ -145,13 +168,15 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
       )}
 
       {/* Progress Summary */}
-      <Card>
+      <Card className="glass-card">
         <CardContent className="py-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">
-                {completedCount} / {scenesWithImages.length} 영상 생성됨
-              </p>
+              <div>
+                <p className="text-sm font-medium">
+                  {allDone ? "모든 영상 클립 생성 완료" : `${completedCount}개 영상 생성됨`}
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 {isGenerating ? (
                   <Button variant="outline" size="sm" className="h-8" onClick={() => setIsGenerating(false)}>
@@ -170,8 +195,8 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                   </Tooltip>
                 ) : (
                   <Button size="sm" className="h-8" onClick={generateVideos}>
-                    <Play className="h-3.5 w-3.5 mr-2" />
-                    {completedCount > 0 ? "계속" : "시작"}
+                    <Zap className="h-3.5 w-3.5 mr-2" />
+                    {completedCount > 0 ? "계속" : "생성 시작"}
                   </Button>
                 )}
               </div>
@@ -182,15 +207,16 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
       </Card>
 
       {/* Scene Grid */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {project.scenes.map((scene, index) => {
           if (!scene.imageUrl) return null
 
           return (
             <Card key={scene.id} className={cn(
+              "glass-card group",
               scene.status === "error" && !scene.videoUrl && "border-destructive/50"
             )}>
-              <CardContent className="py-3">
+              <CardContent className="p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <div className={cn(
@@ -204,7 +230,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                     </div>
                     <span className="text-sm font-medium">씬 {index + 1}</span>
                   </div>
-                  {scene.videoUrl && (
+                  {(scene.videoUrl || scene.status === "error") && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -222,21 +248,39 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                 </div>
 
                 {/* Video/Image Preview */}
-                <div className="aspect-video bg-muted rounded flex items-center justify-center overflow-hidden relative mb-2">
+                <div className="aspect-video bg-muted/30 rounded-lg flex items-center justify-center overflow-hidden relative mb-2">
                   {scene.videoUrl ? (
-                    <div className="relative w-full h-full">
+                    <>
                       <img
                         src={scene.imageUrl}
                         alt={scene.title}
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                        <div className="h-10 w-10 rounded-full bg-background/90 flex items-center justify-center">
+                        <div className="h-10 w-10 rounded-full bg-background/90 backdrop-blur-sm flex items-center justify-center">
                           <Play className="h-5 w-5 ml-0.5" />
                         </div>
                       </div>
-                      <Badge className="absolute top-1.5 right-1.5 text-xs bg-foreground text-background">완료</Badge>
-                    </div>
+                      <Badge className="absolute top-2 right-2 text-[10px] bg-foreground text-background">완료</Badge>
+                      
+                      {/* Hover actions */}
+                      <div className="hover-overlay" />
+                      <div className="hover-actions">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="secondary"
+                              size="icon"
+                              className="h-8 w-8 glass-button"
+                              onClick={() => regenerateVideo(scene.id)}
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>영상 재생성</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </>
                   ) : scene.status === "generating" ? (
                     <div className="relative w-full h-full">
                       <img
@@ -244,9 +288,21 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                         alt={scene.title}
                         className="w-full h-full object-cover opacity-50"
                       />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
-                        <Loader2 className="h-6 w-6 animate-spin text-background" />
-                        <span className="text-xs text-background mt-1">애니메이션 중...</span>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                        <Loader2 className="h-6 w-6 animate-spin text-white" />
+                        <span className="text-xs text-white mt-1.5">애니메이션 중...</span>
+                      </div>
+                    </div>
+                  ) : scene.status === "error" ? (
+                    <div className="relative w-full h-full">
+                      <img
+                        src={scene.imageUrl}
+                        alt={scene.title}
+                        className="w-full h-full object-cover opacity-30"
+                      />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <AlertCircle className="h-6 w-6 text-destructive" />
+                        <span className="text-xs text-destructive mt-1">실패</span>
                       </div>
                     </div>
                   ) : (
@@ -258,7 +314,10 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                   )}
                 </div>
 
-                <p className="text-xs text-muted-foreground">{scene.duration}초</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground truncate">{scene.title}</p>
+                  <span className="text-[10px] text-muted-foreground">{scene.duration}초</span>
+                </div>
               </CardContent>
             </Card>
           )
@@ -266,7 +325,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between pt-4 border-t">
         <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
           이전
         </Button>

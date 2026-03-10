@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Check, RefreshCw, Pencil, ArrowRight, Film, CircleCheck } from "lucide-react"
+import { Check, RefreshCw, Pencil, ArrowRight, Film, Sparkles, Layers } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +22,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
   const [isCustomizing, setIsCustomizing] = useState(false)
   const [customPlot, setCustomPlot] = useState("")
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [regeneratingPlotId, setRegeneratingPlotId] = useState<string | null>(null)
 
   const handleSelectPlot = (plot: Plot) => {
     setSelectedId(plot.id)
@@ -32,10 +33,17 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
     })
   }
 
-  const handleRegenerate = async () => {
+  const handleRegenerateAll = async () => {
     setIsRegenerating(true)
     await new Promise((resolve) => setTimeout(resolve, 1500))
     setIsRegenerating(false)
+  }
+
+  const handleRegeneratePlot = async (plotId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setRegeneratingPlotId(plotId)
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    setRegeneratingPlotId(null)
   }
 
   const handleContinue = () => {
@@ -46,20 +54,26 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="text-center space-y-2">
-        <h2 className="text-xl font-semibold">플롯 선택</h2>
-        <p className="text-sm text-muted-foreground">
-          AI가 생성한 플롯 중 하나를 선택하거나 직접 작성하세요.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">플롯 선택</h2>
+          <p className="text-sm text-muted-foreground">
+            AI가 생성한 플롯 중 하나를 선택하세요
+          </p>
+        </div>
+        <Badge variant="secondary" className="text-xs gap-1">
+          <Layers className="h-3 w-3" />
+          {project.generatedPlots.length}개 옵션
+        </Badge>
       </div>
 
       {/* Original Idea Reference */}
-      <Card className="bg-muted/50">
+      <Card className="glass-card">
         <CardContent className="py-3">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground mb-1">원본 아이디어:</p>
-              <p className="text-sm truncate">{project.idea}</p>
+              <p className="text-xs text-muted-foreground mb-1">원본 아이디어</p>
+              <p className="text-sm">{project.idea}</p>
             </div>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -79,8 +93,8 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
           <Card
             key={plot.id}
             className={cn(
-              "cursor-pointer transition-all hover:shadow-sm",
-              selectedId === plot.id && "ring-1 ring-foreground"
+              "cursor-pointer transition-all hover:shadow-sm glass-card group",
+              selectedId === plot.id && "ring-1 ring-foreground/30 bg-accent/30"
             )}
             onClick={() => handleSelectPlot(plot)}
           >
@@ -90,18 +104,18 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
                   <div className="flex items-center gap-2 mb-2">
                     <Film className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <h3 className="text-sm font-medium">{plot.title}</h3>
-                    <Badge variant="secondary" className="text-xs">{plot.tone}</Badge>
-                    <Badge variant="outline" className="text-xs">{plot.sceneCount}개 씬</Badge>
+                    <Badge variant="secondary" className="text-[10px]">{plot.tone}</Badge>
+                    <Badge variant="outline" className="text-[10px]">{plot.sceneCount}개 씬</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{plot.summary}</p>
                   
                   {/* Scene Preview - Advanced Mode */}
                   {project.mode === "advanced" && (
-                    <div className="mt-3 pt-3 border-t">
+                    <div className="mt-3 pt-3 border-t border-border/50">
                       <p className="text-xs text-muted-foreground mb-2">씬 구성:</p>
                       <div className="flex gap-1.5 flex-wrap">
                         {plot.scenes.map((scene, index) => (
-                          <Badge key={scene.id} variant="outline" className="text-xs font-normal">
+                          <Badge key={scene.id} variant="outline" className="text-[10px] font-normal">
                             {index + 1}. {scene.title}
                           </Badge>
                         ))}
@@ -110,7 +124,24 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
                   )}
                 </div>
                 
-                <div className="flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Individual regenerate button */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => handleRegeneratePlot(plot.id, e)}
+                        disabled={regeneratingPlotId === plot.id}
+                      >
+                        <RefreshCw className={cn("h-3.5 w-3.5", regeneratingPlotId === plot.id && "animate-spin")} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>이 플롯만 재생성</TooltipContent>
+                  </Tooltip>
+                  
+                  {/* Selection indicator */}
                   {selectedId === plot.id ? (
                     <div className="h-6 w-6 rounded-full bg-foreground flex items-center justify-center">
                       <Check className="h-3.5 w-3.5 text-background" />
@@ -132,12 +163,12 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRegenerate}
+              onClick={handleRegenerateAll}
               disabled={isRegenerating}
               className="h-8"
             >
               <RefreshCw className={cn("h-3.5 w-3.5 mr-2", isRegenerating && "animate-spin")} />
-              {isRegenerating ? "재생성 중..." : "다른 옵션 생성"}
+              {isRegenerating ? "재생성 중..." : "전체 재생성"}
             </Button>
           </TooltipTrigger>
           <TooltipContent>모든 플롯 옵션 재생성</TooltipContent>
@@ -163,7 +194,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
 
       {/* Custom Plot Input (Advanced Mode) */}
       {isCustomizing && project.mode === "advanced" && (
-        <Card>
+        <Card className="glass-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">커스텀 플롯</CardTitle>
           </CardHeader>
@@ -184,7 +215,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
       )}
 
       {/* Navigation */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between pt-4 border-t">
         <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
           이전
         </Button>
@@ -194,28 +225,5 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
         </Button>
       </div>
     </div>
-  )
-}
-
-function Sparkles(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-      <path d="M5 3v4" />
-      <path d="M19 17v4" />
-      <path d="M3 5h4" />
-      <path d="M17 19h4" />
-    </svg>
   )
 }

@@ -2,9 +2,10 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Bot, User, Sparkles } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Send, Bot, User, Sparkles, RefreshCw, Pencil, Palette, UserCircle, Wand2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Message {
@@ -17,7 +18,7 @@ const INITIAL_MESSAGES: Message[] = [
   {
     id: "1",
     role: "assistant",
-    content: "안녕하세요! AI 영상 제작 어시스턴트입니다. 프롬프트 수정, 씬 설명 편집, 특정 씬 재생성, 스타일이나 분위기 조정 등을 도와드릴 수 있어요. 무엇을 도와드릴까요?",
+    content: "안녕하세요! AI 영상 제작 어시스턴트입니다. 무엇을 도와드릴까요?",
   },
 ]
 
@@ -29,6 +30,13 @@ export function AIChatPanel({ className }: AIChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  const quickActions = [
+    { icon: RefreshCw, label: "재생성", action: "이 씬을 다시 생성해주세요" },
+    { icon: Pencil, label: "프롬프트", action: "프롬프트를 개선해주세요" },
+    { icon: Palette, label: "스타일", action: "다른 스타일로 바꿔주세요" },
+    { icon: UserCircle, label: "캐릭터", action: "캐릭터를 수정해주세요" },
+  ]
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
@@ -43,7 +51,6 @@ export function AIChatPanel({ className }: AIChatPanelProps) {
     setInput("")
     setIsLoading(true)
 
-    // Simulate AI response
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
     const responses = [
@@ -64,31 +71,51 @@ export function AIChatPanel({ className }: AIChatPanelProps) {
     setIsLoading(false)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
+  const handleQuickAction = (action: string) => {
+    setInput(action)
   }
 
   return (
-    <div className={cn("flex flex-col h-full bg-background border-r", className)}>
+    <div className={cn("flex flex-col h-full glass-panel", className)}>
       {/* Header */}
-      <div className="p-3 border-b">
+      <div className="p-4 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-            <Sparkles className="h-4 w-4 text-foreground" />
+          <div className="h-8 w-8 rounded-lg bg-foreground/10 flex items-center justify-center">
+            <Wand2 className="h-4 w-4 text-foreground" />
           </div>
           <div>
             <p className="text-sm font-medium">AI 어시스턴트</p>
-            <p className="text-xs text-muted-foreground">영상 제작 도우미</p>
+            <p className="text-[10px] text-muted-foreground">제작 도우미</p>
           </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="px-3 py-2.5 border-b border-border/50 bg-muted/20">
+        <p className="text-[10px] text-muted-foreground mb-2">빠른 작업</p>
+        <div className="flex flex-wrap gap-1.5">
+          {quickActions.map((action) => (
+            <Tooltip key={action.label}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px] gap-1 px-2 bg-background/50 hover:bg-background/80 border-border/50"
+                  onClick={() => handleQuickAction(action.action)}
+                >
+                  <action.icon className="h-3 w-3" />
+                  {action.label}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{action.action}</TooltipContent>
+            </Tooltip>
+          ))}
         </div>
       </div>
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-3">
-        <div className="space-y-4">
+        <div className="space-y-3">
           {messages.map((message) => (
             <div
               key={message.id}
@@ -111,9 +138,9 @@ export function AIChatPanel({ className }: AIChatPanelProps) {
               </div>
               <div
                 className={cn(
-                  "rounded-lg px-3 py-2 text-sm max-w-[85%]",
+                  "rounded-xl px-3 py-2 text-xs max-w-[85%] leading-relaxed",
                   message.role === "assistant"
-                    ? "bg-muted text-foreground"
+                    ? "bg-muted/70 text-foreground"
                     : "bg-foreground text-background"
                 )}
               >
@@ -126,11 +153,11 @@ export function AIChatPanel({ className }: AIChatPanelProps) {
               <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
                 <Bot className="h-3 w-3 text-foreground" />
               </div>
-              <div className="bg-muted rounded-lg px-3 py-2">
+              <div className="bg-muted/70 rounded-xl px-3 py-2">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-2 h-2 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
               </div>
             </div>
@@ -139,28 +166,35 @@ export function AIChatPanel({ className }: AIChatPanelProps) {
       </ScrollArea>
 
       {/* Input */}
-      <div className="p-3 border-t">
-        <div className="flex gap-2">
-          <Textarea
+      <div className="p-3 border-t border-border/50 bg-background/30">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleSend()
+          }}
+          className="flex gap-2"
+        >
+          <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
             placeholder="메시지를 입력하세요..."
-            className="min-h-[40px] max-h-[120px] resize-none text-sm"
-            rows={1}
+            className="flex-1 h-9 text-xs bg-background/50 border-border/50"
+            disabled={isLoading}
           />
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            className="h-10 w-10 flex-shrink-0"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          프롬프트 수정, 씬 재생성, 스타일 변경 등을 요청하세요
-        </p>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                type="submit" 
+                size="icon" 
+                className="h-9 w-9 flex-shrink-0" 
+                disabled={!input.trim() || isLoading}
+              >
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>전송</TooltipContent>
+          </Tooltip>
+        </form>
       </div>
     </div>
   )

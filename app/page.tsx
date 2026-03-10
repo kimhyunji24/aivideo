@@ -11,7 +11,7 @@ import { WorkflowProgress } from "@/components/workflow-progress"
 import { AIChatPanel } from "@/components/ai-chat-panel"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { ChevronLeft, ChevronRight, MessageSquare, X } from "lucide-react"
+import { MessageSquare, X, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface Scene {
@@ -43,12 +43,12 @@ export interface ProjectState {
 }
 
 const STEPS = [
-  { id: 1, name: "아이디어 입력", description: "영상 컨셉 설명" },
-  { id: 2, name: "플롯 선택", description: "스토리 선택 또는 커스텀" },
-  { id: 3, name: "스토리보드", description: "씬 검토 및 편집" },
-  { id: 4, name: "이미지 생성", description: "씬별 이미지 생성" },
-  { id: 5, name: "영상 생성", description: "이미지 애니메이션" },
-  { id: 6, name: "최종 병합", description: "영상 합치기 및 내보내기" },
+  { id: 1, name: "아이디어", description: "영상 컨셉" },
+  { id: 2, name: "플롯", description: "스토리 선택" },
+  { id: 3, name: "스토리보드", description: "씬 편집" },
+  { id: 4, name: "이미지", description: "씬 이미지" },
+  { id: 5, name: "영상", description: "애니메이션" },
+  { id: 6, name: "완성", description: "최종 결과물" },
 ]
 
 export default function Home() {
@@ -139,7 +139,14 @@ export default function Home() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <main className="min-h-screen bg-muted/30 flex">
+      <main className="min-h-screen bg-background flex relative">
+        {/* Subtle background pattern */}
+        <div className="fixed inset-0 pattern-dots pointer-events-none" />
+        
+        {/* Background accent shapes */}
+        <div className="fixed top-20 left-[30%] w-64 h-64 rounded-full bg-muted/30 blur-3xl pointer-events-none" />
+        <div className="fixed bottom-20 right-[20%] w-96 h-96 rounded-full bg-muted/20 blur-3xl pointer-events-none" />
+
         {/* Left: AI Chat Panel */}
         <div
           className={cn(
@@ -157,7 +164,7 @@ export default function Home() {
               variant="outline"
               size="icon"
               className={cn(
-                "fixed top-4 z-30 h-8 w-8 transition-all duration-300",
+                "fixed top-4 z-30 h-8 w-8 transition-all duration-300 glass-button",
                 isChatOpen ? "left-[328px]" : "left-4"
               )}
               onClick={() => setIsChatOpen(!isChatOpen)}
@@ -177,40 +184,30 @@ export default function Home() {
         {/* Main Content Area */}
         <div
           className={cn(
-            "flex-1 flex flex-col transition-all duration-300",
+            "flex-1 flex flex-col transition-all duration-300 relative z-10",
             isChatOpen ? "ml-80" : "ml-0"
           )}
         >
           {/* Header */}
-          <header className="border-b bg-background sticky top-0 z-10">
+          <header className="border-b bg-background/80 backdrop-blur-xl sticky top-0 z-10">
             <div className="px-6 py-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {currentStep > 1 && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => goToStep(currentStep - 1)}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>이전 단계</TooltipContent>
-                    </Tooltip>
-                  )}
-                  <h1 className="text-base font-semibold">AI 팬 영상 크리에이터</h1>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-foreground flex items-center justify-center">
+                    <Sparkles className="h-4 w-4 text-background" />
+                  </div>
+                  <div>
+                    <h1 className="text-sm font-semibold">AI 팬 영상 크리에이터</h1>
+                    <p className="text-[10px] text-muted-foreground">아이디어를 영상으로</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground mr-2 hidden sm:inline">모드:</span>
+                <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant={project.mode === "beginner" ? "default" : "ghost"}
+                        variant={project.mode === "beginner" ? "secondary" : "ghost"}
                         size="sm"
-                        className="h-7 text-xs"
+                        className="h-7 text-xs px-3"
                         onClick={() => setProject({ ...project, mode: "beginner" })}
                       >
                         초보자
@@ -221,9 +218,9 @@ export default function Home() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant={project.mode === "advanced" ? "default" : "ghost"}
+                        variant={project.mode === "advanced" ? "secondary" : "ghost"}
                         size="sm"
-                        className="h-7 text-xs"
+                        className="h-7 text-xs px-3"
                         onClick={() => setProject({ ...project, mode: "advanced" })}
                       >
                         고급
@@ -237,7 +234,7 @@ export default function Home() {
           </header>
 
           {/* Progress */}
-          <div className="border-b bg-background">
+          <div className="border-b bg-background/60 backdrop-blur-sm">
             <div className="px-6 py-3">
               <WorkflowProgress
                 steps={STEPS}
