@@ -1,6 +1,6 @@
 "use client"
 
-import type { ProjectState, Scene } from "@/app/page"
+import type { ProjectState, Scene } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,15 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { 
-  ArrowRight, 
-  RefreshCw, 
-  Check, 
-  Loader2, 
-  AlertCircle, 
-  Video, 
-  Play, 
-  Pause, 
+import {
+  ArrowRight,
+  RefreshCw,
+  Check,
+  Loader2,
+  AlertCircle,
+  Video,
+  Play,
+  Pause,
   Settings,
   Layers,
   Zap
@@ -47,49 +47,77 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
   const progress = (completedCount / scenesWithImages.length) * 100
   const allDone = completedCount === scenesWithImages.length
 
+  const pollVideoStatus = async (sceneId: string | number) => {
+    return new Promise<void>((resolve) => {
+      const pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/status/${sceneId}`)
+          if (response.ok) {
+            const updatedScene = await response.json()
+
+            setProject((prev) => ({
+              ...prev,
+              scenes: prev.scenes.map(s => s.id === sceneId ? updatedScene : s)
+            }))
+
+            if (updatedScene.status === "done" || updatedScene.status === "error") {
+              clearInterval(pollInterval)
+              resolve()
+            }
+          }
+        } catch (error) {
+          console.error("Polling error:", error)
+          clearInterval(pollInterval)
+          resolve()
+        }
+      }, 2000)
+    })
+  }
+
   const generateVideos = async () => {
     setIsGenerating(true)
 
-    for (let i = 0; i < project.scenes.length; i++) {
-      const scene = project.scenes[i]
-      if (!scene.imageUrl || scene.videoUrl) continue
+    // 병렬로 모든 비디오 생성 요청 (또는 순차)
+    const pendingScenes = project.scenes.filter(s => s.imageUrl && !s.videoUrl)
 
-      const updatingScenes = [...project.scenes]
-      updatingScenes[i] = { ...scene, status: "generating" }
-      setProject({ ...project, scenes: updatingScenes })
-
-      await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1500))
-
-      const success = Math.random() > 0.05
-      const finalScenes = [...project.scenes]
-      finalScenes[i] = {
-        ...scene,
-        status: success ? "done" : "error",
-        videoUrl: success ? `/placeholder-video-${i + 1}.mp4` : undefined,
+    const requests = pendingScenes.map(async (scene) => {
+      try {
+        const response = await fetch(`/api/generate-video?id=${scene.id}`, {
+          method: "POST"
+        })
+        if (response.ok) {
+          const initialScene = await response.json()
+          setProject((prev) => ({
+            ...prev,
+            scenes: prev.scenes.map(s => s.id === scene.id ? initialScene : s)
+          }))
+          await pollVideoStatus(scene.id)
+        }
+      } catch (error) {
+        console.error("Generate video error:", error)
       }
-      setProject({ ...project, scenes: finalScenes })
-    }
+    })
 
+    await Promise.all(requests)
     setIsGenerating(false)
   }
 
-  const regenerateVideo = async (sceneId: string) => {
-    const sceneIndex = project.scenes.findIndex((s) => s.id === sceneId)
-    if (sceneIndex === -1) return
-
-    const updatingScenes = [...project.scenes]
-    updatingScenes[sceneIndex] = { ...updatingScenes[sceneIndex], status: "generating", videoUrl: undefined }
-    setProject({ ...project, scenes: updatingScenes })
-
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    const finalScenes = [...project.scenes]
-    finalScenes[sceneIndex] = {
-      ...finalScenes[sceneIndex],
-      status: "done",
-      videoUrl: `/placeholder-video-${sceneIndex + 1}-regen.mp4`,
+  const regenerateVideo = async (sceneId: string | number) => {
+    try {
+      const response = await fetch(`/api/generate-video?id=${sceneId}`, {
+        method: "POST"
+      })
+      if (response.ok) {
+        const initialScene = await response.json()
+        setProject((prev) => ({
+          ...prev,
+          scenes: prev.scenes.map(s => s.id === sceneId ? initialScene : s)
+        }))
+        await pollVideoStatus(sceneId)
+      }
+    } catch (error) {
+      console.error("Regenerate video error:", error)
     }
-    setProject({ ...project, scenes: finalScenes })
   }
 
   const regenerateAll = () => {
@@ -262,7 +290,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                         </div>
                       </div>
                       <Badge className="absolute top-2 right-2 text-[10px] bg-foreground text-background">완료</Badge>
-                      
+
                       {/* Hover actions */}
                       <div className="hover-overlay" />
                       <div className="hover-actions">

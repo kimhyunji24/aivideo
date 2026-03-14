@@ -1,19 +1,19 @@
 "use client"
 
-import type { ProjectState, Scene } from "@/app/page"
+import type { ProjectState, Scene } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { 
-  ArrowRight, 
-  RefreshCw, 
-  Check, 
-  Loader2, 
-  AlertCircle, 
-  ImageIcon, 
-  Play, 
+import {
+  ArrowRight,
+  RefreshCw,
+  Check,
+  Loader2,
+  AlertCircle,
+  ImageIcon,
+  Play,
   Pause,
   Palette,
   User,
@@ -192,7 +192,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
                 <Badge variant="secondary" className="gap-1">
                   <Palette className="h-3 w-3" />
                   스타일 - 씬 {project.scenes.findIndex(s => s.id === keepStyle) + 1}
-                  <button 
+                  <button
                     className="ml-1 hover:text-destructive"
                     onClick={() => setKeepStyle(null)}
                   >
@@ -204,7 +204,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
                 <Badge variant="secondary" className="gap-1">
                   <User className="h-3 w-3" />
                   캐릭터 - 씬 {project.scenes.findIndex(s => s.id === keepCharacter) + 1}
-                  <button 
+                  <button
                     className="ml-1 hover:text-destructive"
                     onClick={() => setKeepCharacter(null)}
                   >
@@ -245,7 +245,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
-                        onClick={() => regenerateScene(scene.id)}
+                        onClick={() => regenerateScene(String(scene.id))}
                       >
                         <RefreshCw className="h-3 w-3" />
                       </Button>
@@ -276,14 +276,14 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
                               "h-8 w-8 glass-button",
                               keepStyle === scene.id && "bg-foreground text-background"
                             )}
-                            onClick={() => handleKeepStyle(scene.id)}
+                            onClick={() => handleKeepStyle(String(scene.id))}
                           >
                             <Palette className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>스타일 유지</TooltipContent>
                       </Tooltip>
-                      
+
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -293,21 +293,21 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
                               "h-8 w-8 glass-button",
                               keepCharacter === scene.id && "bg-foreground text-background"
                             )}
-                            onClick={() => handleKeepCharacter(scene.id)}
+                            onClick={() => handleKeepCharacter(String(scene.id))}
                           >
                             <User className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>캐릭터 유지</TooltipContent>
                       </Tooltip>
-                      
+
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             variant="secondary"
                             size="icon"
                             className="h-8 w-8 glass-button"
-                            onClick={() => regenerateScene(scene.id)}
+                            onClick={() => regenerateScene(String(scene.id))}
                           >
                             <RefreshCw className="h-4 w-4" />
                           </Button>

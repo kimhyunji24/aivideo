@@ -1,6 +1,6 @@
 "use client"
 
-import type { ProjectState } from "@/app/page"
+import type { ProjectState } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -58,6 +58,17 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
     for (let i = 0; i <= 100; i += 5) {
       await new Promise((resolve) => setTimeout(resolve, 100))
       setMergeProgress(i)
+    }
+
+    if (project.id) {
+      const mockFinalVideoUrl = "/final-video-merged.mp4"
+      try {
+        await fetch(`http://localhost:8080/api/projects/${project.id}/video?finalVideoUrl=${encodeURIComponent(mockFinalVideoUrl)}`, {
+          method: "PATCH"
+        })
+      } catch (error) {
+        console.error("Error saving final video:", error)
+      }
     }
 
     setIsMerging(false)
@@ -121,7 +132,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
         <CardContent className="pb-4">
           <div className="flex gap-2 overflow-x-auto pb-2">
             {project.scenes.map((scene, index) => (
-              <div key={scene.id} className="flex-shrink-0 w-20">
+              <div key={String(scene.id)} className="flex-shrink-0 w-20">
                 <div className="aspect-video bg-muted rounded overflow-hidden mb-1">
                   {scene.imageUrl ? (
                     <img

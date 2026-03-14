@@ -28,13 +28,15 @@ export const metadata: Metadata = {
   },
 }
 
+import { TooltipProvider } from "@/components/ui/tooltip"
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <head>
         <link
           rel="stylesheet"
@@ -44,7 +46,9 @@ export default function RootLayout({
         />
       </head>
       <body className="font-sans antialiased">
-        {children}
+        <TooltipProvider delayDuration={300}>
+          {children}
+        </TooltipProvider>
         <Analytics />
       </body>
     </html>
