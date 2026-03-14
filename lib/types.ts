@@ -42,9 +42,33 @@ export interface Plot {
     scenes: Scene[];
 }
 
+export interface Character {
+    id: string;
+    name: string;
+    imageUrl?: string;
+    appearance: string;
+    personality: string;
+    values: string;
+    trauma: string;
+}
+
+export interface PlotStage {
+    id: string;
+    label: string;
+    content: string;
+}
+
+export interface PlotPlan {
+    stageCount: 3 | 4 | 5;
+    stages: PlotStage[];
+}
+
 export interface ProjectState {
     id?: number;
     idea: string;
+    logline?: string;
+    characters?: Character[];
+    plotPlan?: PlotPlan | null;
     generatedPlots: Plot[];
     selectedPlot: Plot | null;
     scenes: Scene[];

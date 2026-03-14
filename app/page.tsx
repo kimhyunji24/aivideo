@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { IdeaInput } from "@/components/steps/idea-input"
-import { PlotSelection } from "@/components/steps/plot-selection"
+import { IdeaChat } from "@/components/steps/idea-chat"
+import { PlanningWorkspace } from "@/components/steps/planning-workspace"
 import { Storyboard } from "@/components/steps/storyboard"
 import { VideoGeneration } from "@/components/steps/video-generation"
 import { FinalMerge } from "@/components/steps/final-merge"
@@ -13,15 +13,47 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Sparkles, PanelLeftClose, PanelLeftOpen, MessageSquare } from "lucide-react"
 
-import type { ProjectState } from "@/lib/types"
+import type { ProjectState, Scene } from "@/lib/types"
 
 const STEPS = [
-  { id: 1, name: "기획",  description: "아이디어 & 플롯" },
-  { id: 2, name: "제작",  description: "스토리보드 & 이미지" },
-  { id: 3, name: "영상",  description: "애니메이션 & 완성" },
+  { id: 1, name: "기획", description: "로그라인 & 플롯" },
+  { id: 2, name: "제작", description: "스토리보드 & 이미지" },
+  { id: 3, name: "영상", description: "애니메이션 & 완성" },
 ]
 
+/** Convert planning workspace result into scenes for the storyboard */
+function buildScenesFromPlan(project: ProjectState): Scene[] {
+  const { plotPlan, characters, logline } = project
+  if (!plotPlan) return []
+
+  const mainCharName = characters?.[0]?.name ?? ""
+  const subCharName = characters?.[1]?.name ?? ""
+
+  return plotPlan.stages.map((stage, i) => ({
+    id: `scene-${i + 1}`,
+    title: stage.label,
+    description: stage.content,
+    prompt: stage.content,
+    duration: 3,
+    status: "pending" as const,
+    elements: {
+      mainCharacter: mainCharName,
+      subCharacter: subCharName,
+      action: "",
+      pose: "",
+      background: "",
+      time: "",
+      composition: "",
+      lighting: "",
+      mood: "",
+      story: stage.content,
+    },
+  }))
+}
+
 export default function Home() {
+  // "chat" → "workspace" → step 2, 3
+  const [planPhase, setPlanPhase] = useState<"chat" | "workspace">("chat")
   const [currentStep, setCurrentStep] = useState(1)
   const [readyToMerge, setReadyToMerge] = useState(false)
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0)
@@ -30,6 +62,9 @@ export default function Home() {
 
   const [project, setProject] = useState<ProjectState>({
     idea: "",
+    logline: "",
+    characters: [],
+    plotPlan: null,
     generatedPlots: [],
     selectedPlot: null,
     scenes: [],
@@ -52,85 +87,109 @@ export default function Home() {
     if (step >= 1 && step <= 3) setCurrentStep(step)
   }
 
+  /** Called when user finishes planning workspace → move to storyboard */
+  const handlePlanningDone = () => {
+    const scenes = buildScenesFromPlan(project)
+    setProject((prev) => ({ ...prev, scenes }))
+    setCurrentStep(2)
+  }
+
   const showPanels = currentStep >= 2
 
-  const renderCurrentStep = () => {
-    switch (currentStep) {
-      case 1:
-        return project.idea && project.generatedPlots.length > 0 ? (
-          <PlotSelection
-            project={project}
-            setProject={setProject}
-            onNext={() => goToStep(2)}
-            onBack={() => setProject({ ...project, idea: "" })}
-          />
-        ) : (
-          <IdeaInput project={project} setProject={setProject} onNext={() => {}} />
-        )
-
-      case 2:
+  const renderContent = () => {
+    // Step 1: Planning
+    if (currentStep === 1) {
+      if (planPhase === "chat") {
         return (
-          <Storyboard
+          <IdeaChat
             project={project}
             setProject={setProject}
-            onNext={() => goToStep(3)}
-            onBack={() => goToStep(1)}
-            selectedSceneIndex={selectedSceneIndex}
-            onSceneSelect={setSelectedSceneIndex}
-          />
-        )
-
-      case 3: {
-        const scenesWithImages = project.scenes.filter((s) => s.imageUrl)
-        const autoAllDone = scenesWithImages.length > 0 && scenesWithImages.every((s) => s.videoUrl)
-        const showFinalMerge = readyToMerge || autoAllDone
-
-        if (showFinalMerge) {
-          return (
-            <FinalMerge
-              project={project}
-              setProject={setProject}
-              onBack={() => setReadyToMerge(false)}
-              onRestart={() => {
-                setReadyToMerge(false)
-                setProject({ idea: "", generatedPlots: [], selectedPlot: null, scenes: [], mode: "beginner" })
-                setCurrentStep(1)
-              }}
-            />
-          )
-        }
-        return (
-          <VideoGeneration
-            project={project}
-            setProject={setProject}
-            onNext={() => setReadyToMerge(true)}
-            onBack={() => goToStep(2)}
+            onNext={() => setPlanPhase("workspace")}
           />
         )
       }
-
-      default:
-        return null
+      return (
+        <PlanningWorkspace
+          project={project}
+          setProject={setProject}
+          onNext={handlePlanningDone}
+        />
+      )
     }
+
+    // Step 2
+    if (currentStep === 2) {
+      return (
+        <Storyboard
+          project={project}
+          setProject={setProject}
+          onNext={() => goToStep(3)}
+          onBack={() => {
+            setPlanPhase("workspace")
+            goToStep(1)
+          }}
+          selectedSceneIndex={selectedSceneIndex}
+          onSceneSelect={setSelectedSceneIndex}
+        />
+      )
+    }
+
+    // Step 3
+    const scenesWithImages = project.scenes.filter((s) => s.imageUrl)
+    const autoAllDone = scenesWithImages.length > 0 && scenesWithImages.every((s) => s.videoUrl)
+    const showFinalMerge = readyToMerge || autoAllDone
+
+    if (showFinalMerge) {
+      return (
+        <FinalMerge
+          project={project}
+          setProject={setProject}
+          onBack={() => setReadyToMerge(false)}
+          onRestart={() => {
+            setReadyToMerge(false)
+            setPlanPhase("chat")
+            setProject({
+              idea: "",
+              logline: "",
+              characters: [],
+              plotPlan: null,
+              generatedPlots: [],
+              selectedPlot: null,
+              scenes: [],
+              mode: "beginner",
+            })
+            setCurrentStep(1)
+          }}
+        />
+      )
+    }
+
+    return (
+      <VideoGeneration
+        project={project}
+        setProject={setProject}
+        onNext={() => setReadyToMerge(true)}
+        onBack={() => goToStep(2)}
+      />
+    )
   }
 
-  return (
-    <main className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Background glows */}
-      <div className="fixed top-20 left-[30%] w-64 h-64 rounded-full bg-purple-500/5 blur-3xl pointer-events-none" />
-      <div className="fixed bottom-20 right-[20%] w-96 h-96 rounded-full bg-purple-700/5 blur-3xl pointer-events-none" />
+  // Step 1 planning workspace needs the 3-panel layout with sidebars inside the component itself
+  const isWorkspaceStep = currentStep === 1 && planPhase === "workspace"
 
+  return (
+    <main className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* ── Header ── */}
-      <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl z-20 flex-shrink-0">
+      <header className="border-b border-gray-200 bg-white z-20 flex-shrink-0 shadow-sm">
         <div className="px-4 py-2.5 flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-purple-600 flex items-center justify-center">
+            <div className="h-7 w-7 rounded-lg bg-indigo-600 flex items-center justify-center">
               <Sparkles className="h-3.5 w-3.5 text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold">AI Video Studio</h1>
-              <p className="text-[10px] text-muted-foreground">아이디어를 영상으로</p>
+              <h1 className="text-sm font-semibold text-gray-900">AI Video Studio</h1>
+              <p className="text-[10px] text-gray-400">아이디어를 영상으로</p>
             </div>
           </div>
 
@@ -140,19 +199,29 @@ export default function Home() {
               <div className="flex items-center gap-1 mr-1">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7"
-                      onClick={() => setAssetPanelOpen((v) => !v)}>
-                      {assetPanelOpen
-                        ? <PanelLeftClose className="h-3.5 w-3.5" />
-                        : <PanelLeftOpen  className="h-3.5 w-3.5" />}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-gray-500"
+                      onClick={() => setAssetPanelOpen((v) => !v)}
+                    >
+                      {assetPanelOpen ? (
+                        <PanelLeftClose className="h-3.5 w-3.5" />
+                      ) : (
+                        <PanelLeftOpen className="h-3.5 w-3.5" />
+                      )}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{assetPanelOpen ? "에셋 패널 닫기" : "에셋 패널 열기"}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7"
-                      onClick={() => setChatPanelOpen((v) => !v)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-gray-500"
+                      onClick={() => setChatPanelOpen((v) => !v)}
+                    >
                       <MessageSquare className="h-3.5 w-3.5" />
                     </Button>
                   </TooltipTrigger>
@@ -162,7 +231,7 @@ export default function Home() {
             )}
 
             {/* Mode toggle */}
-            <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
               {(["beginner", "advanced"] as const).map((m) => (
                 <Tooltip key={m}>
                   <TooltipTrigger asChild>
@@ -176,7 +245,9 @@ export default function Home() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {m === "beginner" ? "가이드 중심 · Double Prompting" : "10대 요소 직접 편집 · 파라미터 제어"}
+                    {m === "beginner"
+                      ? "가이드 중심 · Double Prompting"
+                      : "10대 요소 직접 편집 · 파라미터 제어"}
                   </TooltipContent>
                 </Tooltip>
               ))}
@@ -186,37 +257,42 @@ export default function Home() {
       </header>
 
       {/* ── Progress ── */}
-      <div className="border-b border-border/50 bg-background/60 backdrop-blur-sm flex-shrink-0">
+      <div className="border-b border-gray-200 bg-white flex-shrink-0">
         <div className="px-4 py-2.5">
           <WorkflowProgress steps={STEPS} currentStep={currentStep} onStepClick={goToStep} />
         </div>
       </div>
 
-      {/* ── 3-panel body ── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left: Asset library */}
-        {showPanels && assetPanelOpen && (
-          <div className="w-48 flex-shrink-0 border-r border-border/50 overflow-hidden">
-            <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} />
-          </div>
-        )}
-
-        {/* Center: Main content */}
-        <div className="flex-1 overflow-auto px-5 py-5 min-w-0">
-          {renderCurrentStep()}
+      {/* ── Body ── */}
+      {isWorkspaceStep ? (
+        // Planning workspace: sidebars are built into the component
+        <div className="flex-1 overflow-hidden">
+          {renderContent()}
         </div>
+      ) : (
+        // All other steps: standard 3-panel layout
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {showPanels && assetPanelOpen && (
+            <div className="w-48 flex-shrink-0 border-r border-gray-200 overflow-hidden bg-white">
+              <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} />
+            </div>
+          )}
 
-        {/* Right: AI Chat */}
-        {showPanels && chatPanelOpen && (
-          <div className="w-64 flex-shrink-0 overflow-hidden">
-            <AIChatPanel
-              project={project}
-              setProject={setProject}
-              currentSceneIndex={selectedSceneIndex}
-            />
+          <div className="flex-1 overflow-auto px-5 py-5 min-w-0">
+            {renderContent()}
           </div>
-        )}
-      </div>
+
+          {showPanels && chatPanelOpen && (
+            <div className="w-64 flex-shrink-0 overflow-hidden border-l border-gray-200">
+              <AIChatPanel
+                project={project}
+                setProject={setProject}
+                currentSceneIndex={selectedSceneIndex}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </main>
   )
 }
