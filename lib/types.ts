@@ -5,10 +5,17 @@ export interface SceneElements {
     pose: string;
     background: string;
     time: string;
-    composition: string;
+    composition: string; // Camera / Composition
     lighting: string;
     mood: string;
     story: string;
+}
+
+export interface SceneParams {
+    seed: number;
+    steps: number;
+    cfgScale: number;
+    sampler: string;
 }
 
 export interface Scene {
@@ -21,6 +28,9 @@ export interface Scene {
     duration: number;
     status: "pending" | "generating" | "done" | "error";
     elements: SceneElements;
+    params?: SceneParams;
+    styleChip?: string;
+    pinnedAsset?: string;
 }
 
 export interface Plot {
