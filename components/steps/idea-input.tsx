@@ -101,6 +101,8 @@ export function IdeaInput({ project, setProject, onNext }: IdeaInputProps) {
       setProject({
         ...project,
         generatedPlots: plots,
+        selectedPlot: null,
+        scenes: [],
       })
       onNext()
     } catch (error) {

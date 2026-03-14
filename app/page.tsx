@@ -40,8 +40,8 @@ export default function Home() {
   const renderCurrentStep = () => {
     switch (currentStep) {
       case 1:
-        // 아이디어 입력과 플롯 선택 통합 (내부 상태로 관리 가능)
-        return project.idea && project.generatedPlots.length > 0 && !project.selectedPlot ? (
+        // 플롯이 생성된 이후에는 선택 여부와 무관하게 플롯 선택 화면을 유지
+        return project.idea && project.generatedPlots.length > 0 ? (
           <PlotSelection
             project={project}
             setProject={setProject}
