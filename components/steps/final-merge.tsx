@@ -63,7 +63,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
     if (project.id) {
       const mockFinalVideoUrl = "/final-video-merged.mp4"
       try {
-        await fetch(`http://localhost:8080/api/projects/${project.id}/video?finalVideoUrl=${encodeURIComponent(mockFinalVideoUrl)}`, {
+        await fetch(`/api/projects/${project.id}/video?finalVideoUrl=${encodeURIComponent(mockFinalVideoUrl)}`, {
           method: "PATCH"
         })
       } catch (error) {
