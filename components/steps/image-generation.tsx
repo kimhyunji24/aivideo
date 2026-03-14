@@ -19,12 +19,12 @@ import {
   User,
   Layers
 } from "lucide-react"
-import { useState } from "react"
+import { useState, Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
 
 interface ImageGenerationProps {
   project: ProjectState
-  setProject: (project: ProjectState) => void
+  setProject: Dispatch<SetStateAction<ProjectState>>
   onNext: () => void
   onBack: () => void
 }
@@ -40,52 +40,104 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
   const progress = (completedCount / project.scenes.length) * 100
   const allDone = completedCount === project.scenes.length
 
+  const pollSceneStatus = (sceneId: string | number): Promise<void> => {
+    return new Promise((resolve) => {
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/status/${sceneId}`)
+          if (!res.ok) throw new Error("Status check failed")
+          const updatedScene = await res.json()
+          setProject((prev: ProjectState) => ({
+            ...prev,
+            scenes: prev.scenes.map((s) => s.id === sceneId ? updatedScene : s),
+          }))
+          if (updatedScene.status === "done" || updatedScene.status === "error") {
+            clearInterval(interval)
+            resolve()
+          }
+        } catch {
+          clearInterval(interval)
+          setProject((prev: ProjectState) => ({
+            ...prev,
+            scenes: prev.scenes.map((s) =>
+              s.id === sceneId ? { ...s, status: "error" as const } : s
+            ),
+          }))
+          resolve()
+        }
+      }, 2000)
+    })
+  }
+
   const generateImages = async () => {
     setIsGenerating(true)
     setIsPaused(false)
 
-    for (let i = 0; i < project.scenes.length; i++) {
+    const pendingScenes = project.scenes.filter((s) => s.status !== "done")
+
+    for (const scene of pendingScenes) {
       if (isPaused) break
 
-      const scene = project.scenes[i]
-      if (scene.status === "done") continue
+      setProject((prev: ProjectState) => ({
+        ...prev,
+        scenes: prev.scenes.map((s) =>
+          s.id === scene.id ? { ...s, status: "generating" as const } : s
+        ),
+      }))
 
-      const updatingScenes = [...project.scenes]
-      updatingScenes[i] = { ...scene, status: "generating" }
-      setProject({ ...project, scenes: updatingScenes })
-
-      await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 1000))
-
-      const success = Math.random() > 0.1
-      const finalScenes = [...project.scenes]
-      finalScenes[i] = {
-        ...scene,
-        status: success ? "done" : "error",
-        imageUrl: success ? `/placeholder.svg?text=씬+${i + 1}` : undefined,
+      try {
+        const res = await fetch(`/api/generate-image?id=${scene.id}`, { method: "POST" })
+        if (res.ok) {
+          await pollSceneStatus(scene.id)
+        } else {
+          setProject((prev: ProjectState) => ({
+            ...prev,
+            scenes: prev.scenes.map((s) =>
+              s.id === scene.id ? { ...s, status: "error" as const } : s
+            ),
+          }))
+        }
+      } catch {
+        setProject((prev: ProjectState) => ({
+          ...prev,
+          scenes: prev.scenes.map((s) =>
+            s.id === scene.id ? { ...s, status: "error" as const } : s
+          ),
+        }))
       }
-      setProject({ ...project, scenes: finalScenes })
     }
 
     setIsGenerating(false)
   }
 
   const regenerateScene = async (sceneId: string) => {
-    const sceneIndex = project.scenes.findIndex((s) => s.id === sceneId)
-    if (sceneIndex === -1) return
+    setProject((prev: ProjectState) => ({
+      ...prev,
+      scenes: prev.scenes.map((s) =>
+        s.id === sceneId ? { ...s, status: "generating" as const } : s
+      ),
+    }))
 
-    const updatingScenes = [...project.scenes]
-    updatingScenes[sceneIndex] = { ...updatingScenes[sceneIndex], status: "generating" }
-    setProject({ ...project, scenes: updatingScenes })
-
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-
-    const finalScenes = [...project.scenes]
-    finalScenes[sceneIndex] = {
-      ...finalScenes[sceneIndex],
-      status: "done",
-      imageUrl: `/placeholder.svg?text=씬+${sceneIndex + 1}+재생성`,
+    try {
+      const res = await fetch(`/api/generate-image?id=${sceneId}`, { method: "POST" })
+      if (res.ok) {
+        await pollSceneStatus(sceneId)
+      } else {
+        setProject((prev: ProjectState) => ({
+          ...prev,
+          scenes: prev.scenes.map((s) =>
+            s.id === sceneId ? { ...s, status: "error" as const } : s
+          ),
+        }))
+      }
+    } catch {
+      setProject((prev: ProjectState) => ({
+        ...prev,
+        scenes: prev.scenes.map((s) =>
+          s.id === sceneId ? { ...s, status: "error" as const } : s
+        ),
+      }))
     }
-    setProject({ ...project, scenes: finalScenes })
   }
 
   const regenerateAll = () => {

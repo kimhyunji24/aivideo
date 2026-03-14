@@ -31,7 +31,7 @@ import {
   Sparkles,
   Settings2
 } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import {
@@ -45,7 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface StoryboardProps {
   project: ProjectState
-  setProject: (project: ProjectState) => void
+  setProject: Dispatch<SetStateAction<ProjectState>>
   onNext: () => void
   onBack: () => void
 }
@@ -119,7 +119,7 @@ export function Storyboard({ project, setProject, onNext, onBack }: StoryboardPr
     }
 
     try {
-      const response = await fetch(`http://localhost:8080/api/scenes/${editingScene.id}`, {
+      const response = await fetch(`/api/scenes/${editingScene.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm)
