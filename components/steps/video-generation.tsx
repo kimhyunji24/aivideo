@@ -27,12 +27,12 @@ import {
   Layers,
   Zap
 } from "lucide-react"
-import { useState } from "react"
+import { useState, Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
 
 interface VideoGenerationProps {
   project: ProjectState
-  setProject: (project: ProjectState) => void
+  setProject: Dispatch<SetStateAction<ProjectState>>
   onNext: () => void
   onBack: () => void
 }
