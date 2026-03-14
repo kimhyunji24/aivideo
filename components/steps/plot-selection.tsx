@@ -1,6 +1,6 @@
 "use client"
 
-import type { ProjectState, Plot } from "@/app/page"
+import type { ProjectState, Plot } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +23,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
   const [customPlot, setCustomPlot] = useState("")
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [regeneratingPlotId, setRegeneratingPlotId] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   const handleSelectPlot = (plot: Plot) => {
     setSelectedId(plot.id)
@@ -46,9 +47,45 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
     setRegeneratingPlotId(null)
   }
 
-  const handleContinue = () => {
-    if (selectedId) {
-      onNext()
+  const handleContinue = async () => {
+    if (selectedId && project.selectedPlot) {
+      setIsSaving(true)
+      try {
+        const response = await fetch("http://localhost:8080/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            idea: project.idea,
+            mode: project.mode,
+            scenes: project.selectedPlot.scenes.map(s => ({
+              title: s.title,
+              description: s.description,
+              prompt: s.prompt,
+              duration: s.duration,
+              elements: s.elements
+            }))
+          })
+        })
+
+        if (response.ok) {
+          const savedProject = await response.json()
+          setProject({
+            ...project,
+            id: savedProject.id,
+            scenes: savedProject.scenes
+          })
+          onNext()
+        } else {
+          console.error("Failed to save project")
+          // 에러 처리는 간소화 (필요시 토스트 추가 가능)
+          onNext() // 데모 목적을 위해 실패해도 넘어감
+        }
+      } catch (error) {
+        console.error("Error saving project:", error)
+        onNext()
+      } finally {
+        setIsSaving(false)
+      }
     }
   }
 
@@ -108,7 +145,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
                     <Badge variant="outline" className="text-[10px]">{plot.sceneCount}개 씬</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{plot.summary}</p>
-                  
+
                   {/* Scene Preview - Advanced Mode */}
                   {project.mode === "advanced" && (
                     <div className="mt-3 pt-3 border-t border-border/50">
@@ -123,7 +160,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {/* Individual regenerate button */}
                   <Tooltip>
@@ -140,7 +177,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
                     </TooltipTrigger>
                     <TooltipContent>이 플롯만 재생성</TooltipContent>
                   </Tooltip>
-                  
+
                   {/* Selection indicator */}
                   {selectedId === plot.id ? (
                     <div className="h-6 w-6 rounded-full bg-foreground flex items-center justify-center">
@@ -173,7 +210,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
           </TooltipTrigger>
           <TooltipContent>모든 플롯 옵션 재생성</TooltipContent>
         </Tooltip>
-        
+
         {project.mode === "advanced" && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -219,9 +256,18 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
         <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
           이전
         </Button>
-        <Button size="sm" onClick={handleContinue} disabled={!selectedId} className="h-8">
-          스토리보드로 계속
-          <ArrowRight className="h-3.5 w-3.5 ml-2" />
+        <Button size="sm" onClick={handleContinue} disabled={!selectedId || isSaving} className="h-8">
+          {isSaving ? (
+            <>
+              <RefreshCw className="h-3.5 w-3.5 mr-2 animate-spin" />
+              저장 중...
+            </>
+          ) : (
+            <>
+              스토리보드로 계속
+              <ArrowRight className="h-3.5 w-3.5 ml-2" />
+            </>
+          )}
         </Button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import type { ProjectState, Plot, Scene } from "@/app/page"
+import type { ProjectState, Plot, Scene } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -29,7 +29,7 @@ function generateMockPlots(idea: string): Plot[] {
       ["도입", "분위기 조성", "전환점", "마무리"],
     ]
     const titles = sceneTitles[Math.floor(Math.random() * sceneTitles.length)]
-    
+
     return Array.from({ length: sceneCount }, (_, i) => ({
       id: `${plotId}-scene-${i + 1}`,
       title: titles[i] || `씬 ${i + 1}`,
@@ -37,6 +37,19 @@ function generateMockPlots(idea: string): Plot[] {
       prompt: `${idea}에 대한 씬 ${i + 1} 프롬프트`,
       duration: 3,
       status: "pending" as const,
+      // 10대 핵심 요소 초기화
+      elements: {
+        mainCharacter: "",
+        subCharacter: "",
+        action: "",
+        pose: "",
+        background: "",
+        time: "",
+        composition: "",
+        lighting: "",
+        mood: "",
+        story: "",
+      }
     }))
   }
 
@@ -75,15 +88,27 @@ export function IdeaInput({ project, setProject, onNext }: IdeaInputProps) {
     if (!project.idea.trim()) return
 
     setIsGenerating(true)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    
-    const plots = generateMockPlots(project.idea)
-    setProject({
-      ...project,
-      generatedPlots: plots,
-    })
-    setIsGenerating(false)
-    onNext()
+    try {
+      const response = await fetch("/api/plot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(project.idea),
+      })
+
+      if (!response.ok) throw new Error("API call failed")
+
+      const plots: Plot[] = await response.json()
+      setProject({
+        ...project,
+        generatedPlots: plots,
+      })
+      onNext()
+    } catch (error) {
+      console.error("Plot generation failed:", error)
+      // 에러 처리 필요시 여기에 추가
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const handleExampleClick = (example: string) => {
