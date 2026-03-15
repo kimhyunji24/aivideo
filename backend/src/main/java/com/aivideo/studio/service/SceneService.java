@@ -43,8 +43,20 @@ public class SceneService {
     @Value("${google.api-key:}")
     private String googleApiKey;
 
+    @Value("${gemini.image-model:imagen-3.0-generate-002}")
+    private String geminiImageModel;
+
+    @Value("${gemini.video-model:veo-3.0-generate-001}")
+    private String geminiVideoModel;
+
     @Value("${aivideo.mock-mode:false}")
     private boolean mockMode;
+
+    @Value("${aivideo.mock-image-url:https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80}")
+    private String mockImageUrl;
+
+    @Value("${aivideo.mock-video-url:https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4}")
+    private String mockVideoUrl;
 
     @Value("${aivideo.generated-files-path:${user.home}/aivideo-generated}")
     private String generatedFilesPath;
@@ -89,7 +101,7 @@ public class SceneService {
         return mapToResponse(scene);
     }
 
-    // ─── 이미지 생성 (Imagen 3) ───────────────────────────────────────────
+    // ─── 이미지 생성 (Gemini/Imagen) ─────────────────────────────────────
 
     @Transactional
     public ProjectResponse.SceneResponse generateImage(Long id) {
@@ -101,7 +113,7 @@ public class SceneService {
 
         if (mockMode || googleApiKey == null || googleApiKey.isBlank()) {
             scene.setStatus("done");
-            scene.setImageUrl("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80");
+            scene.setImageUrl(mockImageUrl);
             return mapToResponse(scene);
         }
 
@@ -132,7 +144,7 @@ public class SceneService {
         requestBody.put("instances", List.of(instance));
         requestBody.put("parameters", parameters);
 
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=" + googleApiKey;
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/" + geminiImageModel + ":predict?key=" + googleApiKey;
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
 
@@ -151,7 +163,7 @@ public class SceneService {
         return "/generated/images/" + sceneId + ".png";
     }
 
-    // ─── 영상 생성 (Veo 2 — Long Running Operation) ───────────────────────
+    // ─── 영상 생성 (Veo 3 — Long Running Operation) ───────────────────────
 
     @Transactional
     public ProjectResponse.SceneResponse generateVideo(Long id) {
@@ -159,7 +171,7 @@ public class SceneService {
 
         if (mockMode || googleApiKey == null || googleApiKey.isBlank()) {
             scene.setStatus("done");
-            scene.setVideoUrl("https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4");
+            scene.setVideoUrl(mockVideoUrl);
             return mapToResponse(scene);
         }
 
@@ -195,7 +207,7 @@ public class SceneService {
         requestBody.put("instances", List.of(instance));
         requestBody.put("parameters", parameters);
 
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/veo-2.0-generate-001:predictLongRunning?key=" + googleApiKey;
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/" + geminiVideoModel + ":predictLongRunning?key=" + googleApiKey;
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
 
