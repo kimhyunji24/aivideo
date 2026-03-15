@@ -1,7 +1,14 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import type { ProjectState, Character, PlotPlan, PlotStage } from "@/lib/types"
+import type {
+  ProjectState,
+  Character,
+  PlotPlan,
+  PlotStage,
+  PlanningSeedRequest,
+  PlanningSeedResponse,
+} from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -71,116 +78,135 @@ function generatePlotStages(
   }))
 }
 
+function generateCharactersFromLogline(
+  logline: string,
+  selectedGenres: string[],
+  selectedWorldviews: string[]
+): Character[] {
+  const now = Date.now()
+  const genreHint = selectedGenres.length > 0 ? selectedGenres.join(", ") : "기본"
+  const worldviewHint =
+    selectedWorldviews.length > 0 ? selectedWorldviews.join(", ") : "현실 세계"
+  const shortLogline = logline.length > 60 ? `${logline.slice(0, 60)}...` : logline
+
+  return [
+    {
+      id: `char-auto-main-${now}`,
+      name: "주인공",
+      appearance: `${worldviewHint}에서 살아가는 인물`,
+      personality: "결핍이 있지만 끝까지 포기하지 않는 성격",
+      values: "소중한 관계와 약속을 지키는 것",
+      trauma: shortLogline || "예상치 못한 사건으로 생긴 상처",
+    },
+    {
+      id: `char-auto-support-${now + 1}`,
+      name: "대립/조력 인물",
+      appearance: `${genreHint} 톤을 강화하는 대비적 인물`,
+      personality: "냉정하지만 결정적인 순간에 변화를 만드는 성격",
+      values: "현실적 선택과 생존",
+      trauma: "주인공과 얽힌 과거 사건",
+    },
+  ]
+}
+
+function normalizeStageCount(stageCount?: number): 3 | 4 | 5 {
+  if (stageCount === 4) return 4
+  if (stageCount === 5) return 5
+  return 3
+}
+
+function toCharacterSeeds(chars: PlanningSeedResponse["characters"]): Character[] {
+  if (!Array.isArray(chars)) return []
+
+  return chars.map((char, idx) => ({
+    id: char.id || `char-auto-${Date.now()}-${idx}`,
+    name: char.name || (idx === 0 ? "주인공" : "대립/조력 인물"),
+    gender: char.gender === "male" || char.gender === "female" ? char.gender : undefined,
+    appearance: char.appearance || "",
+    personality: char.personality || "",
+    values: char.values || "",
+    trauma: char.trauma || "",
+  }))
+}
+
+function toPlotPlanSeed(
+  plotPlan: PlanningSeedResponse["plotPlan"]
+): PlotPlan | null {
+  if (!plotPlan || !Array.isArray(plotPlan.stages) || plotPlan.stages.length === 0) return null
+
+  const stageCount = normalizeStageCount(plotPlan.stageCount)
+  const labels = STAGE_LABELS[stageCount]
+  const stages = labels.map((defaultLabel, idx) => {
+    const seed = plotPlan.stages?.[idx]
+    return {
+      id: seed?.id || `stage-${idx}`,
+      label: seed?.label || defaultLabel,
+      content: seed?.content || "",
+    }
+  })
+
+  if (stages.every((s) => !s.content.trim())) {
+    return null
+  }
+
+  return { stageCount, stages }
+}
+
 // ─── Sub-components (목업 스타일) ───────────────────────────────────────────
 
-const GENRE_OPTIONS = ["SF", "코미디", "서바이벌"] as const
-const WORLDVIEW_OPTIONS = ["근미래", "일상", "성장"] as const
-
 function LoglineSection({
-  genreOptions,
-  worldviewOptions,
+  logline,
   selectedGenres,
   selectedWorldviews,
-  onToggleGenre,
-  onToggleWorldview,
 }: {
-  genreOptions: readonly string[]
-  worldviewOptions: readonly string[]
+  logline: string
   selectedGenres: string[]
   selectedWorldviews: string[]
-  onToggleGenre: (tag: string) => void
-  onToggleWorldview: (tag: string) => void
 }) {
-  const selectedTags = [...selectedGenres, ...selectedWorldviews].slice(0, 3)
+  const genreStyleText =
+    selectedGenres.length > 0 ? selectedGenres.join(", ") : "선택된 장르·스타일 없음"
+  const worldviewText =
+    selectedWorldviews.length > 0 ? selectedWorldviews.join(", ") : "선택된 세계관·배경 없음"
+
+  const loglineText = logline || "로그라인이 아직 확정되지 않았습니다."
+  const summaryText = `로그라인 : ${loglineText}\n장르&스타일 : ${genreStyleText}\n세계관&배경 : ${worldviewText}`
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg border border-[#E0E0E0] flex items-center justify-center">
-            <Square className="h-4 w-4 text-gray-800" />
-          </div>
-          <h2 className="text-lg font-semibold text-gray-900">기획 요약</h2>
+      <div className="flex items-center gap-2">
+        <div className="h-8 w-8 rounded-lg border border-[#E0E0E0] flex items-center justify-center">
+          <Square className="h-4 w-4 text-gray-800" />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {selectedTags.map((tag) => (
-            <span
-              key={tag}
-              className="px-3 py-1 rounded-full text-xs font-semibold bg-[#111827] text-white"
-            >
-              {tag}
-            </span>
-          ))}
-          {selectedTags.length === 0 && (
-            <span className="text-xs text-gray-500">선택된 태그가 없습니다</span>
-          )}
-        </div>
+        <h2 className="text-lg font-semibold text-gray-900">기획 요약</h2>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl">
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-semibold text-gray-900">장르 & 스타일</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0 flex flex-wrap gap-2">
-            {genreOptions.map((tag) => {
-              const selected = selectedGenres.includes(tag)
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => onToggleGenre(tag)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    selected
-                      ? "bg-gray-800 text-white border-gray-800"
-                      : "bg-[#F0F0F0] text-gray-800 border-[#E0E0E0] hover:bg-[#E8E8E8]"
-                  }`}
-                >
-                  {tag}
-                </button>
-              )
-            })}
-          </CardContent>
-        </Card>
-        <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl">
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-semibold text-gray-900">세계관 & 배경</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0 flex flex-wrap gap-2">
-            {worldviewOptions.map((tag) => {
-              const selected = selectedWorldviews.includes(tag)
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => onToggleWorldview(tag)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    selected
-                      ? "bg-gray-800 text-white border-gray-800"
-                      : "bg-[#F0F0F0] text-gray-800 border-[#E0E0E0] hover:bg-[#E8E8E8]"
-                  }`}
-                >
-                  {tag}
-                </button>
-              )
-            })}
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl">
+        <CardContent className="p-4 sm:p-5">
+          <p className="text-sm leading-7 text-gray-800 break-keep whitespace-pre-line">{summaryText}</p>
+        </CardContent>
+      </Card>
     </section>
   )
 }
 
 function CharactersSection({
   characters,
+  isConfirmed,
+  isGenerating,
+  canConfirm,
   onAdd,
+  onConfirm,
   onUpdate,
   onRemove,
   onImageUpload,
   onEditClick,
 }: {
   characters: Character[]
+  isConfirmed: boolean
+  isGenerating: boolean
+  canConfirm: boolean
   onAdd: () => void
+  onConfirm: () => void
   onUpdate: (id: string, field: keyof Character, value: string) => void
   onRemove: (id: string) => void
   onImageUpload: (id: string, file: File) => void
@@ -198,15 +224,26 @@ function CharactersSection({
           </div>
           <h2 className="text-lg font-semibold text-gray-900">캐릭터 시트</h2>
         </div>
-        <Button
-          onClick={onAdd}
-          variant="outline"
-          size="sm"
-          className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0]"
-        >
-          <Plus className="h-4 w-4 mr-1.5" />
-          캐릭터 추가
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={onAdd}
+            variant="outline"
+            size="sm"
+            className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0]"
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
+            캐릭터 추가
+          </Button>
+          <Button
+            onClick={onConfirm}
+            size="sm"
+            disabled={!canConfirm || isConfirmed || isGenerating}
+            className="rounded-lg text-white"
+            style={{ backgroundColor: isConfirmed ? "#9CA3AF" : COLORS.primary }}
+          >
+            {isConfirmed ? "캐릭터 확정 완료" : isGenerating ? "확정 중..." : "캐릭터 확정"}
+          </Button>
+        </div>
       </div>
 
       {characters.length === 0 ? (
@@ -285,15 +322,20 @@ function CharactersSection({
 
 function PlotSection({
   plotPlan,
+  userPrompt,
+  onUserPromptChange,
   onStageCountChange,
   onStageUpdate,
   onAutoGenerate,
   onStageEditClick,
   isGenerating,
   hasCharacters,
+  isCharacterConfirmed,
   hasLogline,
 }: {
   plotPlan: PlotPlan
+  userPrompt: string
+  onUserPromptChange: (value: string) => void
   onStageCountChange: (n: 3 | 4 | 5) => void
   onStageUpdate: (id: string, content: string) => void
   onAutoGenerate: () => void
@@ -301,6 +343,7 @@ function PlotSection({
   onStageEditClick: (stageId: string) => void
   isGenerating: boolean
   hasCharacters: boolean
+  isCharacterConfirmed: boolean
   hasLogline: boolean
 }) {
   return (
@@ -312,17 +355,16 @@ function PlotSection({
         <h2 className="text-lg font-semibold text-gray-900">플롯</h2>
       </div>
 
-      {/* AI 프롬프트 추가 창 (목업 회색 바) */}
-      <div className="rounded-xl border border-[#E0E0E0] bg-[#F5F5F5] px-4 py-3">
-        <p className="text-sm text-gray-500">사용자 지시사항 작성하는 AI 프롬프트 추가 창</p>
-      </div>
-
       {(hasCharacters || hasLogline) && (
         <div className="flex items-center justify-between gap-4 rounded-xl border border-[#E0E0E0] bg-white p-4">
-          <p className="text-sm text-gray-700">로그라인·캐릭터를 바탕으로 플롯을 자동 생성할 수 있습니다.</p>
+          <p className="text-sm text-gray-700">
+            {isCharacterConfirmed
+              ? "플롯 단계를 먼저 선택한 뒤, 생성 버튼을 눌러 AI 플롯을 만듭니다."
+              : "캐릭터 확정 버튼을 누르면 플롯 자동 생성을 사용할 수 있습니다."}
+          </p>
           <Button
             onClick={onAutoGenerate}
-            disabled={isGenerating}
+            disabled={isGenerating || !isCharacterConfirmed}
             size="sm"
             className="rounded-lg text-white font-medium shrink-0 gap-1.5"
             style={{ backgroundColor: COLORS.primary }}
@@ -332,7 +374,7 @@ function PlotSection({
             ) : (
               <>
                 <Wand2 className="h-4 w-4" />
-                AI 자동 생성
+                플롯 생성
               </>
             )}
           </Button>
@@ -344,6 +386,7 @@ function PlotSection({
           <button
             key={n}
             onClick={() => onStageCountChange(n)}
+            disabled={isGenerating || !isCharacterConfirmed}
             className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${
               plotPlan.stageCount === n
                 ? "bg-white text-gray-900 shadow-sm border border-[#E0E0E0]"
@@ -353,6 +396,20 @@ function PlotSection({
             {n}단계
           </button>
         ))}
+      </div>
+
+      <div className="rounded-xl border border-[#E0E0E0] bg-[#F5F5F5] p-4 space-y-2">
+        <p className="text-xs font-semibold text-gray-600">플롯 재생성 지시사항</p>
+        <Textarea
+          value={userPrompt}
+          onChange={(e) => onUserPromptChange(e.target.value)}
+          placeholder="예: 전투 장면 없이 긴장감 있는 추격 위주로, 소품(시계)을 단서로 반복 노출해 주세요."
+          rows={3}
+          className="resize-none border-[#D1D5DB] bg-white text-sm"
+        />
+        <p className="text-xs text-gray-500">
+          선택된 단계 기준으로 생성/재생성 시 이 지시사항이 함께 반영됩니다.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -404,6 +461,7 @@ function CharacterEditModal({
   onRemove: (id: string) => void
 }) {
   const [draft, setDraft] = useState<Character | null>(null)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (character) setDraft({ ...character })
@@ -421,7 +479,7 @@ function CharacterEditModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-4xl w-[calc(100%-2rem)] max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl border-2 border-[#686868] bg-white shadow-xl flex flex-col"
+        className="sm:max-w-none w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] max-w-[640px] md:max-w-[860px] xl:max-w-[1120px] max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl border-2 border-[#686868] bg-white shadow-xl flex flex-col"
       >
         <div className="flex flex-col lg:flex-row min-h-0 flex-1 overflow-hidden">
           {/* 좌측: 큰 텍스트 영역 (모바일에서는 상단, lg에서 좌측) */}
@@ -439,8 +497,68 @@ function CharacterEditModal({
               }
               placeholder="캐릭터를 한 문장으로 설명해 주세요 (외면·인상)"
               rows={5}
-              className="flex-1 resize-none rounded-xl border border-[#BABABA] bg-white text-sm focus-visible:ring-2 focus-visible:ring-offset-0"
+              className="resize-none rounded-xl border border-[#BABABA] bg-white text-sm focus-visible:ring-2 focus-visible:ring-offset-0"
             />
+
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-gray-600">캐릭터 사진</span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg border-[#BABABA]"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <Upload className="h-3.5 w-3.5 mr-1" />
+                    사진 넣기
+                  </Button>
+                  {draft.imageUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-gray-600 hover:text-gray-900"
+                      onClick={() =>
+                        setDraft((prev) => (prev ? { ...prev, imageUrl: undefined } : null))
+                      }
+                    >
+                      제거
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="w-full h-44 rounded-xl border border-[#BABABA] bg-[#F5F5F5] overflow-hidden flex items-center justify-center"
+              >
+                {draft.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={draft.imageUrl} alt={`${draft.name || "캐릭터"} 이미지`} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="text-center text-gray-500">
+                    <Upload className="h-6 w-6 mx-auto mb-1" />
+                    <span className="text-xs">사진을 추가해 주세요</span>
+                  </div>
+                )}
+              </button>
+
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const url = URL.createObjectURL(file)
+                  setDraft((prev) => (prev ? { ...prev, imageUrl: url } : null))
+                }}
+              />
+            </div>
           </div>
 
           {/* 우측: 캐릭터 수정 폼 (모바일에서는 하단 풀너비) */}
@@ -590,7 +708,7 @@ function PlotStageEditModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-4xl w-[calc(100%-2rem)] max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl border-2 border-[#686868] bg-white shadow-xl flex flex-col"
+        className="sm:max-w-none w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] max-w-[640px] md:max-w-[860px] xl:max-w-[1120px] max-h-[90vh] p-0 gap-0 overflow-hidden rounded-2xl border-2 border-[#686868] bg-white shadow-xl flex flex-col"
       >
         <div className="flex flex-col lg:flex-row min-h-0 flex-1 overflow-hidden">
           {/* 좌측: 단계 내용 (모바일에서는 상단) */}
@@ -687,28 +805,18 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
   const [isGenerating, setIsGenerating] = useState(false)
   const [characterModalId, setCharacterModalId] = useState<string | null>(null)
   const [plotModalStageId, setPlotModalStageId] = useState<string | null>(null)
+  const hasAutoSeededRef = useRef(false)
 
   const logline = project.logline?.trim() || project.idea || ""
   const selectedGenres = project.selectedGenres ?? []
   const selectedWorldviews = project.selectedWorldviews ?? []
-
-  const toggleGenre = (tag: string) => {
-    const next = selectedGenres.includes(tag)
-      ? selectedGenres.filter((t) => t !== tag)
-      : [...selectedGenres, tag]
-    setProject({ ...project, selectedGenres: next })
-  }
-  const toggleWorldview = (tag: string) => {
-    const next = selectedWorldviews.includes(tag)
-      ? selectedWorldviews.filter((t) => t !== tag)
-      : [...selectedWorldviews, tag]
-    setProject({ ...project, selectedWorldviews: next })
-  }
+  const planningPrompt = project.planningPrompt ?? ""
+  const charactersConfirmed = project.charactersConfirmed ?? false
   const characters: Character[] = project.characters ?? []
   const plotPlan: PlotPlan | null = project.plotPlan ?? null
-  const stageCount = plotPlan?.stageCount ?? 3
 
-  const setCharacters = (chars: Character[]) => setProject({ ...project, characters: chars })
+  const setCharacters = (chars: Character[]) =>
+    setProject({ ...project, characters: chars, charactersConfirmed: false })
 
   const addCharacter = () => {
     setCharacters([
@@ -738,14 +846,24 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
     updateCharacter(charId, "imageUrl", url)
   }
 
+  const confirmCharacters = () => {
+    if (charactersConfirmed || isGenerating) return
+    setProject({ ...project, charactersConfirmed: true })
+  }
+
   const setStageCount = (n: 3 | 4 | 5) => {
+    if (!charactersConfirmed) return
     const labels = STAGE_LABELS[n]
     const stages = labels.map((label, i) => ({
       id: `stage-${i}`,
       label,
-      content: plotPlan?.stages.find((s) => s.label === label)?.content ?? "",
+      content: "",
     }))
-    setProject({ ...project, plotPlan: { stageCount: n, stages } })
+    setProject({
+      ...project,
+      charactersConfirmed: true,
+      plotPlan: { stageCount: n, stages },
+    })
   }
 
   const updateStage = (id: string, content: string) => {
@@ -756,28 +874,128 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
     })
   }
 
-  const handleAutoGenerate = async () => {
+  const requestPlanningSeed = async (targetStageCount: 3 | 4 | 5) => {
+    const payload: PlanningSeedRequest = {
+      idea: project.idea,
+      logline,
+      selectedGenres,
+      selectedWorldviews,
+      userPrompt: planningPrompt,
+      stageCount: targetStageCount,
+    }
+
+    const response = await fetch("/api/planning-seed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      throw new Error(`planning-seed API failed: ${response.status}`)
+    }
+
+    const seed = (await response.json()) as PlanningSeedResponse
+    return {
+      characters: toCharacterSeeds(seed.characters),
+      plotPlan: toPlotPlanSeed(seed.plotPlan),
+    }
+  }
+
+  const generatePlotForStage = async (targetStageCount: 3 | 4 | 5) => {
     setIsGenerating(true)
-    await new Promise((r) => setTimeout(r, 1200))
-    const stages = generatePlotStages(logline, characters, stageCount)
-    setProject({ ...project, plotPlan: { stageCount, stages } })
-    setIsGenerating(false)
+    try {
+      const seed = await requestPlanningSeed(targetStageCount)
+      const nextPlotPlan =
+        seed.plotPlan ?? { stageCount: targetStageCount, stages: generatePlotStages(logline, characters, targetStageCount) }
+
+      setProject({
+        ...project,
+        characters,
+        charactersConfirmed: true,
+        plotPlan: nextPlotPlan,
+      })
+    } catch {
+      const fallbackStages = generatePlotStages(logline, characters, targetStageCount)
+      setProject({
+        ...project,
+        characters,
+        charactersConfirmed: true,
+        plotPlan: { stageCount: targetStageCount, stages: fallbackStages },
+      })
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleAutoGenerate = async () => {
+    if (!charactersConfirmed) return
+    const targetStageCount = normalizeStageCount(plotPlan?.stageCount)
+    await generatePlotForStage(targetStageCount)
   }
 
   useEffect(() => {
-    if (!project.plotPlan) {
-      const labels = STAGE_LABELS[stageCount]
-      const stages = labels.map((label, i) => ({ id: `stage-${i}`, label, content: "" }))
-      setProject({ ...project, plotPlan: { stageCount, stages } })
+    if (hasAutoSeededRef.current) return
+    if (!logline.trim()) return
+
+    const hasCharacters = characters.length > 0
+    const targetStageCount = normalizeStageCount(plotPlan?.stageCount)
+
+    if (hasCharacters) {
+      hasAutoSeededRef.current = true
+      return
     }
-  }, [])
+
+    hasAutoSeededRef.current = true
+
+    let cancelled = false
+    const autoSeed = async () => {
+      try {
+        const seed = await requestPlanningSeed(targetStageCount)
+        if (cancelled) return
+
+        const nextCharacters = hasCharacters
+          ? characters
+          : (seed.characters.length > 0
+            ? seed.characters
+            : generateCharactersFromLogline(logline, selectedGenres, selectedWorldviews))
+
+        setProject({
+          ...project,
+          characters: nextCharacters,
+          charactersConfirmed: false,
+        })
+      } catch {
+        if (cancelled) return
+        const nextCharacters = hasCharacters
+          ? characters
+          : generateCharactersFromLogline(logline, selectedGenres, selectedWorldviews)
+
+        setProject({
+          ...project,
+          characters: nextCharacters,
+          charactersConfirmed: false,
+        })
+      }
+    }
+
+    void autoSeed()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    characters,
+    logline,
+    project,
+    selectedGenres,
+    selectedWorldviews,
+    setProject,
+  ])
 
   const plot = project.plotPlan ?? {
     stageCount: 3 as const,
     stages: STAGE_LABELS[3].map((label, i) => ({ id: `stage-${i}`, label, content: "" })),
   }
 
-  const canProceed = characters.length > 0 && plot.stages.some((s) => s.content.trim())
+  const canProceed = charactersConfirmed && plot.stages.some((s) => s.content.trim())
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -815,31 +1033,45 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
       <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
         <div className="max-w-4xl mx-auto space-y-8 sm:space-y-12">
           <LoglineSection
-            genreOptions={GENRE_OPTIONS}
-            worldviewOptions={WORLDVIEW_OPTIONS}
+            logline={logline}
             selectedGenres={selectedGenres}
             selectedWorldviews={selectedWorldviews}
-            onToggleGenre={toggleGenre}
-            onToggleWorldview={toggleWorldview}
           />
           <CharactersSection
             characters={characters}
+            isConfirmed={charactersConfirmed}
+            isGenerating={isGenerating}
+            canConfirm={true}
             onAdd={addCharacter}
+            onConfirm={confirmCharacters}
             onUpdate={updateCharacter}
             onRemove={removeCharacter}
             onImageUpload={handleImageUpload}
             onEditClick={setCharacterModalId}
           />
-          <PlotSection
-            plotPlan={plot}
-            onStageCountChange={setStageCount}
-            onStageUpdate={updateStage}
-            onAutoGenerate={handleAutoGenerate}
-            onStageEditClick={setPlotModalStageId}
-            isGenerating={isGenerating}
-            hasCharacters={characters.length > 0}
-            hasLogline={!!logline}
-          />
+          {charactersConfirmed ? (
+            <PlotSection
+              plotPlan={plot}
+              userPrompt={planningPrompt}
+              onUserPromptChange={(value) => setProject({ ...project, planningPrompt: value })}
+              onStageCountChange={setStageCount}
+              onStageUpdate={updateStage}
+              onAutoGenerate={handleAutoGenerate}
+              onStageEditClick={setPlotModalStageId}
+              isGenerating={isGenerating}
+              hasCharacters={characters.length > 0}
+              isCharacterConfirmed={charactersConfirmed}
+              hasLogline={!!logline}
+            />
+          ) : (
+            <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl">
+              <CardContent className="p-4 sm:p-5">
+                <p className="text-sm text-gray-700">
+                  캐릭터를 확정하면 플롯 영역이 열리고, 단계(3/4/5)를 선택할 때 AI가 자동 생성합니다.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
 

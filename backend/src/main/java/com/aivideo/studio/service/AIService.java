@@ -18,6 +18,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.aivideo.studio.dto.PlanningSeedRequest;
+import com.aivideo.studio.dto.PlanningSeedResponse;
 import com.aivideo.studio.dto.ProjectRequest;
 import com.aivideo.studio.dto.ProjectResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -73,79 +75,31 @@ public class AIService {
     }
 
     /**
+     * 기획 단계용 1차 시드(캐릭터 시트 + 플롯 단계) 생성.
+     * mock-first: API 키가 없거나 실패하면 mock 결과를 반환한다.
+     */
+    public PlanningSeedResponse generatePlanningSeed(PlanningSeedRequest request) {
+        if (request == null) {
+            request = new PlanningSeedRequest();
+        }
+        if (mockMode || googleApiKey == null || googleApiKey.isBlank()) {
+            log.info("Mock mode or no Google API key — returning mock planning seed");
+            return generateMockPlanningSeed(request);
+        }
+        try {
+            return generatePlanningSeedWithGemini(request);
+        } catch (Exception e) {
+            log.error("Gemini planning seed 호출 실패, mock으로 fallback: {}", e.getMessage());
+            return generateMockPlanningSeed(request);
+        }
+    }
+
+    /**
      * Gemini GenerateContent API로 플롯 JSON 생성 후 PlotResponse 리스트로 변환.
      */
     private List<ProjectResponse.PlotResponse> generatePlotWithGemini(String idea) throws Exception {
-        String userPrompt = buildPlotPrompt(idea);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        Map<String, Object> part = new HashMap<>();
-        part.put("text", userPrompt);
-
-        Map<String, Object> content = new HashMap<>();
-        content.put("role", "user");
-        content.put("parts", List.of(part));
-
-        Map<String, Object> generationConfig = new HashMap<>();
-        generationConfig.put("maxOutputTokens", geminiMaxTokens);
-        generationConfig.put("temperature", geminiTemperature);
-
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("contents", List.of(content));
-        requestBody.put("generationConfig", generationConfig);
-
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-        @SuppressWarnings("unchecked")
-        ResponseEntity<Map> response = restTemplate.exchange(
-                String.format(GEMINI_GENERATE_URL_TEMPLATE, geminiTextModel, googleApiKey),
-                HttpMethod.POST,
-                entity,
-                Map.class
-        );
-
-        Map<String, Object> body = response.getBody();
-        if (body == null) {
-            throw new IllegalStateException("Gemini API returned empty body");
-        }
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> candidates = (List<Map<String, Object>>) body.get("candidates");
-        if (candidates == null || candidates.isEmpty()) {
-            throw new IllegalStateException("Gemini API response has no candidates");
-        }
-
-        String rawText = null;
-        for (Map<String, Object> candidate : candidates) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> candidateContent = (Map<String, Object>) candidate.get("content");
-            if (candidateContent == null) {
-                continue;
-            }
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> parts = (List<Map<String, Object>>) candidateContent.get("parts");
-            if (parts == null) {
-                continue;
-            }
-            for (Map<String, Object> partNode : parts) {
-                Object text = partNode.get("text");
-                if (text != null) {
-                    rawText = text.toString();
-                    break;
-                }
-            }
-            if (rawText != null) {
-                break;
-            }
-        }
-        if (rawText == null || rawText.isBlank()) {
-            throw new IllegalStateException("Gemini API response has no text content");
-        }
-
-        // 마크다운 코드블록 제거
-        String jsonText = rawText.replaceAll("(?s)```json\\s*", "").replaceAll("(?s)```\\s*", "").trim();
-
+        String rawText = requestGeminiText(buildPlotPrompt(idea));
+        String jsonText = stripJsonMarkdown(rawText);
         JsonNode plotsArray = objectMapper.readTree(jsonText);
         return parsePlots(plotsArray);
     }
@@ -193,6 +147,339 @@ public class AIService {
                 plot-2: 역동적인 액션 중심 (씬 6개)
                 plot-3: 시네마틱 분위기 중심 (씬 4개)
                 """.formatted(idea);
+    }
+
+    private PlanningSeedResponse generatePlanningSeedWithGemini(PlanningSeedRequest request) throws Exception {
+        int stageCount = normalizeStageCount(request.getStageCount());
+        List<String> stageLabels = getStageLabels(stageCount);
+        String rawText = requestGeminiText(buildPlanningSeedPrompt(request, stageCount, stageLabels));
+        String jsonText = stripJsonMarkdown(rawText);
+        JsonNode root = objectMapper.readTree(jsonText);
+        return parsePlanningSeed(root, request, stageCount, stageLabels, "gemini");
+    }
+
+    private PlanningSeedResponse generateMockPlanningSeed(PlanningSeedRequest request) {
+        int stageCount = normalizeStageCount(request.getStageCount());
+        List<String> stageLabels = getStageLabels(stageCount);
+        String logline = firstNonBlank(request.getLogline(), request.getIdea(), "새로운 이야기");
+        String userPrompt = firstNonBlank(request.getUserPrompt(), "");
+        List<String> genres = safeList(request.getSelectedGenres());
+        List<String> worldviews = safeList(request.getSelectedWorldviews());
+
+        List<PlanningSeedResponse.CharacterSeed> characters = new ArrayList<>();
+        String worldviewHint = worldviews.isEmpty() ? "현실 세계" : String.join(", ", worldviews);
+        String genreHint = genres.isEmpty() ? "드라마" : String.join(", ", genres);
+
+        characters.add(PlanningSeedResponse.CharacterSeed.builder()
+                .id("char-auto-main")
+                .name("주인공")
+                .gender("male")
+                .appearance(worldviewHint + "에서 살아가는 인물")
+                .personality("결핍이 있지만 끝까지 포기하지 않는 성격")
+                .values("소중한 관계와 약속을 지키는 것")
+                .trauma(shorten(logline, 80))
+                .build());
+        characters.add(PlanningSeedResponse.CharacterSeed.builder()
+                .id("char-auto-support")
+                .name("대립/조력 인물")
+                .gender("female")
+                .appearance(genreHint + " 톤을 강화하는 대비적 인물")
+                .personality("냉정하지만 결정적인 순간에 변화를 만드는 성격")
+                .values("현실적 선택과 생존")
+                .trauma("주인공과 얽힌 과거 사건")
+                .build());
+
+        List<PlanningSeedResponse.PlotStageSeed> stages = new ArrayList<>();
+        String protagonist = characters.get(0).getName();
+        for (int i = 0; i < stageLabels.size(); i++) {
+            String label = stageLabels.get(i);
+            String content = switch (label) {
+                case "발단" -> protagonist + "은(는) " + shorten(logline, 60)
+                        + "의 시작점에서 일상을 벗어날 선택 앞에 선다.";
+                case "전개" -> protagonist + "은(는) 첫 시도를 통해 문제의 실체를 알게 되고, "
+                        + "관계의 균열과 갈등이 점점 커진다.";
+                case "위기" -> "숨겨진 진실이 드러나며 " + protagonist
+                        + "이(가) 믿어 온 가치가 흔들리고, 모든 것을 잃을 위기에 처한다.";
+                case "절정" -> protagonist
+                        + "은(는) 가장 두려운 선택을 감수하고 정면 돌파를 택한다.";
+                case "결말" -> protagonist
+                        + "은(는) 대가를 치른 뒤 한 단계 성장한 모습으로 새로운 균형에 도달한다.";
+                default -> label + " 단계 내용을 작성하세요.";
+            };
+            if (!userPrompt.isBlank()) {
+                content = content + " 사용자 요청 반영: " + shorten(userPrompt, 80);
+            }
+            stages.add(PlanningSeedResponse.PlotStageSeed.builder()
+                    .id("stage-" + i)
+                    .label(label)
+                    .content(content)
+                    .build());
+        }
+
+        return PlanningSeedResponse.builder()
+                .source("mock")
+                .characters(characters)
+                .plotPlan(PlanningSeedResponse.PlotPlanSeed.builder()
+                        .stageCount(stageCount)
+                        .stages(stages)
+                        .build())
+                .build();
+    }
+
+    private PlanningSeedResponse parsePlanningSeed(
+            JsonNode root,
+            PlanningSeedRequest request,
+            int stageCount,
+            List<String> stageLabels,
+            String source
+    ) {
+        List<String> genres = safeList(request.getSelectedGenres());
+        List<String> worldviews = safeList(request.getSelectedWorldviews());
+        String logline = firstNonBlank(request.getLogline(), request.getIdea(), "새로운 이야기");
+
+        List<PlanningSeedResponse.CharacterSeed> characters = new ArrayList<>();
+        JsonNode charactersNode = root.path("characters");
+        if (charactersNode.isArray()) {
+            for (int i = 0; i < charactersNode.size(); i++) {
+                JsonNode node = charactersNode.get(i);
+                String name = firstNonBlank(node.path("name").asText(""), i == 0 ? "주인공" : "대립/조력 인물");
+                String gender = normalizeGender(node.path("gender").asText(""));
+                characters.add(PlanningSeedResponse.CharacterSeed.builder()
+                        .id(firstNonBlank(node.path("id").asText(""), "char-auto-" + i))
+                        .name(name)
+                        .gender(gender)
+                        .appearance(firstNonBlank(node.path("appearance").asText(""), "특징이 드러나는 외형"))
+                        .personality(firstNonBlank(node.path("personality").asText(""), "핵심 성격을 지닌 인물"))
+                        .values(firstNonBlank(node.path("values").asText(""), "지키고 싶은 가치"))
+                        .trauma(firstNonBlank(node.path("trauma").asText(""), "갈등을 유발하는 과거 상처"))
+                        .build());
+            }
+        }
+
+        if (characters.isEmpty()) {
+            PlanningSeedRequest fallbackReq = PlanningSeedRequest.builder()
+                    .idea(request.getIdea())
+                    .logline(logline)
+                    .selectedGenres(genres)
+                    .selectedWorldviews(worldviews)
+                    .stageCount(stageCount)
+                    .build();
+            characters = generateMockPlanningSeed(fallbackReq).getCharacters();
+        }
+
+        JsonNode plotPlanNode = root.path("plotPlan");
+        JsonNode stagesNode = plotPlanNode.path("stages");
+        List<PlanningSeedResponse.PlotStageSeed> stages = new ArrayList<>();
+        for (int i = 0; i < stageLabels.size(); i++) {
+            String fallbackLabel = stageLabels.get(i);
+            JsonNode stageNode = stagesNode.isArray() && i < stagesNode.size() ? stagesNode.get(i) : null;
+            String label = fallbackLabel;
+            String content = "";
+
+            if (stageNode != null && !stageNode.isMissingNode()) {
+                label = firstNonBlank(stageNode.path("label").asText(""), fallbackLabel);
+                content = stageNode.path("content").asText("");
+            }
+            if (content == null || content.isBlank()) {
+                content = label + " 단계 내용을 작성하세요.";
+            }
+
+            stages.add(PlanningSeedResponse.PlotStageSeed.builder()
+                    .id("stage-" + i)
+                    .label(label)
+                    .content(content)
+                    .build());
+        }
+
+        return PlanningSeedResponse.builder()
+                .source(source)
+                .characters(characters)
+                .plotPlan(PlanningSeedResponse.PlotPlanSeed.builder()
+                        .stageCount(stageCount)
+                        .stages(stages)
+                        .build())
+                .build();
+    }
+
+    private String buildPlanningSeedPrompt(PlanningSeedRequest request, int stageCount, List<String> stageLabels) {
+        String idea = firstNonBlank(request.getIdea(), "");
+        String logline = firstNonBlank(request.getLogline(), idea, "새로운 이야기");
+        String userPrompt = firstNonBlank(request.getUserPrompt(), "없음");
+        String genres = safeList(request.getSelectedGenres()).isEmpty()
+                ? "없음"
+                : String.join(", ", safeList(request.getSelectedGenres()));
+        String worldviews = safeList(request.getSelectedWorldviews()).isEmpty()
+                ? "없음"
+                : String.join(", ", safeList(request.getSelectedWorldviews()));
+
+        return """
+                당신은 영상 기획 어시스턴트입니다.
+                아래 입력으로 '캐릭터 시트'와 '%d단계 1차 스토리'를 생성하세요.
+
+                아이디어: "%s"
+                로그라인: "%s"
+                장르&스타일: "%s"
+                세계관&배경: "%s"
+                사용자 지시사항: "%s"
+                단계 라벨 고정: %s
+
+                응답은 반드시 아래 JSON 객체만 반환하세요. 다른 텍스트는 절대 포함하지 마세요.
+                {
+                  "characters": [
+                    {
+                      "id": "char-auto-main",
+                      "name": "이름",
+                      "gender": "male",
+                      "appearance": "외면 설명",
+                      "personality": "성격",
+                      "values": "가치관",
+                      "trauma": "상처/결핍"
+                    },
+                    {
+                      "id": "char-auto-support",
+                      "name": "이름",
+                      "gender": "female",
+                      "appearance": "외면 설명",
+                      "personality": "성격",
+                      "values": "가치관",
+                      "trauma": "상처/결핍"
+                    }
+                  ],
+                  "plotPlan": {
+                    "stageCount": %d,
+                    "stages": [
+                      { "id": "stage-0", "label": "%s", "content": "한국어 2~3문장" }
+                    ]
+                  }
+                }
+
+                규칙:
+                1) characters는 2~3명 생성.
+                2) gender는 male/female 중 하나.
+                3) stages 길이는 정확히 %d개.
+                4) stages.label은 주어진 라벨 순서를 그대로 사용.
+                5) content는 한국어, 각 단계 2~3문장.
+                6) 사용자 지시사항이 있으면 반드시 반영.
+                """.formatted(
+                        stageCount,
+                        idea,
+                        logline,
+                        genres,
+                        worldviews,
+                        userPrompt,
+                        String.join(", ", stageLabels),
+                        stageCount,
+                        stageLabels.get(0),
+                        stageCount
+                );
+    }
+
+    private String requestGeminiText(String userPrompt) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> part = new HashMap<>();
+        part.put("text", userPrompt);
+
+        Map<String, Object> content = new HashMap<>();
+        content.put("role", "user");
+        content.put("parts", List.of(part));
+
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("maxOutputTokens", geminiMaxTokens);
+        generationConfig.put("temperature", geminiTemperature);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("contents", List.of(content));
+        requestBody.put("generationConfig", generationConfig);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map> response = restTemplate.exchange(
+                String.format(GEMINI_GENERATE_URL_TEMPLATE, geminiTextModel, googleApiKey),
+                HttpMethod.POST,
+                entity,
+                Map.class
+        );
+
+        Map<String, Object> body = response.getBody();
+        if (body == null) {
+            throw new IllegalStateException("Gemini API returned empty body");
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> candidates = (List<Map<String, Object>>) body.get("candidates");
+        if (candidates == null || candidates.isEmpty()) {
+            throw new IllegalStateException("Gemini API response has no candidates");
+        }
+
+        for (Map<String, Object> candidate : candidates) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> candidateContent = (Map<String, Object>) candidate.get("content");
+            if (candidateContent == null) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> parts = (List<Map<String, Object>>) candidateContent.get("parts");
+            if (parts == null) {
+                continue;
+            }
+            for (Map<String, Object> partNode : parts) {
+                Object text = partNode.get("text");
+                if (text != null && !text.toString().isBlank()) {
+                    return text.toString();
+                }
+            }
+        }
+        throw new IllegalStateException("Gemini API response has no text content");
+    }
+
+    private String stripJsonMarkdown(String rawText) {
+        return rawText.replaceAll("(?s)```json\\s*", "").replaceAll("(?s)```\\s*", "").trim();
+    }
+
+    private int normalizeStageCount(Integer stageCount) {
+        if (stageCount == null) return 3;
+        return switch (stageCount) {
+            case 4 -> 4;
+            case 5 -> 5;
+            default -> 3;
+        };
+    }
+
+    private List<String> getStageLabels(int stageCount) {
+        return switch (stageCount) {
+            case 4 -> List.of("발단", "전개", "위기", "결말");
+            case 5 -> List.of("발단", "전개", "위기", "절정", "결말");
+            default -> List.of("발단", "전개", "결말");
+        };
+    }
+
+    private String firstNonBlank(String... candidates) {
+        if (candidates == null) return "";
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isBlank()) return candidate;
+        }
+        return "";
+    }
+
+    private List<String> safeList(List<String> values) {
+        return values == null ? List.of() : values;
+    }
+
+    private String shorten(String text, int maxLen) {
+        if (text == null || text.isBlank()) return "";
+        if (text.length() <= maxLen) return text;
+        return text.substring(0, maxLen) + "...";
+    }
+
+    private String normalizeGender(String value) {
+        if (value == null) return null;
+        String normalized = value.trim().toLowerCase();
+        if ("male".equals(normalized) || "female".equals(normalized)) {
+            return normalized;
+        }
+        return null;
     }
 
     private List<ProjectResponse.PlotResponse> parsePlots(JsonNode plotsArray) {

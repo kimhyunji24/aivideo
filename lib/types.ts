@@ -81,9 +81,47 @@ export interface ProjectState {
     selectedGenres?: string[];
     /** 선택된 세계관·배경 태그 (예: 근미래, 일상) */
     selectedWorldviews?: string[];
+    /** 플롯 재생성 시 반영할 사용자 지시사항 */
+    planningPrompt?: string;
+    /** 캐릭터 확정 버튼 클릭 여부 */
+    charactersConfirmed?: boolean;
     characters?: Character[];
     plotPlan?: PlotPlan | null;
     generatedPlots: Plot[];
     selectedPlot: Plot | null;
     scenes: Scene[];
+}
+
+export interface PlanningSeedRequest {
+    idea?: string;
+    logline?: string;
+    selectedGenres?: string[];
+    selectedWorldviews?: string[];
+    userPrompt?: string;
+    stageCount?: 3 | 4 | 5;
+}
+
+export interface PlanningSeedCharacter {
+    id?: string;
+    name?: string;
+    gender?: "male" | "female" | string;
+    appearance?: string;
+    personality?: string;
+    values?: string;
+    trauma?: string;
+}
+
+export interface PlanningSeedStage {
+    id?: string;
+    label?: string;
+    content?: string;
+}
+
+export interface PlanningSeedResponse {
+    source?: "mock" | "gemini" | string;
+    characters?: PlanningSeedCharacter[];
+    plotPlan?: {
+        stageCount?: 3 | 4 | 5 | number;
+        stages?: PlanningSeedStage[];
+    };
 }

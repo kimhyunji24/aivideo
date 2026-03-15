@@ -63,6 +63,8 @@ export default function Home() {
   const [project, setProject] = useState<ProjectState>({
     idea: "",
     logline: "",
+    planningPrompt: "",
+    charactersConfirmed: false,
     characters: [],
     plotPlan: null,
     generatedPlots: [],
@@ -152,6 +154,8 @@ export default function Home() {
             setProject({
               idea: "",
               logline: "",
+              planningPrompt: "",
+              charactersConfirmed: false,
               characters: [],
               plotPlan: null,
               generatedPlots: [],
