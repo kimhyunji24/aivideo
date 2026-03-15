@@ -41,17 +41,22 @@ function getElementValue(elements: SceneElements, key: keyof SceneElements): str
 export function Storyboard({
   project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect,
 }: StoryboardProps) {
-  const [currentStageIdx, setCurrentStageIdx] = useState(0)
   const [editingSceneIndex, setEditingSceneIndex] = useState<number | null>(null)
 
-  // ── 플롯 단계 기반 씬 그룹핑 ──
-  const stages = project.plotPlan?.stages ?? []
-  const totalStages = Math.max(1, stages.length)
-  const scenesPerStage = Math.ceil(project.scenes.length / totalStages)
-  const startIdx = currentStageIdx * scenesPerStage
-  const visibleScenes = project.scenes.slice(startIdx, startIdx + scenesPerStage)
-  const currentStage = stages[currentStageIdx]
   const selectedScene = project.scenes[selectedSceneIndex]
+
+  // ── 씬 선택 및 스크롤 포커싱 ──
+  const handleSceneSelect = (index: number) => {
+    onSceneSelect(index)
+    // 약간의 딜레이 후 해당 씬 카드로 스크롤 이동
+    setTimeout(() => {
+      const cardId = `scene-card-${index}`
+      const element = document.getElementById(cardId)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+      }
+    }, 50)
+  }
 
   // ── 이미지 재생성 ──
   const handleRegenerate = async (sceneId: string | number, e: React.MouseEvent) => {
@@ -97,7 +102,7 @@ export function Storyboard({
   // ── 수정하기 ──
   const handleEdit = (globalIndex: number, e: React.MouseEvent) => {
     e.stopPropagation()
-    onSceneSelect(globalIndex)
+    handleSceneSelect(globalIndex)
     setEditingSceneIndex(globalIndex)
   }
 
@@ -118,13 +123,13 @@ export function Storyboard({
   return (
     <div className="storyboard-root">
 
-      {/* ── 단계 인디케이터 (도입/전개/결말) ── */}
+      {/* ── 개별 씬 인디케이터 (1, 2, 3...) ── */}
       <div className="storyboard-indicators">
-        {Array.from({ length: totalStages }, (_, i) => (
+        {project.scenes.map((_, i) => (
           <button
             key={i}
-            onClick={() => setCurrentStageIdx(i)}
-            className={cn("page-indicator", currentStageIdx === i ? "active" : "inactive")}
+            onClick={() => handleSceneSelect(i)}
+            className={cn("page-indicator", selectedSceneIndex === i ? "active" : "inactive")}
           >
             {i + 1}
           </button>
@@ -135,18 +140,18 @@ export function Storyboard({
       <div className="storyboard-container">
         <div className="storyboard-scroll">
           <div className="storyboard-cards-row">
-            {visibleScenes.map((scene, index) => {
-              const gi = startIdx + index
+            {project.scenes.map((scene, index) => {
               return (
                 <div
                   key={scene.id}
-                  onClick={() => onSceneSelect(gi)}
-                  className={cn("storyboard-scene-card", selectedSceneIndex === gi && "selected")}
+                  id={`scene-card-${index}`}
+                  onClick={() => handleSceneSelect(index)}
+                  className={cn("storyboard-scene-card", selectedSceneIndex === index && "selected")}
                 >
                   {/* 카드 헤더 */}
                   <div className="scene-card-header">
                     <div className="scene-card-header-left">
-                      <span className="scene-badge">S#{gi + 1}</span>
+                      <span className="scene-badge">S#{index + 1}</span>
                       <span className="scene-title">{scene.title}</span>
                     </div>
                     <button
@@ -227,7 +232,7 @@ export function Storyboard({
 
                   {/* 수정하기 */}
                   <div className="scene-card-footer">
-                    <button className="scene-edit-btn" onClick={(e) => handleEdit(gi, e)}>
+                    <button className="scene-edit-btn" onClick={(e) => handleEdit(index, e)}>
                       수정하기
                     </button>
                   </div>
@@ -238,13 +243,13 @@ export function Storyboard({
         </div>
       </div>
 
-      {/* ── 하단: 현재 단계 스크립트 ── */}
+      {/* ── 하단: 현재 선택된 씬 스크립트 ── */}
       <div className="storyboard-script-section">
         <h3 className="script-title">
-          {currentStageIdx + 1}. {currentStage?.label || "도입"}
+          {selectedScene?.title || `씬 ${selectedSceneIndex + 1}`}
         </h3>
         <p className="script-content">
-          {currentStage?.content || selectedScene?.description || "씬 설명이 없습니다."}
+          {selectedScene?.description || "씬 설명이 없습니다."}
         </p>
       </div>
 
