@@ -52,8 +52,8 @@ function buildScenesFromPlan(project: ProjectState): Scene[] {
 }
 
 export default function Home() {
-  // "chat" → "workspace" → step 2, 3
-  const [planPhase, setPlanPhase] = useState<"chat" | "workspace">("chat")
+  // "chat" -> "summary" -> "workspace" -> step 2, 3
+  const [planPhase, setPlanPhase] = useState<"chat" | "summary" | "workspace">("chat")
   const [currentStep, setCurrentStep] = useState(1)
   const [readyToMerge, setReadyToMerge] = useState(false)
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0)
@@ -99,11 +99,12 @@ export default function Home() {
   const renderContent = () => {
     // Step 1: Planning
     if (currentStep === 1) {
-      if (planPhase === "chat") {
+      if (planPhase !== "workspace") {
         return (
           <IdeaChat
             project={project}
             setProject={setProject}
+            initialView={planPhase}
             onNext={() => setPlanPhase("workspace")}
           />
         )
@@ -113,7 +114,7 @@ export default function Home() {
           project={project}
           setProject={setProject}
           onNext={handlePlanningDone}
-          onBack={() => setPlanPhase("chat")}
+          onBack={() => setPlanPhase("summary")}
         />
       )
     }
