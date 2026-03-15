@@ -80,9 +80,9 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="w-full max-w-3xl mx-auto space-y-6 px-4 sm:px-0">
       <div className="text-center space-y-2">
-        <h2 className="text-xl font-semibold">최종 병합</h2>
+        <h2 className="text-lg sm:text-xl font-semibold">최종 병합</h2>
         <p className="text-sm text-muted-foreground">
           영상 클립을 하나로 합치고 배경음악과 전환 효과를 추가하세요.
         </p>
