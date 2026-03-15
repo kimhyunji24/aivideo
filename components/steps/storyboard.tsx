@@ -256,10 +256,10 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
         </div>
       </div>
 
-      {/* Workspace */}
-      <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
+      {/* Workspace: 반응형 — md 이하에서는 세로 스택 */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
         {/* ── Scene list (left) ── */}
-        <div className="col-span-4 flex flex-col min-h-0">
+        <div className="col-span-1 lg:col-span-4 flex flex-col min-h-[200px] lg:min-h-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-muted-foreground">씬 목록</span>
             <Tooltip>
@@ -330,7 +330,7 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
         </div>
 
         {/* ── Edit panel (right) ── */}
-        <div className="col-span-8 min-h-0">
+        <div className="col-span-1 lg:col-span-8 min-h-0">
           <Card className="glass-card h-full overflow-hidden">
             <ScrollArea className="h-full">
               <CardContent className="p-5">

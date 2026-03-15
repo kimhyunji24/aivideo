@@ -46,6 +46,8 @@ export interface Character {
     id: string;
     name: string;
     imageUrl?: string;
+    /** 표시용 성별: (남)/(여) */
+    gender?: "male" | "female";
     appearance: string;
     personality: string;
     values: string;
@@ -67,6 +69,10 @@ export interface ProjectState {
     id?: number;
     idea: string;
     logline?: string;
+    /** 선택된 장르·스타일 태그 (예: SF, 코미디) */
+    selectedGenres?: string[];
+    /** 선택된 세계관·배경 태그 (예: 근미래, 일상) */
+    selectedWorldviews?: string[];
     characters?: Character[];
     plotPlan?: PlotPlan | null;
     generatedPlots: Plot[];

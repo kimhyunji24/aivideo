@@ -137,8 +137,8 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="w-full max-w-5xl mx-auto space-y-6 px-4 sm:px-0">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">영상 생성</h2>
           <p className="text-sm text-muted-foreground">

@@ -62,15 +62,15 @@ export function IdeaChat({ project, setProject, onNext }: IdeaChatProps) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto flex flex-col" style={{ height: "calc(100vh - 180px)" }}>
-      {/* Title */}
-      <div className="text-center mb-5 flex-shrink-0">
-        <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-full px-4 py-1.5 mb-3">
+    <div className="w-full max-w-2xl mx-auto flex flex-col px-4 sm:px-0 min-h-0 flex-1" style={{ minHeight: "min(400px, calc(100vh - 180px))" }}>
+      {/* Title: 반응형 타이포 */}
+      <div className="text-center mb-4 sm:mb-5 flex-shrink-0">
+        <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-full px-3 py-1 sm:px-4 sm:py-1.5 mb-2 sm:mb-3">
           <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
           <span className="text-xs font-medium text-indigo-700">AI 기획 어시스턴트</span>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900">어떤 이야기를 만들고 싶으신가요?</h2>
-        <p className="text-sm text-gray-500 mt-1.5">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">어떤 이야기를 만들고 싶으신가요?</h2>
+        <p className="text-xs sm:text-sm text-gray-500 mt-1 sm:mt-1.5 px-1">
           아이디어를 이야기해 주시면 로그라인·캐릭터·플롯으로 발전시켜 드립니다
         </p>
       </div>
@@ -86,7 +86,7 @@ export function IdeaChat({ project, setProject, onNext }: IdeaChatProps) {
                 </div>
               )}
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 text-sm leading-relaxed ${
                   msg.role === "ai"
                     ? "bg-gray-100 text-gray-800 rounded-tl-sm"
                     : "bg-indigo-600 text-white rounded-tr-sm"
@@ -112,7 +112,7 @@ export function IdeaChat({ project, setProject, onNext }: IdeaChatProps) {
         </div>
 
         {/* Input */}
-        <div className="border-t border-gray-100 p-3 flex gap-2 flex-shrink-0">
+        <div className="border-t border-gray-100 p-2 sm:p-3 flex gap-2 flex-shrink-0">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -145,7 +145,7 @@ export function IdeaChat({ project, setProject, onNext }: IdeaChatProps) {
             <Lightbulb className="h-3.5 w-3.5 text-gray-400" />
             <span className="text-xs text-gray-400 font-medium">아이디어 예시</span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {QUICK_IDEAS.map((idea, i) => (
               <button
                 key={i}

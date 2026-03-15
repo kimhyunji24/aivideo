@@ -34,8 +34,20 @@ public class AIService {
     @Value("${google.api-key:}")
     private String googleApiKey;
 
+    @Value("${anthropic.api-key:}")
+    private String anthropicApiKey;
+
     @Value("${aivideo.mock-mode:false}")
     private boolean mockMode;
+
+    private static final String ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+    private static final String ANTHROPIC_VERSION_HEADER = "2023-06-01";
+
+    @Value("${anthropic.model:claude-3-5-sonnet-20240620}")
+    private String anthropicModel;
+
+    @Value("${anthropic.max-tokens:8192}")
+    private int anthropicMaxTokens;
 
     public AIService(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
@@ -43,47 +55,67 @@ public class AIService {
     }
 
     /**
-     * 아이디어 기반 플롯 3개 생성 — Claude API 우선, 실패 시 mock fallback
+     * 아이디어 기반 플롯 3개 생성 — Anthropic Claude API 우선, 실패 시 mock fallback.
+     * README.md 기준 ANTHROPIC_API_KEY 환경 변수 사용.
      */
     public List<ProjectResponse.PlotResponse> generatePlot(String idea) {
-        if (mockMode || googleApiKey == null || googleApiKey.isBlank()) {
-            log.info("Mock mode or no API key — returning mock plots");
+        if (mockMode || anthropicApiKey == null || anthropicApiKey.isBlank()) {
+            log.info("Mock mode or no Anthropic API key — returning mock plots");
             return generateMockPlots(idea);
         }
         try {
-            return generatePlotWithGemini(idea);
+            return generatePlotWithAnthropic(idea);
         } catch (Exception e) {
-            log.error("Gemini API 호출 실패, mock으로 fallback: {}", e.getMessage());
+            log.error("Anthropic API 호출 실패, mock으로 fallback: {}", e.getMessage());
             return generateMockPlots(idea);
         }
     }
 
-    private List<ProjectResponse.PlotResponse> generatePlotWithGemini(String idea) throws Exception {
-        String prompt = buildPlotPrompt(idea);
+    /**
+     * Anthropic Messages API로 플롯 JSON 생성 후 PlotResponse 리스트로 변환.
+     */
+    private List<ProjectResponse.PlotResponse> generatePlotWithAnthropic(String idea) throws Exception {
+        String userPrompt = buildPlotPrompt(idea);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("anthropic-version", ANTHROPIC_VERSION_HEADER);
+        headers.set("x-api-key", anthropicApiKey);
 
-        Map<String, Object> part = new HashMap<>();
-        part.put("text", prompt);
-
-        Map<String, Object> content = new HashMap<>();
-        content.put("parts", List.of(part));
+        Map<String, Object> message = new HashMap<>();
+        message.put("role", "user");
+        message.put("content", userPrompt);
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("contents", List.of(content));
+        requestBody.put("model", anthropicModel);
+        requestBody.put("max_tokens", anthropicMaxTokens);
+        requestBody.put("messages", List.of(message));
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + googleApiKey;
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map> response = restTemplate.exchange(ANTHROPIC_MESSAGES_URL, HttpMethod.POST, entity, Map.class);
 
-        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+        Map<String, Object> body = response.getBody();
+        if (body == null) {
+            throw new IllegalStateException("Anthropic API returned empty body");
+        }
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> candidates = (List<Map<String, Object>>) response.getBody().get("candidates");
-        Map<String, Object> candidateContent = (Map<String, Object>) candidates.get(0).get("content");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> parts = (List<Map<String, Object>>) candidateContent.get("parts");
-        String rawText = (String) parts.get(0).get("text");
+        List<Map<String, Object>> content = (List<Map<String, Object>>) body.get("content");
+        if (content == null || content.isEmpty()) {
+            throw new IllegalStateException("Anthropic API response has no content");
+        }
+
+        String rawText = null;
+        for (Map<String, Object> block : content) {
+            if ("text".equals(block.get("type")) && block.get("text") != null) {
+                rawText = (String) block.get("text");
+                break;
+            }
+        }
+        if (rawText == null || rawText.isBlank()) {
+            throw new IllegalStateException("Anthropic API response has no text content");
+        }
 
         // 마크다운 코드블록 제거
         String jsonText = rawText.replaceAll("(?s)```json\\s*", "").replaceAll("(?s)```\\s*", "").trim();
