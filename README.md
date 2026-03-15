@@ -3,7 +3,7 @@
 ## 1차 데모본
 ![Image](https://github.com/user-attachments/assets/3fcead82-f2aa-4fde-86ce-c016b765df7f)
 
-![Image](https://github.com/user-attachments/assets/c8b9941c-8256-4979-8f24-7f9ec04eb704)
+![Image](https://github.com/user-attachments/assets/86f5ac70-0c9b-46e6-aa23-a0efae6bfc26)
 
 
 ## 요구사항
