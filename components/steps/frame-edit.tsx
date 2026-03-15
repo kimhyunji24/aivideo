@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ChevronLeft, ChevronRight, Edit3, Image as ImageIcon } from "lucide-react"
+import { ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Sparkles, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectState, Scene, Frame } from "@/lib/types"
 
@@ -44,6 +44,7 @@ export function FrameEdit({ project, setProject, sceneIndex, onComplete, onBack,
   }
 
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
+  const [isGenerating, setIsGenerating] = useState(false)
   const currentFrame = scene.frames[selectedFrameIndex]
 
   const updateFrameScript = (script: string) => {
@@ -137,7 +138,7 @@ export function FrameEdit({ project, setProject, sceneIndex, onComplete, onBack,
                        </div>
                      )}
                    </button>
-                   {idx < scene.frames.length - 1 && (
+                   {idx < (scene.frames?.length || 0) - 1 && (
                      <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
                    )}
                  </div>
@@ -167,13 +168,28 @@ export function FrameEdit({ project, setProject, sceneIndex, onComplete, onBack,
                  F{selectedFrameIndex + 1} 종속
              </Badge>
           </div>
-          <ScrollArea className="flex-1 p-4">
+          <ScrollArea className="flex-1 p-4 flex flex-col">
             <Textarea
               value={currentFrame.script}
               onChange={(e) => updateFrameScript(e.target.value)}
               placeholder={`F${selectedFrameIndex + 1} 프레임에 대한 스크립트를 입력하세요...`}
-              className="min-h-[300px] resize-none border-0 focus-visible:ring-0 p-0 text-sm leading-relaxed text-gray-700 bg-transparent"
+              className="min-h-[250px] resize-none border-0 focus-visible:ring-0 p-0 text-sm leading-relaxed text-gray-700 bg-transparent mb-4"
             />
+            <div className="mt-8 pt-4 border-t border-border/50">
+              <Button
+                size="sm"
+                onClick={async () => {
+                  setIsGenerating(true)
+                  // Mock generation logic, replaces with real API call later
+                  setTimeout(() => setIsGenerating(false), 2000)
+                }}
+                disabled={isGenerating || !currentFrame.script.trim()}
+                className="w-full gap-2 bg-purple-600 hover:bg-purple-500 text-white shadow-sm h-10"
+              >
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                F{selectedFrameIndex + 1} 프레임 생성하기
+              </Button>
+            </div>
           </ScrollArea>
         </Card>
       </div>
@@ -183,9 +199,6 @@ export function FrameEdit({ project, setProject, sceneIndex, onComplete, onBack,
         <Button variant="outline" size="sm" onClick={onBack} className="h-10 gap-2 px-4 shadow-sm">
           <ChevronLeft className="h-4 w-4" />
           이전 단계로
-        </Button>
-        <Button size="sm" onClick={onNext} className="h-10 gap-2 px-6 bg-black text-white hover:bg-gray-800 shadow-sm">
-          다음 단계로 <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
     </div>
