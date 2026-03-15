@@ -795,7 +795,9 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
             </button>
             <button
               type="button"
-              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8]"
+              onClick={onNext}
+              disabled={!canProceed}
+              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               시각화
             </button>
