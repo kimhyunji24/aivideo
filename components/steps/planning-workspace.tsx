@@ -16,7 +16,6 @@ import {
   ArrowRight,
   ArrowLeft,
   Wand2,
-  RotateCw,
   X,
 } from "lucide-react"
 import {
@@ -78,54 +77,45 @@ const GENRE_OPTIONS = ["SF", "코미디", "서바이벌"] as const
 const WORLDVIEW_OPTIONS = ["근미래", "일상", "성장"] as const
 
 function LoglineSection({
-  logline,
-  onChange,
   genreOptions,
   worldviewOptions,
   selectedGenres,
   selectedWorldviews,
   onToggleGenre,
   onToggleWorldview,
-  onRefresh,
 }: {
-  logline: string
-  onChange: (v: string) => void
   genreOptions: readonly string[]
   worldviewOptions: readonly string[]
   selectedGenres: string[]
   selectedWorldviews: string[]
   onToggleGenre: (tag: string) => void
   onToggleWorldview: (tag: string) => void
-  onRefresh: () => void
 }) {
+  const selectedTags = [...selectedGenres, ...selectedWorldviews].slice(0, 3)
+
   return (
     <section className="space-y-6">
-      <div className="flex items-center gap-2">
-        <div className="h-8 w-8 rounded-lg border border-[#E0E0E0] flex items-center justify-center">
-          <Square className="h-4 w-4 text-gray-800" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-lg border border-[#E0E0E0] flex items-center justify-center">
+            <Square className="h-4 w-4 text-gray-800" />
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900">기획 요약</h2>
         </div>
-        <h2 className="text-lg font-semibold text-gray-900">로그라인</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedTags.map((tag) => (
+            <span
+              key={tag}
+              className="px-3 py-1 rounded-full text-xs font-semibold bg-[#111827] text-white"
+            >
+              {tag}
+            </span>
+          ))}
+          {selectedTags.length === 0 && (
+            <span className="text-xs text-gray-500">선택된 태그가 없습니다</span>
+          )}
+        </div>
       </div>
-
-      <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl overflow-hidden">
-        <CardContent className="p-4 sm:p-5 relative">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-3 right-3 h-8 w-8 text-gray-500 hover:text-gray-700"
-            onClick={onRefresh}
-          >
-            <RotateCw className="h-4 w-4" />
-          </Button>
-          <Textarea
-            value={logline}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="기억을 잃은 요리사 잭이 과거의 비밀을 찾아가는 과정에서 진정한 자신을 발견하는 이야기"
-            rows={4}
-            className="resize-none text-sm border-[#E0E0E0] focus-visible:ring-2 focus-visible:ring-offset-0 rounded-lg min-h-[100px]"
-          />
-        </CardContent>
-      </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl">
@@ -698,7 +688,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
   const [characterModalId, setCharacterModalId] = useState<string | null>(null)
   const [plotModalStageId, setPlotModalStageId] = useState<string | null>(null)
 
-  const logline = project.logline ?? ""
+  const logline = project.logline?.trim() || project.idea || ""
   const selectedGenres = project.selectedGenres ?? []
   const selectedWorldviews = project.selectedWorldviews ?? []
 
@@ -717,8 +707,6 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
   const characters: Character[] = project.characters ?? []
   const plotPlan: PlotPlan | null = project.plotPlan ?? null
   const stageCount = plotPlan?.stageCount ?? 3
-
-  const setLogline = (v: string) => setProject({ ...project, logline: v })
 
   const setCharacters = (chars: Character[]) => setProject({ ...project, characters: chars })
 
@@ -789,10 +777,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
     stages: STAGE_LABELS[3].map((label, i) => ({ id: `stage-${i}`, label, content: "" })),
   }
 
-  const canProceed =
-    !!logline.trim() &&
-    characters.length > 0 &&
-    plot.stages.some((s) => s.content.trim())
+  const canProceed = characters.length > 0 && plot.stages.some((s) => s.content.trim())
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -828,15 +813,12 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
       <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
         <div className="max-w-4xl mx-auto space-y-8 sm:space-y-12">
           <LoglineSection
-            logline={logline}
-            onChange={setLogline}
             genreOptions={GENRE_OPTIONS}
             worldviewOptions={WORLDVIEW_OPTIONS}
             selectedGenres={selectedGenres}
             selectedWorldviews={selectedWorldviews}
             onToggleGenre={toggleGenre}
             onToggleWorldview={toggleWorldview}
-            onRefresh={() => setLogline("")}
           />
           <CharactersSection
             characters={characters}
@@ -854,7 +836,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
             onStageEditClick={setPlotModalStageId}
             isGenerating={isGenerating}
             hasCharacters={characters.length > 0}
-            hasLogline={!!logline.trim()}
+            hasLogline={!!logline}
           />
         </div>
       </main>

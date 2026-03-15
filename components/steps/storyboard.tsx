@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { FrameEdit } from "@/components/steps/frame-edit"
 import {
   ArrowRight, Plus, Trash2, Clock, RefreshCw, Layers,
   Sparkles, Wand2, CheckCircle2, Code2, Loader2, Pin,
@@ -93,7 +92,6 @@ function guessElementsFromDescription(description: string): Partial<SceneElement
 export function Storyboard({ project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect }: StoryboardProps) {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
-  const [isEditingFrame, setIsEditingFrame] = useState(false)
 
   // Double-prompting animation state
   const [expandStage, setExpandStage] = useState(0)   // 0=idle 1=analyzing 2=revealing 3=assembling 4=done
@@ -214,19 +212,6 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
   }
 
   if (!selectedScene) return null
-  if (isEditingFrame) {
-    return (
-      <FrameEdit
-        project={project}
-        setProject={setProject}
-        sceneIndex={selectedSceneIndex}
-        onComplete={() => setIsEditingFrame(false)}
-        onBack={() => setIsEditingFrame(false)}
-        onNext={onNext}
-      />
-    )
-  }
-
   return (
     <div className="h-[calc(100vh-180px)] flex flex-col">
       {/* Header */}
@@ -329,14 +314,6 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
                     className="h-8 text-sm font-semibold w-48 bg-transparent border-transparent hover:border-border focus:border-border"
                   />
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsEditingFrame(true)}
-                      className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50"
-                    >
-                      프레임 수정/추가
-                    </Button>
                     <Button
                       size="sm"
                       onClick={() => handleGenerateImage(selectedScene.id)}
