@@ -29,8 +29,6 @@ public class Project {
 
     private String idea;
 
-    private String mode; // "beginner" | "advanced"
-
     private String finalVideoUrl;
 
     @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -48,6 +46,5 @@ public class Project {
 
     public Long getId() { return id; }
     public String getIdea() { return idea; }
-    public String getMode() { return mode; }
     public List<Scene> getScenes() { return scenes; }
 }

@@ -4,9 +4,8 @@ import type { ProjectState, Plot } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Check, RefreshCw, Pencil, ArrowRight, Film, Sparkles, Layers } from "lucide-react"
+import { Check, RefreshCw, Pencil, ArrowRight, Film, Layers } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
@@ -19,8 +18,6 @@ interface PlotSelectionProps {
 
 export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelectionProps) {
   const [selectedId, setSelectedId] = useState<string | null>(project.selectedPlot?.id || null)
-  const [isCustomizing, setIsCustomizing] = useState(false)
-  const [customPlot, setCustomPlot] = useState("")
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [regeneratingPlotId, setRegeneratingPlotId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -56,7 +53,6 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             idea: project.idea,
-            mode: project.mode,
             scenes: project.selectedPlot.scenes.map(s => ({
               title: s.title,
               description: s.description,
@@ -146,19 +142,6 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
                   </div>
                   <p className="text-sm text-muted-foreground">{plot.summary}</p>
 
-                  {/* Scene Preview - Advanced Mode */}
-                  {project.mode === "advanced" && (
-                    <div className="mt-3 pt-3 border-t border-border/50">
-                      <p className="text-xs text-muted-foreground mb-2">씬 구성:</p>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {plot.scenes.map((scene, index) => (
-                          <Badge key={scene.id} variant="outline" className="text-[10px] font-normal">
-                            {index + 1}. {scene.title}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -211,45 +194,7 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
           <TooltipContent>모든 플롯 옵션 재생성</TooltipContent>
         </Tooltip>
 
-        {project.mode === "advanced" && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsCustomizing(!isCustomizing)}
-                className="h-8"
-              >
-                <Pencil className="h-3.5 w-3.5 mr-2" />
-                직접 작성
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>나만의 플롯 직접 작성</TooltipContent>
-          </Tooltip>
-        )}
       </div>
-
-      {/* Custom Plot Input (Advanced Mode) */}
-      {isCustomizing && project.mode === "advanced" && (
-        <Card className="glass-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">커스텀 플롯</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              placeholder="플롯 구조, 주요 장면, 전체적인 흐름을 설명해주세요..."
-              value={customPlot}
-              onChange={(e) => setCustomPlot(e.target.value)}
-              rows={3}
-              className="text-sm"
-            />
-            <Button size="sm" disabled={!customPlot.trim()} className="h-8">
-              <Sparkles className="h-3.5 w-3.5 mr-2" />
-              커스텀 플롯으로 씬 생성
-            </Button>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Navigation */}
       <div className="flex justify-between pt-4 border-t">

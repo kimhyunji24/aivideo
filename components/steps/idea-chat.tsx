@@ -79,7 +79,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
         ...prev,
         {
           role: "ai",
-          content: `훌륭한 아이디어네요! "${text}"를 기반으로 로그라인·캐릭터·플롯을 함께 설계해 볼게요. 기획 워크스페이스에서 캐릭터 설정을 채우면 AI가 각 플롯 단계를 자동으로 제안해드립니다.`,
+          content: `훌륭한 아이디어네요! "${text}"를 기반으로 로그라인·캐릭터·플롯을 함께 설계해 볼게요. 기획 워크스페이스로 이동하면 캐릭터 시트가 자동 생성되고, 캐릭터 확정 후 1차 플롯을 생성할 수 있습니다.`,
         },
       ])
       setShowConfirm(true)

@@ -24,13 +24,17 @@ logging:
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
 aivideo:
-  mock-mode: false
+  mock-mode: ${MOCK_MODE:false}
+  mock-image-url: ${MOCK_IMAGE_URL:https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80}
+  mock-video-url: ${MOCK_VIDEO_URL:https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4}
   generated-files-path: ${user.home}/aivideo-generated
 
 google:
   api-key: ${GOOGLE_API_KEY:}
 
-anthropic:
-  api-key: ${ANTHROPIC_API_KEY:}
-  model: ${ANTHROPIC_MODEL:claude-3-5-sonnet-20240620}
-  max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
+gemini:
+  text-model: ${GEMINI_TEXT_MODEL:gemini-1.5-pro}
+  image-model: ${GEMINI_IMAGE_MODEL:imagen-3.0-generate-002}
+  video-model: ${GEMINI_VIDEO_MODEL:veo-3.0-generate-001}
+  max-tokens: ${GEMINI_MAX_TOKENS:8192}
+  temperature: ${GEMINI_TEMPERATURE:0.7}
