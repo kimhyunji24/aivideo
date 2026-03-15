@@ -1,5 +1,11 @@
 # AI Video 실행 가이드
 
+## 1차 데모본
+![Image](https://github.com/user-attachments/assets/3fcead82-f2aa-4fde-86ce-c016b765df7f)
+
+![Image](https://github.com/user-attachments/assets/c8b9941c-8256-4979-8f24-7f9ec04eb704)
+
+
 ## 요구사항
 - Java 20 (권장: `JAVA_HOME=$(/usr/libexec/java_home -v 20)`)
 - Node.js / npm
