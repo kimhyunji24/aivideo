@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { IdeaChat } from "@/components/steps/idea-chat"
 import { PlanningWorkspace } from "@/components/steps/planning-workspace"
 import { Storyboard } from "@/components/steps/storyboard"
@@ -12,8 +12,17 @@ import { AIChatPanel } from "@/components/ai-chat-panel"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Sparkles, PanelLeftClose, PanelLeftOpen, MessageSquare } from "lucide-react"
+import { useSearchParams } from "next/navigation"
 
 import type { ProjectState, Scene } from "@/lib/types"
+
+type ReturnState = {
+  project: ProjectState
+  currentStep: number
+  planPhase: "chat" | "summary" | "workspace"
+  readyToMerge: boolean
+  selectedSceneIndex: number
+}
 
 const STEPS = [
   { id: 1, name: "기획", description: "로그라인 & 플롯" },
@@ -52,9 +61,13 @@ function buildScenesFromPlan(project: ProjectState): Scene[] {
 }
 
 export default function Home() {
+  const searchParams = useSearchParams()
+  const stepParam = Number.parseInt(searchParams.get("step") ?? "1", 10)
+  const initialStep = Number.isNaN(stepParam) ? 1 : Math.min(3, Math.max(1, stepParam))
+  const shouldRestore = searchParams.get("restore") === "1"
   // "chat" -> "summary" -> "workspace" -> step 2, 3
   const [planPhase, setPlanPhase] = useState<"chat" | "summary" | "workspace">("chat")
-  const [currentStep, setCurrentStep] = useState(1)
+  const [currentStep, setCurrentStep] = useState(initialStep)
   const [readyToMerge, setReadyToMerge] = useState(false)
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0)
   const [assetPanelOpen, setAssetPanelOpen] = useState(true)
@@ -71,6 +84,26 @@ export default function Home() {
     selectedPlot: null,
     scenes: [],
   })
+
+  useEffect(() => {
+    if (!shouldRestore) return
+    const raw = sessionStorage.getItem("aivideo:return-state")
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as ReturnState
+      if (parsed?.project) {
+        setProject(parsed.project)
+        setCurrentStep(parsed.currentStep ?? 2)
+        setPlanPhase(parsed.planPhase ?? "workspace")
+        setReadyToMerge(Boolean(parsed.readyToMerge))
+        setSelectedSceneIndex(parsed.selectedSceneIndex ?? 0)
+      }
+    } catch {
+      // ignore invalid stored data
+    } finally {
+      sessionStorage.removeItem("aivideo:return-state")
+    }
+  }, [shouldRestore])
 
   const pinnedAssets = project.scenes.reduce<Record<string | number, string>>((acc, s) => {
     if (s.pinnedAsset) acc[s.id] = s.pinnedAsset
