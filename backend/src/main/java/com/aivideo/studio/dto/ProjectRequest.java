@@ -13,13 +13,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ProjectRequest {
     private String idea;
-    private String mode;
     private List<SceneRequest> scenes;
 
     public String getIdea() { return idea; }
     public void setIdea(String idea) { this.idea = idea; }
-    public String getMode() { return mode; }
-    public void setMode(String mode) { this.mode = mode; }
     public List<SceneRequest> getScenes() { return scenes; }
     public void setScenes(List<SceneRequest> scenes) { this.scenes = scenes; }
 

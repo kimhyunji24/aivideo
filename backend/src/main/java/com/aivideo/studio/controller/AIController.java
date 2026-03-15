@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.aivideo.studio.dto.PlanningSeedRequest;
+import com.aivideo.studio.dto.PlanningSeedResponse;
 import com.aivideo.studio.dto.ProjectResponse;
 import com.aivideo.studio.service.AIService;
 
@@ -24,5 +26,10 @@ public class AIController {
     @PostMapping("/plot")
     public ResponseEntity<List<ProjectResponse.PlotResponse>> generatePlot(@RequestBody String idea) {
         return ResponseEntity.ok(aiService.generatePlot(idea));
+    }
+
+    @PostMapping("/planning-seed")
+    public ResponseEntity<PlanningSeedResponse> generatePlanningSeed(@RequestBody PlanningSeedRequest request) {
+        return ResponseEntity.ok(aiService.generatePlanningSeed(request));
     }
 }

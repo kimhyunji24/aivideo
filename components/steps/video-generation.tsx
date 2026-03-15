@@ -2,18 +2,10 @@
 
 import type { ProjectState, Scene } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   ArrowRight,
   RefreshCw,
@@ -23,7 +15,6 @@ import {
   Video,
   Play,
   Pause,
-  Settings,
   Layers,
   Zap
 } from "lucide-react"
@@ -39,8 +30,6 @@ interface VideoGenerationProps {
 
 export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false)
-  const [motionStrength, setMotionStrength] = useState(50)
-  const [videoStyle, setVideoStyle] = useState("smooth")
 
   const scenesWithImages = project.scenes.filter((s) => s.imageUrl)
   const completedCount = scenesWithImages.filter((s) => s.videoUrl).length
@@ -152,48 +141,6 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
           </Badge>
         </div>
       </div>
-
-      {/* Settings (Advanced Mode) */}
-      {project.mode === "advanced" && (
-        <Card className="glass-card">
-          <CardHeader className="py-3 pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Settings className="h-3.5 w-3.5" />
-              영상 설정
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium">모션 강도</label>
-                  <span className="text-xs text-muted-foreground">{motionStrength}%</span>
-                </div>
-                <Slider
-                  value={[motionStrength]}
-                  onValueChange={([v]) => setMotionStrength(v)}
-                  max={100}
-                  step={10}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium">애니메이션 스타일</label>
-                <Select value={videoStyle} onValueChange={setVideoStyle}>
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="smooth">부드러운 시네마틱</SelectItem>
-                    <SelectItem value="dynamic">다이나믹 에너지</SelectItem>
-                    <SelectItem value="subtle">미니멀 섬세함</SelectItem>
-                    <SelectItem value="parallax">패럴랙스 깊이감</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Progress Summary */}
       <Card className="glass-card">

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "plot-1",
+    "title": "드라마틱 내러티브",
+    "summary": "상반된 감정이 교차하는 순간을 중심으로 인물의 내면을 드러낸다.",
+    "tone": "드라마틱 / 감성적",
+    "scenes": [
+      {
+        "title": "고요한 시작",
+        "description": "조용한 공간에서 인물이 생각에 잠긴다.",
+        "prompt": "cinematic shot of a solitary character in a quiet room, soft light, shallow depth of field",
+        "duration": 3,
+        "elements": {
+          "mainCharacter": "고요한 표정의 주인공",
+          "subCharacter": "",
+          "action": "천천히 숨을 고른다",
+          "pose": "의자에 앉아 고개를 숙인 자세",
+          "background": "미니멀한 실내 공간",
+          "time": "늦은 저녁",
+          "composition": "중앙 구도, 클로즈업",
+          "lighting": "부드러운 측면광",
+          "mood": "차분하고 서정적",
+          "story": "갈등의 서막"
+        }
+      }
+    ]
+  },
+  {
+    "id": "plot-2",
+    "title": "액션 중심 버전",
+    "summary": "역동적인 움직임과 빠른 전환으로 긴장감을 끌어올린다.",
+    "tone": "에너지틱 / 역동적",
+    "scenes": [
+      {
+        "title": "추격의 시작",
+        "description": "도심 속에서 빠르게 달리는 인물을 따라간다.",
+        "prompt": "dynamic chase scene in a modern city, motion blur, wide angle",
+        "duration": 4,
+        "elements": {
+          "mainCharacter": "전력으로 달리는 주인공",
+          "subCharacter": "",
+          "action": "빠르게 달려간다",
+          "pose": "전방을 향해 몸을 기울인 자세",
+          "background": "도심 거리",
+          "time": "낮",
+          "composition": "로우 앵글, 와이드 샷",
+          "lighting": "자연광",
+          "mood": "긴장감 있는",
+          "story": "갈등의 촉발"
+        }
+      }
+    ]
+  },
+  {
+    "id": "plot-3",
+    "title": "시네마틱 무드",
+    "summary": "빛과 그림자의 대비로 분위기와 감정을 강조한다.",
+    "tone": "시네마틱 / 예술적",
+    "scenes": [
+      {
+        "title": "빛의 흔적",
+        "description": "차가운 공간을 따뜻한 빛이 가로지른다.",
+        "prompt": "moody cinematic scene with light rays cutting through a dark room",
+        "duration": 3,
+        "elements": {
+          "mainCharacter": "빛을 바라보는 인물",
+          "subCharacter": "",
+          "action": "빛을 응시한다",
+          "pose": "서서 고개를 든 자세",
+          "background": "어두운 실내",
+          "time": "밤",
+          "composition": "삼분할 구도",
+          "lighting": "강한 역광",
+          "mood": "신비롭고 몽환적",
+          "story": "감정의 절정"
+        }
+      }
+    ]
+  }
+]

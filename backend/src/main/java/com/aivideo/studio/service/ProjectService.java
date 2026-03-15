@@ -26,7 +26,6 @@ public class ProjectService {
     public ProjectResponse createProject(ProjectRequest request) {
         Project project = Project.builder()
                 .idea(request.getIdea())
-                .mode(request.getMode())
                 .build();
 
         if (request.getScenes() != null) {
@@ -88,7 +87,6 @@ public class ProjectService {
         return ProjectResponse.builder()
                 .id(project.getId())
                 .idea(project.getIdea())
-                .mode(project.getMode())
                 .scenes(project.getScenes().stream().map(scene -> ProjectResponse.SceneResponse.builder()
                         .id(scene.getId())
                         .title(scene.getTitle())

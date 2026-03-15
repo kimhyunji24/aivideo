@@ -14,7 +14,6 @@ import lombok.NoArgsConstructor;
 public class ProjectResponse {
     private Long id;
     private String idea;
-    private String mode;
     private String finalVideoUrl;
     private List<PlotResponse> generatedPlots;
     private List<SceneResponse> scenes;
@@ -23,8 +22,6 @@ public class ProjectResponse {
     public void setId(Long id) { this.id = id; }
     public String getIdea() { return idea; }
     public void setIdea(String idea) { this.idea = idea; }
-    public String getMode() { return mode; }
-    public void setMode(String mode) { this.mode = mode; }
     public String getFinalVideoUrl() { return finalVideoUrl; }
     public void setFinalVideoUrl(String finalVideoUrl) { this.finalVideoUrl = finalVideoUrl; }
     public List<PlotResponse> getGeneratedPlots() { return generatedPlots; }
