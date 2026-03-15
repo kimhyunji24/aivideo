@@ -2,12 +2,12 @@
 
 import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { FrameEdit } from "@/components/steps/frame-edit"
 import {
   RefreshCw, Download, FileText, SlidersHorizontal,
 } from "lucide-react"
-import { useState, Dispatch, SetStateAction } from "react"
+import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ function getElementValue(elements: SceneElements, key: keyof SceneElements): str
 export function Storyboard({
   project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect,
 }: StoryboardProps) {
-  const [editingSceneIndex, setEditingSceneIndex] = useState<number | null>(null)
+  const router = useRouter()
 
   const selectedScene = project.scenes[selectedSceneIndex]
 
@@ -103,21 +103,25 @@ export function Storyboard({
   const handleEdit = (globalIndex: number, e: React.MouseEvent) => {
     e.stopPropagation()
     handleSceneSelect(globalIndex)
-    setEditingSceneIndex(globalIndex)
-  }
+    const returnState = {
+      project,
+      currentStep: 2,
+      planPhase: "workspace" as const,
+      readyToMerge: false,
+      selectedSceneIndex: globalIndex,
+    }
+    sessionStorage.setItem("aivideo:return-state", JSON.stringify(returnState))
 
-  // ── FrameEdit 서브뷰 ──
-  if (editingSceneIndex !== null) {
-    return (
-      <FrameEdit
-        project={project}
-        setProject={setProject}
-        sceneIndex={editingSceneIndex}
-        onComplete={() => setEditingSceneIndex(null)}
-        onBack={() => setEditingSceneIndex(null)}
-        onNext={onNext}
-      />
-    )
+    const scenesPayload = project.scenes.map((scene) => ({
+      id: scene.id,
+      title: scene.title,
+      description: scene.description,
+    }))
+    const params = new URLSearchParams({
+      sceneIndex: String(globalIndex),
+      scenes: JSON.stringify(scenesPayload),
+    })
+    router.push(`/edit?${params.toString()}`)
   }
 
   return (
