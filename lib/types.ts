@@ -1,3 +1,9 @@
+export interface Frame {
+    id: string;
+    imageUrl?: string;
+    script: string;
+}
+
 export interface SceneElements {
     mainCharacter: string;
     subCharacter: string;
@@ -31,6 +37,8 @@ export interface Scene {
     params?: SceneParams;
     styleChip?: string;
     pinnedAsset?: string;
+    /** Up to 4 frames for the scene's flow */
+    frames?: Frame[];
 }
 
 export interface Plot {
