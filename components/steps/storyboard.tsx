@@ -9,13 +9,13 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Slider } from "@/components/ui/slider"
-import { FrameEdit } from "@/components/steps/frame-edit"
+import { EditWorkspace } from "@/components/steps/edit-workspace"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import {
-  ArrowRight, Plus, Trash2, Clock, RefreshCw, Layers,
-  Sparkles, Wand2, CheckCircle2, Code2, Loader2, Pin,
+  ArrowRight, Plus, Trash2, Clock, Layers,
+  Sparkles, Code2, Loader2, Pin,
 } from "lucide-react"
 import { useState, useMemo, Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
@@ -60,10 +60,6 @@ const DEFAULT_PARAMS: SceneParams = { seed: 42, steps: 30, cfgScale: 7.5, sample
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms))
-}
-
 function assemblePrompt(elements: SceneElements, styleValue?: string): string {
   const parts: string[] = []
   if (elements.mainCharacter) parts.push(elements.mainCharacter)
@@ -79,33 +75,11 @@ function assemblePrompt(elements: SceneElements, styleValue?: string): string {
   return parts.filter(Boolean).join(", ")
 }
 
-function guessElementsFromDescription(description: string): Partial<SceneElements> {
-  // Heuristic auto-fill for demo – in production this would call the AI API
-  const lower = description.toLowerCase()
-  return {
-    mainCharacter:  lower.includes("주인공") ? "main protagonist" : "central character",
-    action:         description.length > 30 ? "stands contemplatively" : "moves forward",
-    background:     lower.includes("도시") ? "urban city backdrop" : lower.includes("자연") ? "lush nature scenery" : "atmospheric setting",
-    time:           lower.includes("밤") ? "night" : lower.includes("아침") ? "early morning" : "golden hour",
-    lighting:       lower.includes("어두") ? "dim moody lighting" : "soft diffused lighting",
-    composition:    "medium shot",
-    mood:           lower.includes("슬") ? "melancholic, emotional" : lower.includes("설레") ? "exciting, hopeful" : "dramatic, cinematic",
-    pose:           "natural stance",
-    subCharacter:   "",
-    story:          description.slice(0, 80),
-  }
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function Storyboard({ project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect }: StoryboardProps) {
-  const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
-  const [isEditingFrame, setIsEditingFrame] = useState(false)
-
-  // Double-prompting animation state
-  const [expandStage, setExpandStage] = useState(0)   // 0=idle 1=analyzing 2=revealing 3=assembling 4=done
-  const [revealedCount, setRevealedCount] = useState(0)
+  const [isEditWorkspaceOpen, setIsEditWorkspaceOpen] = useState(false)
 
   const totalDuration = project.scenes.reduce((s, sc) => s + sc.duration, 0)
   const selectedScene = project.scenes[selectedSceneIndex]
@@ -141,42 +115,6 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
         i === selectedSceneIndex ? { ...s, params: { ...DEFAULT_PARAMS, ...s.params, [field]: value } } : s
       ),
     }))
-  }
-
-  // ── Double Prompting ──────────────────────────────────────────────────────
-
-  const handleDoublePrompt = async () => {
-    if (!selectedScene) return
-    setExpandStage(1)
-    setRevealedCount(0)
-    await sleep(700)
-
-    const guessed = guessElementsFromDescription(selectedScene.description)
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) =>
-        i === selectedSceneIndex ? { ...s, elements: { ...s.elements, ...guessed } } : s
-      ),
-    }))
-
-    setExpandStage(2)
-    for (let i = 1; i <= ELEMENTS_CONFIG.length; i++) {
-      await sleep(200)
-      setRevealedCount(i)
-    }
-
-    setExpandStage(3)
-    await sleep(400)
-
-    const styleVal = STYLE_CHIPS.find((c) => c.id === selectedScene.styleChip)?.value
-    const newPrompt = assemblePrompt({ ...selectedScene.elements, ...guessed }, styleVal)
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) =>
-        i === selectedSceneIndex ? { ...s, prompt: newPrompt } : s
-      ),
-    }))
-    setExpandStage(4)
   }
 
   // ── Scene list ops ────────────────────────────────────────────────────────
@@ -242,21 +180,8 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
   if (!selectedScene) return null
   const sceneParams = { ...DEFAULT_PARAMS, ...selectedScene.params }
 
-  if (isEditingFrame) {
-    return (
-      <FrameEdit
-        project={project}
-        setProject={setProject}
-        sceneIndex={selectedSceneIndex}
-        onComplete={() => setIsEditingFrame(false)}
-        onBack={() => setIsEditingFrame(false)}
-        onNext={onNext}
-      />
-    )
-  }
-
   return (
-    <div className="h-[calc(100vh-180px)] flex flex-col">
+    <div className="relative h-[calc(100vh-180px)] flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -296,7 +221,7 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
                     "cursor-pointer transition-all hover:shadow-sm glass-card group relative",
                     selectedSceneIndex === index && "ring-1 ring-purple-400/40 bg-accent/50"
                   )}
-                  onClick={() => { onSceneSelect(index); setExpandStage(0) }}
+                  onClick={() => { onSceneSelect(index) }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, scene.id)}
                 >
@@ -358,14 +283,6 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
                   />
                   <div className="flex items-center gap-2">
                     <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsEditingFrame(true)}
-                      className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50"
-                    >
-                      프레임 수정/추가
-                    </Button>
-                    <Button
                       size="sm"
                       onClick={() => handleGenerateImage(selectedScene.id)}
                       disabled={selectedScene.status === "generating" || isGeneratingImage}
@@ -383,12 +300,9 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
                 {project.mode === "beginner"
                   ? <BeginnerPanel
                       scene={selectedScene}
-                      expandStage={expandStage}
-                      revealedCount={revealedCount}
-                      rawPrompt={rawPrompt}
                       onDescriptionChange={(v) => updateField("description", v)}
-                      onStyleSelect={(id) => { updateField("styleChip", id); setExpandStage(0) }}
-                      onDoublePrompt={handleDoublePrompt}
+                      onStyleSelect={(id) => updateField("styleChip", id)}
+                      onEdit={() => setIsEditWorkspaceOpen(true)}
                     />
                   : <ExpertPanel
                       scene={selectedScene}
@@ -411,6 +325,18 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
           영상 생성으로 계속 <ArrowRight className="h-3.5 w-3.5" />
         </Button>
       </div>
+
+      {isEditWorkspaceOpen && (
+        <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm border border-border rounded-lg overflow-hidden">
+          <EditWorkspace
+            project={project}
+            setProject={setProject}
+            selectedSceneIndex={selectedSceneIndex}
+            onSceneSelect={onSceneSelect}
+            onClose={() => setIsEditWorkspaceOpen(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -419,15 +345,12 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
 
 interface BeginnerPanelProps {
   scene: Scene
-  expandStage: number
-  revealedCount: number
-  rawPrompt: string
   onDescriptionChange: (v: string) => void
   onStyleSelect: (id: string) => void
-  onDoublePrompt: () => void
+  onEdit: () => void
 }
 
-function BeginnerPanel({ scene, expandStage, revealedCount, rawPrompt, onDescriptionChange, onStyleSelect, onDoublePrompt }: BeginnerPanelProps) {
+function BeginnerPanel({ scene, onDescriptionChange, onStyleSelect, onEdit }: BeginnerPanelProps) {
   return (
     <div className="space-y-5">
       {/* Description */}
@@ -468,76 +391,13 @@ function BeginnerPanel({ scene, expandStage, revealedCount, rawPrompt, onDescrip
       </div>
 
       {/* Expand button */}
-      {expandStage === 0 && (
-        <Button
-          onClick={onDoublePrompt}
-          disabled={!scene.description.trim()}
-          className="w-full gap-2 bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-600 hover:to-purple-400 text-white border-0 h-10"
-        >
-          <Wand2 className="h-4 w-4" />
-          AI 디렉터로 확장 (Double Prompting)
-        </Button>
-      )}
-
-      {/* Double Prompting reveal */}
-      {expandStage >= 1 && (
-        <div className="rounded-xl border border-purple-400/20 bg-purple-950/20 overflow-hidden">
-          {/* Status bar */}
-          <div className="px-4 py-2.5 border-b border-purple-400/20 bg-purple-900/20 flex items-center gap-2">
-            {expandStage < 4
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />
-              : <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
-            }
-            <span className="text-xs font-medium text-purple-300">
-              {expandStage === 1 && "AI 디렉터 입력 분석 중..."}
-              {expandStage === 2 && "10대 핵심 요소 추출 중..."}
-              {expandStage === 3 && "영문 프롬프트 조합 중..."}
-              {expandStage === 4 && "✨ 프롬프트 생성 완료"}
-            </span>
-            {expandStage === 4 && (
-              <button
-                onClick={onDoublePrompt}
-                className="ml-auto text-[10px] text-purple-400 hover:text-purple-200 transition-colors"
-              >
-                재실행 ↺
-              </button>
-            )}
-          </div>
-
-          {/* Elements reveal */}
-          {expandStage >= 2 && (
-            <div className="p-4 grid grid-cols-2 gap-y-2 gap-x-4">
-              {ELEMENTS_CONFIG.slice(0, revealedCount).map((el) => (
-                <div key={el.key} className="flex items-center gap-2 text-xs">
-                  <span className="text-base leading-none">{el.icon}</span>
-                  <span className="text-muted-foreground w-12 flex-shrink-0">{el.label}</span>
-                  <span className={cn(
-                    "flex-1 truncate text-foreground/80",
-                    expandStage < 4 && "animate-pulse"
-                  )}>
-                    {(scene.elements as any)[el.key] || "·····"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Final prompt */}
-          {expandStage === 4 && rawPrompt && (
-            <div className="px-4 pb-4">
-              <div className="rounded-lg bg-muted/30 border border-border/40 p-3">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Code2 className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-[10px] font-medium text-muted-foreground">생성된 영문 프롬프트</span>
-                </div>
-                <p className="text-[11px] font-mono leading-relaxed text-foreground/80 italic break-words">
-                  {rawPrompt}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <Button
+        onClick={onEdit}
+        disabled={!scene.description.trim()}
+        className="w-full gap-2 bg-gradient-to-r from-purple-700 to-purple-500 hover:from-purple-600 hover:to-purple-400 text-white border-0 h-10"
+      >
+        수정하기
+      </Button>
     </div>
   )
 }
