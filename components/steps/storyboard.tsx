@@ -157,68 +157,71 @@ export function Storyboard({
                     </button>
                   </div>
 
-                  {/* 이미지 + 호버 오버레이 */}
-                  <div className="scene-image-wrapper">
-                    {scene.imageUrl ? (
-                      <img src={scene.imageUrl} alt={scene.title} className="scene-image" />
-                    ) : (
-                      <div className="scene-image-placeholder">
-                        <span>이미지 미생성</span>
-                      </div>
-                    )}
-                    <div className="scene-image-overlay">
-                      <div className="scene-overlay-buttons">
-                        <button className="scene-overlay-btn" onClick={(e) => handleRegenerate(scene.id, e)} title="재생성">
-                          <RefreshCw size={16} />
-                        </button>
-                        <button className="scene-overlay-btn" onClick={(e) => handleDownload(scene, e)} title="다운로드">
-                          <Download size={16} />
-                        </button>
+                  {/* 카드 스크롤 영역 */}
+                  <div className="scene-card-body">
+                    {/* 이미지 + 호버 오버레이 */}
+                    <div className="scene-image-wrapper">
+                      {scene.imageUrl ? (
+                        <img src={scene.imageUrl} alt={scene.title} className="scene-image" />
+                      ) : (
+                        <div className="scene-image-placeholder">
+                          <span>이미지 미생성</span>
+                        </div>
+                      )}
+                      <div className="scene-image-overlay">
+                        <div className="scene-overlay-buttons">
+                          <button className="scene-overlay-btn" onClick={(e) => handleRegenerate(scene.id, e)} title="재생성">
+                            <RefreshCw size={16} />
+                          </button>
+                          <button className="scene-overlay-btn" onClick={(e) => handleDownload(scene, e)} title="다운로드">
+                            <Download size={16} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* 스크립트 */}
-                  <div className="scene-section">
-                    <div className="scene-section-label">
-                      <FileText size={12} />
-                      <span>스크립트</span>
+                    {/* 스크립트 */}
+                    <div className="scene-section">
+                      <div className="scene-section-label">
+                        <FileText size={12} />
+                        <span>스크립트</span>
+                      </div>
+                      <p className="scene-description">{scene.description}</p>
+
+                      {/* 캐릭터 아바타 */}
+                      {project.characters && project.characters.length > 0 && (
+                        <div className="scene-characters">
+                          {project.characters.slice(0, 3).map(c => (
+                            <div key={c.id} className="scene-avatar">
+                              {c.imageUrl
+                                ? <img src={c.imageUrl} alt={c.name} />
+                                : c.name.charAt(0)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <p className="scene-description">{scene.description}</p>
 
-                    {/* 캐릭터 아바타 */}
-                    {project.characters && project.characters.length > 0 && (
-                      <div className="scene-characters">
-                        {project.characters.slice(0, 3).map(c => (
-                          <div key={c.id} className="scene-avatar">
-                            {c.imageUrl
-                              ? <img src={c.imageUrl} alt={c.name} />
-                              : c.name.charAt(0)}
+                    {/* 세부 요소 */}
+                    <div className="scene-section scene-details">
+                      <div className="scene-section-label">
+                        <SlidersHorizontal size={12} />
+                        <span>세부 요소</span>
+                      </div>
+                      <div className="scene-detail-grid">
+                        {DETAIL_ROWS.map(row => (
+                          <div key={row.left.key} className="scene-detail-row">
+                            <span className="scene-detail-item">
+                              <span className="detail-label">{row.left.label}:</span>
+                              <span className="detail-value">{getElementValue(scene.elements, row.left.key)}</span>
+                            </span>
+                            <span className="scene-detail-item">
+                              <span className="detail-label">{row.right.label}:</span>
+                              <span className="detail-value">{getElementValue(scene.elements, row.right.key)}</span>
+                            </span>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-
-                  {/* 세부 요소 */}
-                  <div className="scene-section scene-details">
-                    <div className="scene-section-label">
-                      <SlidersHorizontal size={12} />
-                      <span>세부 요소</span>
-                    </div>
-                    <div className="scene-detail-grid">
-                      {DETAIL_ROWS.map(row => (
-                        <div key={row.left.key} className="scene-detail-row">
-                          <span className="scene-detail-item">
-                            <span className="detail-label">{row.left.label}:</span>
-                            <span className="detail-value">{getElementValue(scene.elements, row.left.key)}</span>
-                          </span>
-                          <span className="scene-detail-item">
-                            <span className="detail-label">{row.right.label}:</span>
-                            <span className="detail-value">{getElementValue(scene.elements, row.right.key)}</span>
-                          </span>
-                        </div>
-                      ))}
                     </div>
                   </div>
 
