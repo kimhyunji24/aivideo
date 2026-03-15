@@ -72,7 +72,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
 
     setInput("")
     setMessages((prev) => [...prev, { role: "user", content: text }])
-    setProject({ ...project, idea: text, charactersConfirmed: false })
+    setProject({ ...project, idea: text })
 
     setTimeout(() => {
       setMessages((prev) => [
@@ -96,7 +96,6 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
       ...project,
       idea,
       logline: nextLogline,
-      charactersConfirmed: false,
       selectedGenres,
       selectedWorldviews,
     })
@@ -108,7 +107,6 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
     setProject({
       ...project,
       logline: finalizedLogline,
-      charactersConfirmed: false,
       selectedGenres,
       selectedWorldviews,
     })
