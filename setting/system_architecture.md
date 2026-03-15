@@ -25,7 +25,7 @@ graph TD
 
     subgraph "External & Tools"
         S3[(Storage - S3/GCS)]
-        VidAPI["Video API (Runway/Luma)"]
+        VidAPI["Video API (Gemini Veo)"]
     end
 
     UI <--> Gateway
@@ -64,7 +64,7 @@ graph TD
 ### Python (AI Microservice)
 - **LLM 오케스트레이션:** Gemini 등을 호출하여 자연어 아이디어를 10대 요소(JSON)로 변환.
 - **이미지 생성 제어:** Stable Diffusion, ControlNet 등 무거운 AI 라이브러리 직접 구동.
-- **동영상 API 연동:** Runway 등 외부 API와의 복잡한 데이터 교환 처리.
+- **동영상 API 연동:** Gemini Veo 등 외부 API와의 복잡한 데이터 교환 처리.
 
 ## 4. 데이터 연동 흐름 (Inter-service Flow)
 

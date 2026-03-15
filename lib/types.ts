@@ -78,5 +78,4 @@ export interface ProjectState {
     generatedPlots: Plot[];
     selectedPlot: Plot | null;
     scenes: Scene[];
-    mode: "beginner" | "advanced";
 }

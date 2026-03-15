@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.io.InputStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,20 +35,20 @@ public class AIService {
     @Value("${google.api-key:}")
     private String googleApiKey;
 
-    @Value("${anthropic.api-key:}")
-    private String anthropicApiKey;
-
     @Value("${aivideo.mock-mode:false}")
     private boolean mockMode;
 
-    private static final String ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-    private static final String ANTHROPIC_VERSION_HEADER = "2023-06-01";
+    private static final String GEMINI_GENERATE_URL_TEMPLATE =
+            "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s";
 
-    @Value("${anthropic.model:claude-3-5-sonnet-20240620}")
-    private String anthropicModel;
+    @Value("${gemini.text-model:gemini-1.5-pro}")
+    private String geminiTextModel;
 
-    @Value("${anthropic.max-tokens:8192}")
-    private int anthropicMaxTokens;
+    @Value("${gemini.max-tokens:8192}")
+    private int geminiMaxTokens;
+
+    @Value("${gemini.temperature:0.7}")
+    private double geminiTemperature;
 
     public AIService(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
@@ -55,66 +56,91 @@ public class AIService {
     }
 
     /**
-     * 아이디어 기반 플롯 3개 생성 — Anthropic Claude API 우선, 실패 시 mock fallback.
-     * README.md 기준 ANTHROPIC_API_KEY 환경 변수 사용.
+     * 아이디어 기반 플롯 3개 생성 — Gemini API 우선, 실패 시 mock fallback.
+     * README.md 기준 GOOGLE_API_KEY 환경 변수 사용.
      */
     public List<ProjectResponse.PlotResponse> generatePlot(String idea) {
-        if (mockMode || anthropicApiKey == null || anthropicApiKey.isBlank()) {
-            log.info("Mock mode or no Anthropic API key — returning mock plots");
-            return generateMockPlots(idea);
+        if (mockMode || googleApiKey == null || googleApiKey.isBlank()) {
+            log.info("Mock mode or no Google API key — returning mock plots");
+            return loadMockPlots(idea);
         }
         try {
-            return generatePlotWithAnthropic(idea);
+            return generatePlotWithGemini(idea);
         } catch (Exception e) {
-            log.error("Anthropic API 호출 실패, mock으로 fallback: {}", e.getMessage());
-            return generateMockPlots(idea);
+            log.error("Gemini API 호출 실패, mock으로 fallback: {}", e.getMessage());
+            return loadMockPlots(idea);
         }
     }
 
     /**
-     * Anthropic Messages API로 플롯 JSON 생성 후 PlotResponse 리스트로 변환.
+     * Gemini GenerateContent API로 플롯 JSON 생성 후 PlotResponse 리스트로 변환.
      */
-    private List<ProjectResponse.PlotResponse> generatePlotWithAnthropic(String idea) throws Exception {
+    private List<ProjectResponse.PlotResponse> generatePlotWithGemini(String idea) throws Exception {
         String userPrompt = buildPlotPrompt(idea);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("anthropic-version", ANTHROPIC_VERSION_HEADER);
-        headers.set("x-api-key", anthropicApiKey);
 
-        Map<String, Object> message = new HashMap<>();
-        message.put("role", "user");
-        message.put("content", userPrompt);
+        Map<String, Object> part = new HashMap<>();
+        part.put("text", userPrompt);
+
+        Map<String, Object> content = new HashMap<>();
+        content.put("role", "user");
+        content.put("parts", List.of(part));
+
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("maxOutputTokens", geminiMaxTokens);
+        generationConfig.put("temperature", geminiTemperature);
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", anthropicModel);
-        requestBody.put("max_tokens", anthropicMaxTokens);
-        requestBody.put("messages", List.of(message));
+        requestBody.put("contents", List.of(content));
+        requestBody.put("generationConfig", generationConfig);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
         @SuppressWarnings("unchecked")
-        ResponseEntity<Map> response = restTemplate.exchange(ANTHROPIC_MESSAGES_URL, HttpMethod.POST, entity, Map.class);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                String.format(GEMINI_GENERATE_URL_TEMPLATE, geminiTextModel, googleApiKey),
+                HttpMethod.POST,
+                entity,
+                Map.class
+        );
 
         Map<String, Object> body = response.getBody();
         if (body == null) {
-            throw new IllegalStateException("Anthropic API returned empty body");
+            throw new IllegalStateException("Gemini API returned empty body");
         }
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> content = (List<Map<String, Object>>) body.get("content");
-        if (content == null || content.isEmpty()) {
-            throw new IllegalStateException("Anthropic API response has no content");
+        List<Map<String, Object>> candidates = (List<Map<String, Object>>) body.get("candidates");
+        if (candidates == null || candidates.isEmpty()) {
+            throw new IllegalStateException("Gemini API response has no candidates");
         }
 
         String rawText = null;
-        for (Map<String, Object> block : content) {
-            if ("text".equals(block.get("type")) && block.get("text") != null) {
-                rawText = (String) block.get("text");
+        for (Map<String, Object> candidate : candidates) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> candidateContent = (Map<String, Object>) candidate.get("content");
+            if (candidateContent == null) {
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> parts = (List<Map<String, Object>>) candidateContent.get("parts");
+            if (parts == null) {
+                continue;
+            }
+            for (Map<String, Object> partNode : parts) {
+                Object text = partNode.get("text");
+                if (text != null) {
+                    rawText = text.toString();
+                    break;
+                }
+            }
+            if (rawText != null) {
                 break;
             }
         }
         if (rawText == null || rawText.isBlank()) {
-            throw new IllegalStateException("Anthropic API response has no text content");
+            throw new IllegalStateException("Gemini API response has no text content");
         }
 
         // 마크다운 코드블록 제거
@@ -226,6 +252,19 @@ public class AIService {
     /**
      * Mock 플롯 — API 키 없거나 mock-mode 시 사용
      */
+    private List<ProjectResponse.PlotResponse> loadMockPlots(String idea) {
+        try (InputStream input = AIService.class.getResourceAsStream("/mock/plots.json")) {
+            if (input == null) {
+                throw new IllegalStateException("Mock plots.json not found");
+            }
+            JsonNode plotsArray = objectMapper.readTree(input);
+            return parsePlots(plotsArray);
+        } catch (Exception e) {
+            log.warn("Mock plots.json 로드 실패, 런타임 생성으로 대체: {}", e.getMessage());
+            return generateMockPlots(idea);
+        }
+    }
+
     private List<ProjectResponse.PlotResponse> generateMockPlots(String idea) {
         List<ProjectResponse.PlotResponse> plots = new ArrayList<>();
         plots.add(createMockPlot(idea, "plot-1", "드라마틱 내러티브", "\"" + idea + "\"의 감정적인 해석으로, 캐릭터의 깊이와 시각적 스토리텔링에 초점을 맞춘 드라마틱한 전개", "드라마틱 / 감성적", 5));

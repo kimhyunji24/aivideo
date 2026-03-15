@@ -1,6 +1,6 @@
 "use client"
 
-import type { ProjectState, Scene, SceneElements, SceneParams } from "@/lib/types"
+import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -8,10 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Slider } from "@/components/ui/slider"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
+import { FrameEdit } from "@/components/steps/frame-edit"
 import {
   ArrowRight, Plus, Trash2, Clock, RefreshCw, Layers,
   Sparkles, Wand2, CheckCircle2, Code2, Loader2, Pin,
@@ -52,10 +49,6 @@ const ELEMENTS_CONFIG: { key: keyof SceneElements; label: string; enLabel: strin
   { key: "subCharacter",  label: "보조",   enLabel: "Supporting",  icon: "👥", placeholder: "e.g. mysterious stranger" },
   { key: "mood",          label: "분위기", enLabel: "Mood",        icon: "✨", placeholder: "e.g. tense, suspenseful" },
 ]
-
-const SAMPLERS = ["Euler a", "DPM++ 2M Karras", "DDIM", "LMS", "Heun"]
-
-const DEFAULT_PARAMS: SceneParams = { seed: 42, steps: 30, cfgScale: 7.5, sampler: "Euler a" }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -100,6 +93,7 @@ function guessElementsFromDescription(description: string): Partial<SceneElement
 export function Storyboard({ project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect }: StoryboardProps) {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
+  const [isEditingFrame, setIsEditingFrame] = useState(false)
 
   // Double-prompting animation state
   const [expandStage, setExpandStage] = useState(0)   // 0=idle 1=analyzing 2=revealing 3=assembling 4=done
@@ -116,28 +110,10 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
 
   // ── Scene updaters ────────────────────────────────────────────────────────
 
-  const updateElement = (key: keyof SceneElements, value: string) => {
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) =>
-        i === selectedSceneIndex ? { ...s, elements: { ...s.elements, [key]: value } } : s
-      ),
-    }))
-  }
-
   const updateField = (field: keyof Scene, value: unknown) => {
     setProject((prev) => ({
       ...prev,
       scenes: prev.scenes.map((s, i) => (i === selectedSceneIndex ? { ...s, [field]: value } : s)),
-    }))
-  }
-
-  const updateParam = (field: keyof SceneParams, value: unknown) => {
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) =>
-        i === selectedSceneIndex ? { ...s, params: { ...DEFAULT_PARAMS, ...s.params, [field]: value } } : s
-      ),
     }))
   }
 
@@ -238,7 +214,18 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
   }
 
   if (!selectedScene) return null
-  const sceneParams = { ...DEFAULT_PARAMS, ...selectedScene.params }
+  if (isEditingFrame) {
+    return (
+      <FrameEdit
+        project={project}
+        setProject={setProject}
+        sceneIndex={selectedSceneIndex}
+        onComplete={() => setIsEditingFrame(false)}
+        onBack={() => setIsEditingFrame(false)}
+        onNext={onNext}
+      />
+    )
+  }
 
   return (
     <div className="h-[calc(100vh-180px)] flex flex-col">
@@ -247,7 +234,7 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
         <div>
           <h2 className="text-lg font-semibold">스토리보드</h2>
           <p className="text-sm text-muted-foreground">
-            {project.mode === "beginner" ? "자연어로 씬을 묘사하면 AI가 프롬프트를 완성합니다" : "10대 요소를 직접 편집하고 파라미터를 세밀하게 조정하세요"}
+            자연어로 씬을 묘사하면 AI가 프롬프트를 완성합니다
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -341,38 +328,38 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
                     onChange={(e) => updateField("title", e.target.value)}
                     className="h-8 text-sm font-semibold w-48 bg-transparent border-transparent hover:border-border focus:border-border"
                   />
-                  <Button
-                    size="sm"
-                    onClick={() => handleGenerateImage(selectedScene.id)}
-                    disabled={selectedScene.status === "generating" || isGeneratingImage}
-                    className="h-8 gap-2 bg-purple-600 hover:bg-purple-500 text-white border-0"
-                  >
-                    {(selectedScene.status === "generating" || isGeneratingImage)
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <Sparkles className="h-3.5 w-3.5" />}
-                    이미지 생성
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditingFrame(true)}
+                      className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50"
+                    >
+                      프레임 수정/추가
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleGenerateImage(selectedScene.id)}
+                      disabled={selectedScene.status === "generating" || isGeneratingImage}
+                      className="h-8 gap-2 bg-purple-600 hover:bg-purple-500 text-white border-0"
+                    >
+                      {(selectedScene.status === "generating" || isGeneratingImage)
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Sparkles className="h-3.5 w-3.5" />}
+                      이미지 생성
+                    </Button>
+                  </div>
                 </div>
 
-                {/* Mode panels */}
-                {project.mode === "beginner"
-                  ? <BeginnerPanel
-                      scene={selectedScene}
-                      expandStage={expandStage}
-                      revealedCount={revealedCount}
-                      rawPrompt={rawPrompt}
-                      onDescriptionChange={(v) => updateField("description", v)}
-                      onStyleSelect={(id) => { updateField("styleChip", id); setExpandStage(0) }}
-                      onDoublePrompt={handleDoublePrompt}
-                    />
-                  : <ExpertPanel
-                      scene={selectedScene}
-                      sceneParams={sceneParams}
-                      rawPrompt={rawPrompt}
-                      onElementChange={updateElement}
-                      onParamChange={updateParam}
-                    />
-                }
+                <BeginnerPanel
+                  scene={selectedScene}
+                  expandStage={expandStage}
+                  revealedCount={revealedCount}
+                  rawPrompt={rawPrompt}
+                  onDescriptionChange={(v) => updateField("description", v)}
+                  onStyleSelect={(id) => { updateField("styleChip", id); setExpandStage(0) }}
+                  onDoublePrompt={handleDoublePrompt}
+                />
               </CardContent>
             </ScrollArea>
           </Card>
@@ -513,119 +500,6 @@ function BeginnerPanel({ scene, expandStage, revealedCount, rawPrompt, onDescrip
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ─── Expert Panel ─────────────────────────────────────────────────────────────
-
-interface ExpertPanelProps {
-  scene: Scene
-  sceneParams: SceneParams
-  rawPrompt: string
-  onElementChange: (key: keyof SceneElements, value: string) => void
-  onParamChange: (field: keyof SceneParams, value: unknown) => void
-}
-
-function ExpertPanel({ scene, sceneParams, rawPrompt, onElementChange, onParamChange }: ExpertPanelProps) {
-  return (
-    <div className="space-y-6">
-      {/* 10-element grid */}
-      <div className="space-y-3">
-        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-          10대 핵심 요소
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          {ELEMENTS_CONFIG.map((el) => (
-            <div key={el.key} className="space-y-1">
-              <label className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <span>{el.icon}</span>
-                <span className="font-medium">{el.label}</span>
-                <span className="text-muted-foreground/50 text-[9px]">/ {el.enLabel}</span>
-              </label>
-              <Input
-                value={(scene.elements as any)[el.key]}
-                onChange={(e) => onElementChange(el.key, e.target.value)}
-                placeholder={el.placeholder}
-                className="h-7 text-xs bg-muted/20 border-border/50 placeholder:text-muted-foreground/40"
-              />
-            </div>
-          ))}
-        </div>
-
-        {/* Story – full width */}
-        <div className="space-y-1">
-          <label className="text-[10px] text-muted-foreground flex items-center gap-1">
-            <span>📝</span>
-            <span className="font-medium">스토리 맥락</span>
-            <span className="text-muted-foreground/50 text-[9px]">/ Story Context</span>
-          </label>
-          <Textarea
-            value={scene.elements.story}
-            onChange={(e) => onElementChange("story", e.target.value)}
-            placeholder="이 씬의 스토리 맥락을 입력하세요 (한글/영문 가능)"
-            rows={2}
-            className="text-xs bg-muted/20 border-border/50 resize-none"
-          />
-        </div>
-      </div>
-
-      {/* Parameters */}
-      <div className="space-y-3">
-        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-          생성 파라미터
-        </label>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Seed</span>
-              <span className="font-mono text-foreground/70">{sceneParams.seed}</span>
-            </div>
-            <Slider value={[sceneParams.seed]} onValueChange={([v]) => onParamChange("seed", v)}
-              min={0} max={9999} step={1} className="h-1.5" />
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Steps</span>
-              <span className="font-mono text-foreground/70">{sceneParams.steps}</span>
-            </div>
-            <Slider value={[sceneParams.steps]} onValueChange={([v]) => onParamChange("steps", v)}
-              min={10} max={50} step={1} className="h-1.5" />
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">CFG Scale</span>
-              <span className="font-mono text-foreground/70">{sceneParams.cfgScale.toFixed(1)}</span>
-            </div>
-            <Slider value={[sceneParams.cfgScale]} onValueChange={([v]) => onParamChange("cfgScale", v)}
-              min={1} max={20} step={0.5} className="h-1.5" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">Sampler</label>
-            <Select value={sceneParams.sampler} onValueChange={(v) => onParamChange("sampler", v)}>
-              <SelectTrigger className="h-7 text-xs bg-muted/20 border-border/50">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SAMPLERS.map((s) => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
-
-      {/* Raw Prompt */}
-      <div className="space-y-2">
-        <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-          <Code2 className="h-3 w-3" /> Raw Prompt (실시간 조합)
-        </label>
-        <div className="rounded-lg bg-muted/20 border border-border/40 p-3 min-h-[56px]">
-          {rawPrompt
-            ? <p className="text-[11px] font-mono leading-relaxed text-foreground/70 italic break-words">{rawPrompt}</p>
-            : <p className="text-xs text-muted-foreground/50">요소를 입력하면 프롬프트가 자동 조합됩니다...</p>
-          }
-        </div>
-      </div>
     </div>
   )
 }
