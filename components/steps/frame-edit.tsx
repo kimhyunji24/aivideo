@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Sparkles, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Sparkles, Loader2, Plus, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectState, Frame } from "@/lib/types"
 
@@ -48,10 +48,7 @@ export function FrameEdit({
   useEffect(() => {
     if (frames.length === 0) {
       const defaultFrames: Frame[] = [
-        { id: "f1", script: scene.description || "", imageUrl: scene.imageUrl },
-        { id: "f2", script: "", imageUrl: undefined },
-        { id: "f3", script: "", imageUrl: undefined },
-        { id: "f4", script: "", imageUrl: undefined },
+        { id: `f-${Date.now()}`, script: scene.description || "", imageUrl: scene.imageUrl },
       ]
       setProject((prev) => ({
         ...prev,
@@ -82,6 +79,45 @@ export function FrameEdit({
     }))
   }
 
+  const handleAddFrame = () => {
+    if (frames.length >= 4) return
+    setProject((prev) => ({
+      ...prev,
+      scenes: prev.scenes.map((s, i) => {
+        if (i !== sceneIndex || !s.frames) return s
+        const newFrames = [...s.frames, { id: `f-${Date.now()}`, script: "", imageUrl: undefined }]
+        return { ...s, frames: newFrames }
+      }),
+    }))
+    setSelectedFrameIndex(frames.length)
+  }
+
+  const handleRemoveFrame = (idx: number) => {
+    if (frames.length <= 1) return
+    setProject((prev) => ({
+      ...prev,
+      scenes: prev.scenes.map((s, i) => {
+        if (i !== sceneIndex || !s.frames) return s
+        const newFrames = [...s.frames]
+        newFrames.splice(idx, 1)
+        return { ...s, frames: newFrames }
+      }),
+    }))
+    if (selectedFrameIndex >= frames.length - 1) {
+      setSelectedFrameIndex(Math.max(0, frames.length - 2))
+    }
+  }
+
+  const handleComplete = () => {
+    if (frames.length === 1) {
+      const confirmProceed = window.confirm(
+        "시작(start)과 끝(end) 프레임 없이 1개의 프레임만으로 영상 제작 시, 원하는 결과가 나오지 않을 수 있습니다.\n\n그래도 완료하시겠습니까?"
+      )
+      if (!confirmProceed) return
+    }
+    onComplete()
+  }
+
   if (!currentFrame) {
     return (
       <div className="h-[calc(100vh-180px)] flex items-center justify-center text-sm text-muted-foreground">
@@ -102,7 +138,7 @@ export function FrameEdit({
         <Button
           variant="outline"
           size="sm"
-          onClick={onComplete}
+          onClick={handleComplete}
           className="gap-2 text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:text-blue-700"
         >
           <Edit3 className="h-4 w-4" />
@@ -142,7 +178,7 @@ export function FrameEdit({
 
             <div className="flex items-center gap-4">
               {frames.map((frame, idx) => (
-                <div key={frame.id} className="flex items-center gap-4 flex-1">
+                <div key={frame.id} className="flex items-center gap-4 flex-1 relative group">
                   <button
                     onClick={() => setSelectedFrameIndex(idx)}
                     className={cn(
@@ -161,20 +197,52 @@ export function FrameEdit({
                       </div>
                     )}
                   </button>
-                  {idx < frames.length - 1 && <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />}
+                  {frames.length > 1 && safeSelectedFrameIndex === idx && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRemoveFrame(idx)
+                      }}
+                      className="absolute -top-2 -right-2 bg-red-500/90 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-600 shadow-sm"
+                      title="프레임 삭제"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                  {(idx < frames.length - 1 || frames.length < 4) && <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />}
                 </div>
               ))}
+              {frames.length < 4 && (
+                <div className="flex items-center gap-4 flex-1">
+                  <button
+                    onClick={handleAddFrame}
+                    className="relative aspect-video w-full rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 hover:border-gray-400 transition-all focus:outline-none"
+                    title="프레임 추가"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="flex justify-between mt-2 px-8">
+            <div className="flex items-center gap-4 mt-2">
               {frames.map((_, idx) => (
-                <span
-                  key={idx}
-                  className={cn("text-[11px] font-medium", safeSelectedFrameIndex === idx ? "text-blue-600" : "text-gray-400")}
-                >
-                  F{idx + 1}
-                </span>
+                <div key={idx} className="flex items-center gap-4 flex-1">
+                  <div className="w-full text-center">
+                    <span className={cn("text-[11px] font-medium", safeSelectedFrameIndex === idx ? "text-blue-600" : "text-gray-400")}>
+                      F{idx + 1}
+                    </span>
+                  </div>
+                  {(idx < frames.length - 1 || frames.length < 4) && <div className="w-4 flex-shrink-0" />}
+                </div>
               ))}
+              {frames.length < 4 && (
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-full text-center">
+                    <span className="text-[11px] font-medium text-gray-400">프레임 추가</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </Card>
