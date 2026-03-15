@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Slider } from "@/components/ui/slider"
+import { FrameEdit } from "@/components/steps/frame-edit"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
@@ -100,6 +101,7 @@ function guessElementsFromDescription(description: string): Partial<SceneElement
 export function Storyboard({ project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect }: StoryboardProps) {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
+  const [isEditingFrame, setIsEditingFrame] = useState(false)
 
   // Double-prompting animation state
   const [expandStage, setExpandStage] = useState(0)   // 0=idle 1=analyzing 2=revealing 3=assembling 4=done
@@ -240,6 +242,19 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
   if (!selectedScene) return null
   const sceneParams = { ...DEFAULT_PARAMS, ...selectedScene.params }
 
+  if (isEditingFrame) {
+    return (
+      <FrameEdit
+        project={project}
+        setProject={setProject}
+        sceneIndex={selectedSceneIndex}
+        onComplete={() => setIsEditingFrame(false)}
+        onBack={() => setIsEditingFrame(false)}
+        onNext={onNext}
+      />
+    )
+  }
+
   return (
     <div className="h-[calc(100vh-180px)] flex flex-col">
       {/* Header */}
@@ -341,17 +356,27 @@ export function Storyboard({ project, setProject, onNext, onBack, selectedSceneI
                     onChange={(e) => updateField("title", e.target.value)}
                     className="h-8 text-sm font-semibold w-48 bg-transparent border-transparent hover:border-border focus:border-border"
                   />
-                  <Button
-                    size="sm"
-                    onClick={() => handleGenerateImage(selectedScene.id)}
-                    disabled={selectedScene.status === "generating" || isGeneratingImage}
-                    className="h-8 gap-2 bg-purple-600 hover:bg-purple-500 text-white border-0"
-                  >
-                    {(selectedScene.status === "generating" || isGeneratingImage)
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <Sparkles className="h-3.5 w-3.5" />}
-                    이미지 생성
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditingFrame(true)}
+                      className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50"
+                    >
+                      프레임 수정/추가
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleGenerateImage(selectedScene.id)}
+                      disabled={selectedScene.status === "generating" || isGeneratingImage}
+                      className="h-8 gap-2 bg-purple-600 hover:bg-purple-500 text-white border-0"
+                    >
+                      {(selectedScene.status === "generating" || isGeneratingImage)
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Sparkles className="h-3.5 w-3.5" />}
+                      이미지 생성
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Mode panels */}
