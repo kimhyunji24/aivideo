@@ -1,16 +1,23 @@
 "use client"
 
-import { useCallback, useState } from "react"
-import { ChevronLeft, ChevronRight, FileText, ArrowLeft } from "lucide-react"
+import { useCallback, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ChevronLeft, ChevronRight, FileText } from "lucide-react"
 import { FrameEdit } from "@/components/steps/frame-edit"
 import type { ProjectState } from "@/lib/types"
 
-interface EditWorkspaceProps {
+type EditScene = {
+  id: string | number
+  title: string
+  description: string
+}
+
+type ReturnState = {
   project: ProjectState
-  setProject: React.Dispatch<React.SetStateAction<ProjectState>>
+  currentStep: number
+  planPhase: "chat" | "summary" | "workspace"
+  readyToMerge: boolean
   selectedSceneIndex: number
-  onSceneSelect: (index: number) => void
-  onClose: () => void
 }
 
 const ELEMENT_FIELDS = ["주제", "동작", "배경", "비율", "색감", "조명", "구도", "날씨", "시간"]
@@ -18,32 +25,112 @@ const DEFAULT_DETAIL_VALUES = ELEMENT_FIELDS.reduce<Record<string, string>>((acc
   acc[field] = ""
   return acc
 }, {})
+const EMPTY_ELEMENTS = {
+  mainCharacter: "",
+  subCharacter: "",
+  action: "",
+  pose: "",
+  background: "",
+  time: "",
+  composition: "",
+  lighting: "",
+  mood: "",
+  story: "",
+}
 
-export function EditWorkspace({
-  project,
-  setProject,
-  selectedSceneIndex,
-  onSceneSelect,
-  onClose,
-}: EditWorkspaceProps) {
+function parseScenes(raw: string | null): EditScene[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item) => item && typeof item.title === "string")
+      .map((item, index) => ({
+        id: item.id ?? index,
+        title: item.title,
+        description: typeof item.description === "string" ? item.description : "",
+      }))
+  } catch {
+    return []
+  }
+}
+
+function loadReturnState(): ReturnState | null {
+  if (typeof window === "undefined") return null
+  const raw = sessionStorage.getItem("aivideo:return-state")
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as ReturnState
+  } catch {
+    return null
+  }
+}
+
+function buildFallbackProject(scenes: EditScene[]): ProjectState {
+  return {
+    idea: "",
+    logline: "",
+    characters: [],
+    plotPlan: null,
+    generatedPlots: [],
+    selectedPlot: null,
+    scenes: scenes.map((scene, index) => ({
+      id: scene.id,
+      title: scene.title,
+      description: scene.description,
+      prompt: scene.description,
+      duration: 3,
+      status: "pending",
+      elements: { ...EMPTY_ELEMENTS, story: scene.description },
+    })),
+    mode: "beginner",
+  }
+}
+
+export default function SceneEditPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const queryScenes = useMemo(() => parseScenes(searchParams.get("scenes")), [searchParams])
+  const queryIndex = Number.parseInt(searchParams.get("sceneIndex") ?? "0", 10)
+
+  const initialReturnState = loadReturnState()
+  const [project, setProject] = useState<ProjectState>(
+    initialReturnState?.project ?? buildFallbackProject(queryScenes)
+  )
+  const [planPhase, setPlanPhase] = useState<"chat" | "summary" | "workspace">(initialReturnState?.planPhase ?? "workspace")
+  const [readyToMerge, setReadyToMerge] = useState(Boolean(initialReturnState?.readyToMerge))
+  const [selectedIndex, setSelectedIndex] = useState(() => {
+    if (typeof initialReturnState?.selectedSceneIndex === "number") return initialReturnState.selectedSceneIndex
+    return Number.isNaN(queryIndex) ? 0 : queryIndex
+  })
   const [detailByScene, setDetailByScene] = useState<Record<string, Record<string, string>>>({})
   const [frameIndexByScene, setFrameIndexByScene] = useState<Record<string, number>>({})
   const [isEditingFrame, setIsEditingFrame] = useState(false)
 
-  const safeSelectedIndex = Math.max(0, Math.min(selectedSceneIndex, Math.max(0, project.scenes.length - 1)))
-  const selectedScene = project.scenes[safeSelectedIndex]
-  if (!selectedScene) return null
-
-  const selectedSceneKey = String(selectedScene.id)
+  const scenes = project.scenes.length > 0 ? project.scenes : queryScenes
+  const safeSelectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, scenes.length - 1)))
+  const selectedScene = scenes[safeSelectedIndex]
+  const selectedSceneKey = String(selectedScene?.id ?? safeSelectedIndex)
   const selectedDetail = detailByScene[selectedSceneKey] ?? DEFAULT_DETAIL_VALUES
-  const frames = selectedScene.frames ?? []
+  const frames = selectedScene?.frames ?? []
   const totalFrames = Math.max(1, frames.length)
   const currentFrameIndex = Math.max(
     0,
     Math.min(frameIndexByScene[selectedSceneKey] ?? 0, Math.max(0, totalFrames - 1))
   )
   const currentFrame = frames[currentFrameIndex]
-  const fixedSceneScript = selectedScene.description || "스크립트가 없습니다."
+
+  const persistAndReturn = () => {
+    const returnState: ReturnState = {
+      project,
+      currentStep: 2,
+      planPhase,
+      readyToMerge,
+      selectedSceneIndex: safeSelectedIndex,
+    }
+    sessionStorage.setItem("aivideo:return-state", JSON.stringify(returnState))
+    router.push("/?restore=1")
+  }
 
   const handleDetailChange = (field: string, value: string) => {
     setDetailByScene((prev) => ({
@@ -72,7 +159,7 @@ export function EditWorkspace({
 
   if (isEditingFrame) {
     return (
-      <div className="h-full bg-white p-4 sm:p-6">
+      <main className="h-screen bg-white p-4 sm:p-6">
         <FrameEdit
           project={project}
           setProject={setProject}
@@ -83,20 +170,19 @@ export function EditWorkspace({
           selectedFrameIndex={currentFrameIndex}
           onSelectedFrameIndexChange={handleSelectedFrameIndexChange}
         />
-      </div>
+      </main>
     )
   }
 
   return (
-    <div className="h-full overflow-auto bg-[#f6f6f6] text-[#141414] px-3 py-4 sm:px-5 sm:py-6">
+    <main className="min-h-screen bg-[#f6f6f6] text-[#141414] px-3 py-4 sm:px-5 sm:py-6">
       <div className="mx-auto w-full max-w-[1100px] space-y-4 sm:space-y-5">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">2. 시각화</h1>
           <button
-            onClick={onClose}
+            onClick={persistAndReturn}
             className="inline-flex items-center gap-1 rounded-full border border-[#d9d9d9] bg-white px-3 py-1.5 text-xs font-medium hover:bg-[#f2f2f2]"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
             수정 완료
           </button>
         </div>
@@ -118,7 +204,7 @@ export function EditWorkspace({
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-3 rounded-xl border border-[#dedede] bg-white p-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold">{selectedScene.title}</h2>
+                <h2 className="text-base font-semibold">{selectedScene?.title ?? "씬 제목"}</h2>
                 <button
                   onClick={() => setIsEditingFrame(true)}
                   className="rounded-full border border-[#dadada] bg-white px-3 py-1 text-xs font-medium"
@@ -132,7 +218,7 @@ export function EditWorkspace({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={currentFrame.imageUrl}
-                      alt={`${selectedScene.title} 프레임 ${currentFrameIndex + 1}`}
+                      alt={`${selectedScene?.title ?? "씬"} 프레임 ${currentFrameIndex + 1}`}
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -146,7 +232,7 @@ export function EditWorkspace({
                 <button
                   onClick={() => moveFrame(-1)}
                   disabled={currentFrameIndex === 0}
-                  className="grid h-7 w-7 place-items-center rounded-full border border-[#d8d8d8] bg-white"
+                  className="grid h-7 w-7 place-items-center rounded-full border border-[#d8d8d8] bg-white disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -154,7 +240,7 @@ export function EditWorkspace({
                 <button
                   onClick={() => moveFrame(1)}
                   disabled={currentFrameIndex >= totalFrames - 1}
-                  className="grid h-7 w-7 place-items-center rounded-full border border-[#d8d8d8] bg-white"
+                  className="grid h-7 w-7 place-items-center rounded-full border border-[#d8d8d8] bg-white disabled:opacity-40"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
@@ -167,7 +253,7 @@ export function EditWorkspace({
                 스크립트
               </h3>
               <div className="h-[320px] rounded-lg border border-[#e1e1e1] bg-[#fcfcfc] p-3 text-xs leading-5 text-[#555] whitespace-pre-wrap">
-                {fixedSceneScript}
+                {selectedScene?.description || "스크립트가 없습니다."}
               </div>
             </aside>
           </div>
@@ -194,13 +280,13 @@ export function EditWorkspace({
 
         <section className="rounded-2xl bg-black p-3 sm:p-4">
           <div className="grid grid-cols-1 gap-2 text-xs font-semibold text-white sm:grid-cols-2 lg:grid-cols-4">
-            {project.scenes.length === 0 && (
+            {scenes.length === 0 && (
               <div className="rounded-full bg-[#111] px-3 py-2 ring-1 ring-white/30">S#1 씬 없음</div>
             )}
-            {project.scenes.map((scene, index) => (
+            {scenes.map((scene, index) => (
               <button
                 key={scene.id}
-                onClick={() => onSceneSelect(index)}
+                onClick={() => setSelectedIndex(index)}
                 className={`rounded-full px-3 py-2 text-left ${
                   index === safeSelectedIndex ? "bg-white text-black" : "bg-[#111] text-white ring-1 ring-white/30"
                 }`}
@@ -211,6 +297,6 @@ export function EditWorkspace({
           </div>
         </section>
       </div>
-    </div>
+    </main>
   )
 }
