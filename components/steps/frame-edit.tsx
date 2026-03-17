@@ -139,7 +139,7 @@ export function FrameEdit({
           variant="outline"
           size="sm"
           onClick={handleComplete}
-          className="gap-2 text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:text-blue-700"
+          className="gap-2 px-4 shadow-sm border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-black rounded-lg press-down"
         >
           <Edit3 className="h-4 w-4" />
           수정 완료
@@ -157,10 +157,30 @@ export function FrameEdit({
                 className="w-full h-full object-cover rounded-lg"
               />
             ) : (
-              <div className="flex flex-col items-center text-muted-foreground/50">
-                <ImageIcon className="w-16 h-16 mb-2 opacity-50" />
-                <p className="text-sm font-medium">이미지가 없습니다</p>
-              </div>
+              <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-black/5 transition-colors rounded-lg group">
+                <ImageIcon className="w-16 h-16 mb-2 opacity-50 group-hover:opacity-80 transition-opacity text-gray-500" />
+                <p className="text-sm font-medium text-gray-500 group-hover:text-gray-700">여기를 클릭하여 이미지 업로드</p>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      const url = URL.createObjectURL(file)
+                      setProject((prev) => ({
+                        ...prev,
+                        scenes: prev.scenes.map((s, i) => {
+                          if (i !== sceneIndex || !s.frames) return s
+                          const newFrames = [...s.frames]
+                          newFrames[safeSelectedFrameIndex] = { ...newFrames[safeSelectedFrameIndex], imageUrl: url }
+                          return { ...s, frames: newFrames }
+                        })
+                      }))
+                    }
+                  }} 
+                />
+              </label>
             )}
             <div className="absolute top-6 left-6">
               <Badge className="bg-black/70 hover:bg-black/70 text-white backdrop-blur-md border-0 gap-1.5 py-1.5 px-3">
@@ -172,8 +192,8 @@ export function FrameEdit({
 
           <div className="p-4 bg-white border-t">
             <div className="flex items-center gap-2 mb-3">
-              <input type="checkbox" id="frame-flow" className="rounded border-gray-300 text-blue-600 h-3 w-3" defaultChecked />
-              <label htmlFor="frame-flow" className="text-xs font-medium text-gray-700">프레임 흐름 (최대 4개)</label>
+              <input type="checkbox" id="frame-flow" className="rounded border-gray-300 text-black h-3 w-3 focus:ring-black" defaultChecked />
+              <label htmlFor="frame-flow" className="text-xs font-semibold text-gray-700 tracking-wide">프레임 흐름 (최대 4개)</label>
             </div>
 
             <div className="flex items-center gap-4">
@@ -182,10 +202,10 @@ export function FrameEdit({
                   <button
                     onClick={() => setSelectedFrameIndex(idx)}
                     className={cn(
-                      "relative aspect-video w-full rounded-lg overflow-hidden border-2 transition-all p-0 focus:outline-none",
+                      "relative aspect-video w-full rounded-lg overflow-hidden border transition-all p-0 focus:outline-none",
                       safeSelectedFrameIndex === idx
-                        ? "border-blue-500 ring-2 ring-blue-500/20 shadow-sm"
-                        : "border-transparent bg-gray-100 hover:bg-gray-200 opacity-70 hover:opacity-100"
+                        ? "border-black ring-2 ring-black/10 shadow-md transform scale-[1.02]"
+                        : "border-gray-200 bg-gray-50 hover:bg-gray-100 opacity-60 hover:opacity-100"
                     )}
                   >
                     {frame.imageUrl ? (
@@ -229,7 +249,7 @@ export function FrameEdit({
               {frames.map((_, idx) => (
                 <div key={idx} className="flex items-center gap-4 flex-1">
                   <div className="w-full text-center">
-                    <span className={cn("text-[11px] font-medium", safeSelectedFrameIndex === idx ? "text-blue-600" : "text-gray-400")}>
+                    <span className={cn("text-[11px] font-bold tracking-wider", safeSelectedFrameIndex === idx ? "text-black" : "text-gray-400")}>
                       F{idx + 1}
                     </span>
                   </div>
@@ -248,12 +268,12 @@ export function FrameEdit({
         </Card>
 
         <Card className="col-span-1 lg:col-span-4 flex flex-col border-border/60 shadow-sm glass-card">
-          <div className="p-4 border-b flex items-center justify-between bg-gray-50/50 rounded-t-xl">
+          <div className="p-4 border-b flex items-center justify-between bg-white rounded-t-xl">
             <div className="flex items-center gap-2">
-              <span className="font-serif text-lg font-bold text-gray-700">T</span>
-              <span className="font-semibold text-sm">스크립트</span>
+              <span className="font-serif text-lg font-bold text-black">T</span>
+              <span className="font-semibold text-sm tracking-wide text-gray-800">스크립트</span>
             </div>
-            <Badge className="bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-50">F{safeSelectedFrameIndex + 1} 종속</Badge>
+            <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 font-medium">F{safeSelectedFrameIndex + 1} 종속</Badge>
           </div>
           <ScrollArea className="flex-1 p-4 flex flex-col">
             <Textarea
@@ -270,7 +290,7 @@ export function FrameEdit({
                   setTimeout(() => setIsGenerating(false), 2000)
                 }}
                 disabled={isGenerating || !currentFrame.script.trim()}
-                className="w-full gap-2 bg-purple-600 hover:bg-purple-500 text-white shadow-sm h-10"
+                className="w-full gap-2 bg-black hover:bg-gray-800 text-white shadow-md h-11 rounded-lg press-down text-sm font-semibold"
               >
                 {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 F{safeSelectedFrameIndex + 1} 프레임 생성하기

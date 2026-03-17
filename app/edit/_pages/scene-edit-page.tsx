@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ChevronLeft, ChevronRight, FileText } from "lucide-react"
+import { ChevronLeft, ChevronRight, FileText, Box } from "lucide-react"
 import { FrameEdit } from "@/components/steps/frame-edit"
 import type { ProjectState } from "@/lib/types"
 
@@ -187,19 +187,6 @@ export default function SceneEditPage() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          {[1, 2, 3].map((step, index) => (
-            <div
-              key={step}
-              className={`grid h-9 w-9 place-items-center rounded-full border text-sm font-semibold ${
-                index === 0 ? "border-black bg-black text-white" : "border-[#c9c9c9] bg-white text-[#666]"
-              }`}
-            >
-              {step}
-            </div>
-          ))}
-        </div>
-
         <section className="rounded-2xl border border-[#d5d5d5] bg-[#f8f8f8] px-3 py-3 sm:px-5 sm:py-5">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-3 rounded-xl border border-[#dedede] bg-white p-3">
@@ -269,7 +256,27 @@ export default function SceneEditPage() {
                       value={selectedDetail[label] ?? ""}
                       onChange={(e) => handleDetailChange(label, e.target.value)}
                       placeholder="(default)"
-                      className="h-9 w-full rounded-xl border border-[#dfdfdf] bg-[#fafafa] px-3 text-sm text-[#555] outline-none focus:border-[#bfbfbf]"
+                      className="h-9 w-full rounded-xl border border-[#dfdfdf] bg-[#fafafa] px-3 text-sm text-[#555] outline-none focus:border-[#bfbfbf] neumo-inset"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                <Box className="h-4 w-4" />
+                사물
+              </h3>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {["오브젝트1", "오브젝트2"].map((label) => (
+                  <label key={label} className="space-y-1">
+                    <span className="text-xs text-[#666]">{label}</span>
+                    <input
+                      value={selectedDetail[label] ?? ""}
+                      onChange={(e) => handleDetailChange(label, e.target.value)}
+                      placeholder="(default)"
+                      className="h-9 w-full rounded-xl border border-[#dfdfdf] bg-[#fafafa] px-3 text-sm text-[#555] outline-none focus:border-[#bfbfbf] neumo-inset"
                     />
                   </label>
                 ))}
@@ -278,7 +285,7 @@ export default function SceneEditPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl bg-black p-3 sm:p-4">
+        <section className="rounded-2xl p-3 sm:p-4 glass-surface-dark">
           <div className="grid grid-cols-1 gap-2 text-xs font-semibold text-white sm:grid-cols-2 lg:grid-cols-4">
             {scenes.length === 0 && (
               <div className="rounded-full bg-[#111] px-3 py-2 ring-1 ring-white/30">S#1 씬 없음</div>

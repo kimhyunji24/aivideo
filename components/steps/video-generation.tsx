@@ -126,10 +126,10 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 px-4 sm:px-0">
+    <div className="w-full max-w-5xl mx-auto space-y-6 px-4 sm:px-0 animate-fade-up">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold">영상 생성</h2>
+          <h2 className="text-xl font-semibold text-black">영상 생성</h2>
           <p className="text-sm text-muted-foreground">
             이미지를 영상 클립으로 애니메이션화합니다
           </p>
@@ -143,8 +143,8 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
       </div>
 
       {/* Progress Summary */}
-      <Card className="glass-card">
-        <CardContent className="py-4">
+      <Card className="glass-surface">
+        <CardContent className="py-4 px-5">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -169,7 +169,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                     <TooltipContent>모든 영상 재생성</TooltipContent>
                   </Tooltip>
                 ) : (
-                  <Button size="sm" className="h-8" onClick={generateVideos}>
+                  <Button size="sm" className="h-8 bg-black hover:bg-gray-800 text-white press-down" onClick={generateVideos}>
                     <Zap className="h-3.5 w-3.5 mr-2" />
                     {completedCount > 0 ? "계속" : "생성 시작"}
                   </Button>
@@ -188,7 +188,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
 
           return (
             <Card key={scene.id} className={cn(
-              "glass-card group",
+              "glass-surface group hover-lift",
               scene.status === "error" && !scene.videoUrl && "border-destructive/50"
             )}>
               <CardContent className="p-3">
@@ -301,10 +301,10 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
 
       {/* Navigation */}
       <div className="flex justify-between pt-4 border-t">
-        <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
+        <Button variant="ghost" size="sm" onClick={onBack} className="h-8 press-down">
           이전
         </Button>
-        <Button size="sm" onClick={onNext} disabled={completedCount === 0} className="h-8">
+        <Button size="sm" onClick={onNext} disabled={completedCount === 0} className="h-8 bg-black hover:bg-gray-800 text-white press-down">
           최종 병합으로 계속
           <ArrowRight className="h-3.5 w-3.5 ml-2" />
         </Button>

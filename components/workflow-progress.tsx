@@ -41,9 +41,9 @@ export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowPr
                     <div
                       className={cn(
                         "w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium border transition-colors",
-                        isCompleted && "bg-foreground border-foreground text-background",
-                        isCurrent && "border-foreground text-foreground",
-                        !isCompleted && !isCurrent && "border-muted-foreground/30 text-muted-foreground"
+                        isCompleted && "bg-black border-black text-white",
+                        isCurrent && "border-black text-black step-glow",
+                        !isCompleted && !isCurrent && "border-gray-300 text-gray-400"
                       )}
                     >
                       {isCompleted ? <Check className="h-3 w-3" /> : step.id}
@@ -51,8 +51,8 @@ export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowPr
                     <div className="text-left">
                       <p className={cn(
                         "text-xs font-medium",
-                        isCurrent && "text-foreground",
-                        !isCurrent && !isCompleted && "text-muted-foreground"
+                        isCurrent && "text-black font-semibold",
+                        !isCurrent && !isCompleted && "text-gray-400"
                       )}>
                         {step.name}
                       </p>
@@ -64,7 +64,7 @@ export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowPr
               {index < steps.length - 1 && (
                 <div className={cn(
                   "flex-1 h-px mx-3",
-                  isCompleted ? "bg-foreground" : "bg-muted-foreground/20"
+                  isCompleted ? "bg-black" : "bg-gray-200"
                 )} />
               )}
             </div>

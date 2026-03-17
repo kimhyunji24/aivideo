@@ -2,8 +2,9 @@
 
 import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  RefreshCw, Download, FileText, SlidersHorizontal,
+  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check
 } from "lucide-react"
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
@@ -125,20 +126,56 @@ export function Storyboard({
   }
 
   return (
-    <div className="storyboard-root">
-
-      {/* ── 개별 씬 인디케이터 (1, 2, 3...) ── */}
-      <div className="storyboard-indicators">
-        {project.scenes.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => handleSceneSelect(i)}
-            className={cn("page-indicator", selectedSceneIndex === i ? "active" : "inactive")}
-          >
-            {i + 1}
-          </button>
-        ))}
+    <div className="storyboard-root bg-white h-full flex flex-col">
+      {/* ── 상단: 타이틀 및 탭 ── */}
+      <div className="flex-shrink-0 border-b border-[#E0E0E0] bg-white">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between max-w-[1440px] mx-auto w-full">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 tracking-tight">2. 시각화</h1>
+          <div className="flex items-center gap-1 rounded-lg overflow-hidden border border-[#E0E0E0] w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8] rounded-l-md"
+            >
+              기획
+            </button>
+            <button
+              type="button"
+              className="px-4 py-2 text-sm font-medium text-white bg-black"
+            >
+              시각화
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8] rounded-r-md"
+            >
+              영상화
+            </button>
+          </div>
+        </div>
       </div>
+
+      <div className="flex-1 overflow-auto flex flex-col p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto w-full">
+        {/* ── 개별 씬 인디케이터 (1, 2, 3...) ── */}
+        <div className="storyboard-indicators mb-6">
+          {project.scenes.map((scene, i) => {
+            const isCompleted = !!scene.imageUrl;
+            return (
+              <button
+                key={i}
+                onClick={() => handleSceneSelect(i)}
+                className={cn("page-indicator flex items-center justify-center shrink-0 transition-all", 
+                  selectedSceneIndex === i 
+                    ? "bg-black text-white w-10 h-10 rounded-full shadow-md" 
+                    : "bg-white text-gray-800 border border-gray-300 w-10 h-10 rounded-full hover:border-gray-500"
+                )}
+              >
+                {isCompleted && selectedSceneIndex !== i ? <Check size={16} /> : (i + 1)}
+              </button>
+            )
+          })}
+        </div>
 
       {/* ── 다크 카드 컨테이너 ── */}
       <div className="storyboard-container">
@@ -150,6 +187,17 @@ export function Storyboard({
                   key={scene.id}
                   id={`scene-card-${index}`}
                   onClick={() => handleSceneSelect(index)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const assetId = e.dataTransfer.getData("assetId")
+                    if (assetId) {
+                      setProject((prev) => ({
+                        ...prev,
+                        scenes: prev.scenes.map((s) => (s.id === scene.id ? { ...s, pinnedAsset: assetId } : s)),
+                      }))
+                    }
+                  }}
                   className={cn("storyboard-scene-card", selectedSceneIndex === index && "selected")}
                 >
                   {/* 카드 헤더 */}
@@ -158,12 +206,17 @@ export function Storyboard({
                       <span className="scene-badge">S#{index + 1}</span>
                       <span className="scene-title">{scene.title}</span>
                     </div>
-                    <button
-                      className="scene-header-btn"
-                      onClick={(e) => handleRegenerate(scene.id, e)}
-                    >
-                      <RefreshCw size={14} />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className="scene-header-btn"
+                          onClick={(e) => handleRegenerate(scene.id, e)}
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>전체 재생성</TooltipContent>
+                    </Tooltip>
                   </div>
 
                   {/* 카드 스크롤 영역 */}
@@ -179,12 +232,22 @@ export function Storyboard({
                       )}
                       <div className="scene-image-overlay">
                         <div className="scene-overlay-buttons">
-                          <button className="scene-overlay-btn" onClick={(e) => handleRegenerate(scene.id, e)} title="재생성">
-                            <RefreshCw size={16} />
-                          </button>
-                          <button className="scene-overlay-btn" onClick={(e) => handleDownload(scene, e)} title="다운로드">
-                            <Download size={16} />
-                          </button>
+                          <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                              <button className="scene-overlay-btn" onClick={(e) => handleRegenerate(scene.id, e)}>
+                                <RefreshCw size={16} />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">이미지 재생성</TooltipContent>
+                          </Tooltip>
+                          <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                              <button className="scene-overlay-btn" onClick={(e) => handleDownload(scene, e)}>
+                                <Download size={16} />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">이미지 다운로드</TooltipContent>
+                          </Tooltip>
                         </div>
                       </div>
                     </div>
@@ -232,6 +295,30 @@ export function Storyboard({
                         ))}
                       </div>
                     </div>
+                    {/* 사물 */}
+                    <div className="scene-section scene-audio border-t border-gray-100 mt-2 pt-2">
+                      <div className="scene-section-label">
+                        <Box size={12} />
+                        <span>사물</span>
+                      </div>
+                      <div className="scene-audio-content space-y-1 mt-2">
+                        {project.characters && project.characters.length > 0 ? (
+                           project.characters.slice(0, 3).map(c => (
+                             <div key={c.id} className="scene-detail-item">
+                               <span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">{c.name || "인물"}:</span>
+                               <span className="detail-value text-gray-600">{"세부적인"}</span>
+                             </div>
+                           ))
+                        ) : (
+                          <>
+                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">잭:</span><span className="detail-value text-gray-600">{"세부적인"}</span></div>
+                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">엘라:</span><span className="detail-value text-gray-600">{"세부적인"}</span></div>
+                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">벤:</span><span className="detail-value text-gray-600">{"세부적인"}</span></div>
+                          </>
+                        )}
+                        <div className="scene-detail-item mt-2"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">효과음:</span><span className="detail-value text-gray-600">{"{value}"}</span></div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* 수정하기 */}
@@ -245,26 +332,7 @@ export function Storyboard({
             })}
           </div>
         </div>
-      </div>
-
-      {/* ── 하단: 현재 선택된 씬 스크립트 ── */}
-      <div className="storyboard-script-section">
-        <h3 className="script-title">
-          {selectedScene?.title || `씬 ${selectedSceneIndex + 1}`}
-        </h3>
-        <p className="script-content">
-          {selectedScene?.description || "씬 설명이 없습니다."}
-        </p>
-      </div>
-
-      {/* ── 네비게이션 ── */}
-      <div className="storyboard-nav">
-        <Button variant="outline" onClick={onBack} className="storyboard-nav-btn">
-          ← 이전 단계로
-        </Button>
-        <Button onClick={onNext} className="storyboard-nav-btn storyboard-nav-next">
-          다음 단계로 →
-        </Button>
+        </div>
       </div>
     </div>
   )
