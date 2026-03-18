@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import type { ProjectState } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Sparkles, Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle } from "lucide-react"
+import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
@@ -144,14 +145,19 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
                   <FileText className="h-5 w-5 fill-black" />
                   <span>로그라인</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setLoglineDraft(buildLogline(project.idea ?? latestUserIdea ?? ""))}
-                  className="rounded-full p-1 text-black hover:bg-black/5"
-                  aria-label="로그라인 다시 생성"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setLoglineDraft(buildLogline(project.idea ?? latestUserIdea ?? ""))}
+                      className="rounded-full p-1 text-gray-400 hover:text-black hover:bg-black/5 transition-colors press-down"
+                      aria-label="로그라인 다시 생성"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>AI로 로그라인 새로 쓰기</TooltipContent>
+                </Tooltip>
               </div>
               <Textarea
                 value={loglineDraft}
@@ -226,7 +232,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
           <div className="flex justify-center">
             <Button
               onClick={handleMoveToWorkspace}
-              className="h-11 rounded-full bg-black px-8 text-sm font-semibold text-white hover:bg-black/90"
+              className="h-11 rounded-full bg-black px-8 text-sm font-semibold text-white hover:bg-black/90 btn-unified"
             >
               기획 워크스페이스로 이동
             </Button>
@@ -239,28 +245,28 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col px-4 sm:px-0 min-h-0 flex-1" style={{ minHeight: "min(640px, calc(100vh - 180px))" }}>
       <div className="text-center mb-5 sm:mb-6 flex-shrink-0">
-        <div className="inline-flex items-center gap-2 bg-[#E9ECF9] border border-[#D8DCF4] rounded-full px-4 py-2 mb-3">
-          <Sparkles className="h-4 w-4 text-[#4F46E5]" />
-          <span className="text-sm font-semibold text-[#4F46E5]">AI 기획 어시스턴트</span>
+        <div className="inline-flex items-center gap-2 bg-gray-100 border border-gray-200 rounded-full px-4 py-2 mb-3">
+          <PenTool className="h-4 w-4 text-black" />
+          <span className="text-sm font-semibold text-black">기획 어시스턴트</span>
         </div>
-        <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-[#111827]">어떤 이야기를 만들고 싶으신가요?</h2>
-        <p className="text-xl text-[#6B7280] mt-3">아이디어를 이야기해 주시면 로그라인·캐릭터·플롯으로 발전시켜 드립니다</p>
+        <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-black animate-fade-up">어떤 이야기를 만들고 싶으신가요?</h2>
+        <p className="text-xl text-gray-500 mt-3 animate-fade-up stagger-1">아이디어를 이야기해 주시면 로그라인·캐릭터·플롯으로 발전시켜 드립니다</p>
       </div>
 
-      <div className="flex-1 bg-[#F9FAFB] rounded-3xl border border-[#E5E7EB] shadow-sm overflow-hidden flex flex-col min-h-0">
+      <div className="flex-1 glass-surface overflow-hidden flex flex-col min-h-0 animate-fade-up stagger-2">
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "items-start"}`}>
               {msg.role === "ai" && (
-                <div className="h-10 w-10 rounded-full bg-[#4F46E5] flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Sparkles className="h-4 w-4 text-white" />
+                <div className="h-10 w-10 rounded-full bg-black flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md">
+                  <PenTool className="h-4 w-4 text-white" />
                 </div>
               )}
               <div
-                className={`max-w-[85%] rounded-3xl px-5 py-4 text-3 leading-relaxed ${
+                className={`max-w-[85%] rounded-3xl px-5 py-4 text-3 leading-relaxed transition-all duration-300 ${
                   msg.role === "ai"
-                    ? "bg-[#ECEEF2] text-[#374151]"
-                    : "bg-[#4F46E5] text-white"
+                    ? "glass-surface text-gray-700"
+                    : "bg-black text-white shadow-lg"
                 }`}
               >
                 {msg.content}
@@ -270,7 +276,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
 
           {showConfirm && (
             <div className="flex justify-center pt-2 pb-1">
-              <Button onClick={handleConfirmLogline} className="bg-[#4F46E5] hover:bg-[#4338CA] text-white gap-2 rounded-full px-8 h-11">
+              <Button onClick={handleConfirmLogline} className="bg-black hover:bg-gray-800 text-white gap-2 rounded-full px-8 h-11 btn-unified press-down shadow-lg">
                 이 로그라인으로 확정
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -290,12 +296,12 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
             }}
             placeholder="이야기 아이디어를 입력하세요... (Enter로 전송)"
             rows={2}
-            className="resize-none text-sm bg-white border-[#E5E7EB] focus-visible:ring-[#4F46E5]"
+            className="resize-none text-sm bg-white border-gray-200 focus-visible:ring-black/20 input-unified"
           />
           <Button
             onClick={() => handleSend()}
             disabled={!input.trim()}
-            className="bg-[#4F46E5] hover:bg-[#4338CA] text-white self-end h-11 w-11 p-0 flex-shrink-0 rounded-xl"
+            className="bg-black hover:bg-gray-800 text-white self-end h-11 w-11 p-0 flex-shrink-0 rounded-xl press-down shadow-md"
             size="icon"
           >
             <Send className="h-4 w-4" />

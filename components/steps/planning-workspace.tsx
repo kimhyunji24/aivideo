@@ -24,6 +24,8 @@ import {
   ArrowLeft,
   Wand2,
   X,
+  RefreshCcw,
+  User,
 } from "lucide-react"
 import {
   Dialog,
@@ -35,9 +37,9 @@ import {
 
 // ─── 목업 컬러 (1. 기획 화면) ───────────────────────────────────────────────
 const COLORS = {
-  primary: "#3E51B5",
-  primaryHover: "#3346A0",
-  tabActive: "#333B4E",
+  primary: "#000000",
+  primaryHover: "#333333",
+  tabActive: "#000000",
   tabInactive: "#F0F0F0",
   border: "#E0E0E0",
 } as const
@@ -248,14 +250,14 @@ function CharactersSection({
 
       {characters.length === 0 ? (
         <Card
-          className="border-2 border-dashed border-[#E0E0E0] rounded-xl p-12 text-center bg-white"
+          className="border border-dashed border-[#E0E0E0] rounded-xl p-12 text-center bg-white cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={onAdd}
         >
           <p className="text-gray-500 text-sm mb-3">아직 캐릭터가 없습니다</p>
           <Button
             variant="outline"
             size="sm"
-            className="rounded-lg border-[#E0E0E0] text-gray-800"
+            className="rounded-full border-[#E0E0E0] text-gray-800"
             onClick={(e) => { e.stopPropagation(); onAdd() }}
           >
             <Plus className="h-4 w-4 mr-1.5" />
@@ -263,57 +265,74 @@ function CharactersSection({
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {characters.map((char, idx) => (
-            <Card
-              key={char.id}
-              className="border border-[#E0E0E0] shadow-none bg-white rounded-xl overflow-hidden"
-            >
-              <CardContent className="p-0">
-                <div
-                  className="h-32 bg-[#F5F5F5] border-b border-[#E0E0E0] flex items-center justify-center cursor-pointer overflow-hidden"
-                  onClick={() => fileRefs.current[char.id]?.click()}
-                >
-                  {char.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={char.imageUrl} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Upload className="h-8 w-8 text-gray-400" />
-                  )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {characters.map((char, idx) => {
+            const displayName = char.name || `Jack`;
+            return (
+              <Card
+                key={char.id}
+                className="border border-[#E0E0E0] shadow-none bg-white rounded-2xl overflow-hidden p-5 relative flex flex-col justify-between hover-lift animate-fade-up"
+              >
+                <div className="absolute top-4 right-4">
+                  <button type="button" className="text-gray-400 hover:text-gray-700">
+                    <RefreshCcw className="w-4 h-4" />
+                  </button>
                 </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  ref={(el) => { fileRefs.current[char.id] = el }}
-                  onChange={(e) => e.target.files?.[0] && onImageUpload(char.id, e.target.files[0])}
-                />
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <Input
-                      value={char.name}
-                      onChange={(e) => onUpdate(char.id, "name", e.target.value)}
-                      placeholder={`캐릭터 ${idx + 1}`}
-                      className="h-8 text-sm font-semibold border-0 border-b border-transparent focus-visible:ring-0 px-0 rounded-none bg-transparent focus:border-gray-300"
-                    />
-                    <span className="text-xs text-gray-500 shrink-0">
-                      {char.gender ? GENDER_LABEL[char.gender] : idx === 0 ? "주인공" : "조연"}
-                    </span>
+                
+                <div>
+                  <div className="flex items-start gap-4 mb-4">
+                    <div
+                      className="w-24 h-24 rounded-full bg-[#F5F5F5] border border-[#E0E0E0] overflow-hidden flex-shrink-0 cursor-pointer flex items-center justify-center relative"
+                      onClick={() => fileRefs.current[char.id]?.click()}
+                    >
+                      {char.imageUrl ? (
+                        <img src={char.imageUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <User className="h-8 w-8 text-gray-400" />
+                      )}
+                      
+                      {/* Image upload input hidden */}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        ref={(el) => { fileRefs.current[char.id] = el }}
+                        onChange={(e) => e.target.files?.[0] && onImageUpload(char.id, e.target.files[0])}
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col flex-1 pt-2">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                        <span className="font-bold text-gray-900 text-base">{displayName}</span>
+                        {char.gender && (
+                          <span className="text-sm font-semibold text-gray-800">
+                            ({GENDER_LABEL[char.gender]})
+                          </span>
+                        )}
+                        {!char.name && !char.gender && (
+                          <span className="text-sm font-semibold text-gray-800">
+                            ({idx === 0 ? "주인공" : "남/여"})
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2 min-h-[2rem]">
-                    {char.appearance || char.personality || "설명을 입력하세요"}
+
+                  <p className="text-xs text-gray-600 leading-relaxed min-h-[4rem] whitespace-pre-wrap mb-4">
+                    {char.appearance || char.personality || "통통한 체구...\n요리 기술을 전투 기술로 승화."}
                   </p>
-                  <Button
-                    onClick={() => onEditClick(char.id)}
-                    className="w-full mt-3 rounded-lg text-white text-sm font-medium h-9"
-                    style={{ backgroundColor: COLORS.primary }}
-                  >
-                    수정하기
-                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+
+                <Button
+                  onClick={() => onEditClick(char.id)}
+                  className="w-full rounded-full text-white text-sm font-medium h-10 transition-colors press-down btn-unified"
+                  style={{ backgroundColor: COLORS.primary }}
+                >
+                  수정하기
+                </Button>
+              </Card>
+            );
+          })}
         </div>
       )}
     </section>
@@ -398,47 +417,47 @@ function PlotSection({
         ))}
       </div>
 
-      <div className="rounded-xl border border-[#E0E0E0] bg-[#F5F5F5] p-4 space-y-2">
-        <p className="text-xs font-semibold text-gray-600">플롯 재생성 지시사항</p>
-        <Textarea
+      <div className="rounded-2xl border border-[#E0E0E0] bg-[#F5F5F5] px-4 py-3 flex items-center justify-between">
+        <Input
           value={userPrompt}
           onChange={(e) => onUserPromptChange(e.target.value)}
-          placeholder="예: 전투 장면 없이 긴장감 있는 추격 위주로, 소품(시계)을 단서로 반복 노출해 주세요."
-          rows={3}
-          className="resize-none border-[#D1D5DB] bg-white text-sm"
+          placeholder="사용자 지시사항 작성하는 추가 요구사항 작성 창"
+          className="border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 w-full"
         />
-        <p className="text-xs text-gray-500">
-          선택된 단계 기준으로 생성/재생성 시 이 지시사항이 함께 반영됩니다.
-        </p>
+        <button type="button" className="text-gray-500 hover:text-gray-800 ml-2">
+           <RefreshCcw className="w-4 h-4" />
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {plotPlan.stages.map((stage, i) => (
           <Card
             key={stage.id}
-            className="border border-[#E0E0E0] shadow-none bg-white rounded-xl overflow-hidden"
+            className="border border-[#E0E0E0] shadow-sm bg-white rounded-2xl overflow-hidden flex flex-col p-5 hover-lift card-3d animate-fade-up"
           >
-            <CardHeader className="py-3 px-4 border-b border-[#E0E0E0]">
-              <CardTitle className="text-sm font-semibold text-gray-900">
-                {i + 1} {stage.label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4">
-              <Textarea
-                value={stage.content}
-                onChange={(e) => onStageUpdate(stage.id, e.target.value)}
-                placeholder={`${stage.label} 내용`}
-                rows={4}
-                className="resize-none text-sm border-[#E0E0E0] rounded-lg focus-visible:ring-2 focus-visible:ring-offset-0"
-              />
-              <Button
-                className="w-full mt-3 rounded-lg text-white text-sm font-medium h-9"
-                style={{ backgroundColor: COLORS.primary }}
-                onClick={() => onStageEditClick(stage.id)}
-              >
-                수정하기
-              </Button>
-            </CardContent>
+            <div className="flex items-center justify-between border-b border-[#E0E0E0] pb-3 mb-4">
+               <div className="flex items-center gap-2">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full border border-gray-300 text-xs font-semibold text-gray-700">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm font-bold text-gray-900">{stage.label}</span>
+               </div>
+               <button type="button" className="text-gray-400 hover:text-gray-700">
+                  <RefreshCcw className="w-4 h-4" />
+               </button>
+            </div>
+            
+            <p className="flex-1 text-xs leading-relaxed text-gray-700 whitespace-pre-wrap mb-6 line-clamp-6">
+               {stage.content || `${stage.label} 단계의 내용이 들어갑니다.`}
+            </p>
+            
+            <Button
+              className="w-full rounded-full text-white text-sm font-medium h-10 transition-colors mt-auto"
+              style={{ backgroundColor: COLORS.primary }}
+              onClick={() => onStageEditClick(stage.id)}
+            >
+              수정하기
+            </Button>
           </Card>
         ))}
       </div>
@@ -495,7 +514,7 @@ function CharacterEditModal({
               onChange={(e) =>
                 setDraft((prev) => (prev ? { ...prev, appearance: e.target.value } : null))
               }
-              placeholder="캐릭터를 한 문장으로 설명해 주세요 (외면·인상)"
+              placeholder="캐릭터를 한 문장으로 설명해 주세요"
               rows={5}
               className="resize-none rounded-xl border border-[#BABABA] bg-white text-sm focus-visible:ring-2 focus-visible:ring-offset-0"
             />
@@ -504,16 +523,6 @@ function CharacterEditModal({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-medium text-gray-600">캐릭터 사진</span>
                 <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-lg border-[#BABABA]"
-                    onClick={() => imageInputRef.current?.click()}
-                  >
-                    <Upload className="h-3.5 w-3.5 mr-1" />
-                    사진 넣기
-                  </Button>
                   {draft.imageUrl && (
                     <Button
                       type="button"
@@ -615,32 +624,17 @@ function CharacterEditModal({
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">성격</label>
-                <Input
-                  value={draft.personality}
-                  onChange={(e) => setDraft((p) => (p ? { ...p, personality: e.target.value } : null))}
-                  className="h-9 rounded-lg border border-[#BABABA] bg-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">가치관</label>
-                <Input
-                  value={draft.values}
-                  onChange={(e) => setDraft((p) => (p ? { ...p, values: e.target.value } : null))}
-                  className="h-9 rounded-lg border border-[#BABABA] bg-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">트라우마 / 상처</label>
+                <label className="text-xs font-medium text-gray-600 block mb-1">캐릭터 관계성</label>
                 <Textarea
                   value={draft.trauma}
                   onChange={(e) => setDraft((p) => (p ? { ...p, trauma: e.target.value } : null))}
-                  placeholder="과거의 상처나 동기..."
+                  placeholder="다른 캐릭터와의 관계성"
                   rows={2}
                   className="resize-none rounded-lg border border-[#BABABA] bg-white text-sm"
                 />
               </div>
             </div>
+            
 
             <DialogFooter className="flex flex-col-reverse sm:flex-row justify-between gap-2 pt-4 mt-4 border-t border-[#E0E0E0]">
               <Button
@@ -1082,7 +1076,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
             <Button
               variant="outline"
               onClick={onBack}
-              className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0] gap-2 w-full sm:w-auto"
+              className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0] gap-2 w-full sm:w-auto btn-unified"
             >
               <ArrowLeft className="h-4 w-4" />
               이전 단계로
@@ -1093,7 +1087,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
           <Button
             onClick={onNext}
             disabled={!canProceed}
-            className="rounded-lg text-white font-medium px-5 py-2.5 gap-2 disabled:opacity-50 w-full sm:w-auto"
+            className="rounded-lg text-white font-medium px-5 py-2.5 gap-2 disabled:opacity-50 w-full sm:w-auto btn-unified shadow-md"
             style={{ backgroundColor: canProceed ? COLORS.primary : COLORS.border }}
           >
             다음 단계로

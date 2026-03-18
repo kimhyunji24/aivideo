@@ -101,19 +101,6 @@ export function EditWorkspace({
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          {[1, 2, 3].map((step, index) => (
-            <div
-              key={step}
-              className={`grid h-9 w-9 place-items-center rounded-full border text-sm font-semibold ${
-                index === 0 ? "border-black bg-black text-white" : "border-[#c9c9c9] bg-white text-[#666]"
-              }`}
-            >
-              {step}
-            </div>
-          ))}
-        </div>
-
         <section className="rounded-2xl border border-[#d5d5d5] bg-[#f8f8f8] px-3 py-3 sm:px-5 sm:py-5">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-3 rounded-xl border border-[#dedede] bg-white p-3">

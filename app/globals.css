@@ -1,7 +1,14 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-@custom-variant dark (&:is(.dark *));
+body {
+  font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* 모든 Lucide 아이콘 두께 얇고 통일감 있게 (1.5px) */
+.lucide {
+  stroke-width: 1.5px !important;
+}
 
 :root {
   --background: oklch(0.985 0.002 250);
@@ -392,25 +399,42 @@
     color: #666;
   }
 
-  /* 다크 카드 컨테이너 */
+  /* 다크 카드 컨테이너 — 글래스모피즘 */
   .storyboard-container {
-    background: #1a1a1a;
+    background: linear-gradient(145deg, rgba(22, 22, 26, 0.92), rgba(32, 32, 40, 0.88));
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
     border-radius: 20px;
-    border: 1px solid #2a2a2a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     padding: 20px;
     flex: 1;
     min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.35),
+      0 1px 0 rgba(255, 255, 255, 0.05) inset;
+    position: relative;
   }
 
-  /* 가로 스크롤 영역 */
+  .storyboard-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+    pointer-events: none;
+  }
+
+  /* 가로 스크롤 영역 (호버/선택 시 확대 잘림 완전 방지를 위한 압도적 패딩 확보) */
   .storyboard-scroll {
     flex: 1;
     overflow-x: auto;
     overflow-y: auto;
-    padding-bottom: 8px;
+    padding: 32px 16px; /* 모든 방향으로 충분한 공간 확보 */
     scrollbar-width: thin;
     scrollbar-color: #555 #2a2a2a;
   }
@@ -420,17 +444,17 @@
   }
 
   .storyboard-scroll::-webkit-scrollbar-track {
-    background: #2a2a2a;
+    background: rgba(255, 255, 255, 0.03);
     border-radius: 3px;
   }
 
   .storyboard-scroll::-webkit-scrollbar-thumb {
-    background: #555;
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 3px;
   }
 
   .storyboard-scroll::-webkit-scrollbar-thumb:hover {
-    background: #777;
+    background: rgba(255, 255, 255, 0.25);
   }
 
   /* 카드 행 */
@@ -446,28 +470,35 @@
     width: 230px;
     height: 100%;
     flex-shrink: 0;
-    background: #fff;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border-radius: 16px;
-    border: 1px solid #e5e5e5;
+    border: 1px solid rgba(255, 255, 255, 0.6);
     display: flex;
     flex-direction: column;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     position: relative;
     z-index: 1;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   }
 
   .storyboard-scene-card:hover {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.8);
   }
 
   /* 선택된 씬 카드 강조 (포커스) */
   .storyboard-scene-card.selected {
-    border: 3px solid #fff;
-    box-shadow: 0 0 0 1px #888, 0 4px 20px rgba(255, 255, 255, 0.3), 0 12px 30px rgba(0, 0, 0, 0.3);
-    transform: scale(1.03) translateY(-2px);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.3),
+      0 8px 32px rgba(0, 0, 0, 0.25),
+      0 0 24px rgba(255, 255, 255, 0.08);
+    transform: scale(1.03) translateY(-3px);
     z-index: 10;
   }
 
@@ -565,11 +596,11 @@
     font-size: 10px;
   }
 
-  /* 호버 오버레이 */
+  /* 호버 오버레이 (까맣게 흐려지는 문제 방지 - 배경 투명화) */
   .scene-image-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.35);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -810,5 +841,193 @@
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
+  }
+
+  /* ─── 뉴모피즘 카드 ─────────────────────────────────────────────────── */
+  .neumo-card {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 20px;
+    box-shadow:
+      6px 6px 16px rgba(0, 0, 0, 0.06),
+      -4px -4px 12px rgba(255, 255, 255, 0.9);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .neumo-card:hover {
+    box-shadow:
+      8px 8px 20px rgba(0, 0, 0, 0.08),
+      -6px -6px 16px rgba(255, 255, 255, 1);
+  }
+
+  /* 뉴모피즘 inset (입력 필드용) */
+  .neumo-inset {
+    background: #fafafa;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    border-radius: 14px;
+    box-shadow:
+      inset 2px 2px 6px rgba(0, 0, 0, 0.06),
+      inset -2px -2px 6px rgba(255, 255, 255, 0.8);
+    transition: all 0.2s ease;
+  }
+
+  .neumo-inset:focus, .neumo-inset:focus-within {
+    box-shadow:
+      inset 2px 2px 8px rgba(0, 0, 0, 0.08),
+      inset -2px -2px 8px rgba(255, 255, 255, 0.9),
+      0 0 0 2px rgba(0, 0, 0, 0.08);
+  }
+
+  /* ─── 글래스모피즘 서피스 ────────────────────────────────────────────── */
+  .glass-surface {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  .glass-surface-dark {
+    background: rgba(20, 20, 20, 0.75);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ─── 마이크로 애니메이션 ────────────────────────────────────────────── */
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes subtleFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-3px); }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .animate-fade-up {
+    animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease both;
+  }
+
+  .animate-float {
+    animation: subtleFloat 3s ease-in-out infinite;
+  }
+
+  /* 순차 지연 (카드 목록용) */
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+
+  /* ─── 호버 / 프레스 효과 ─────────────────────────────────────────────── */
+  .hover-lift {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 12px 28px rgba(0, 0, 0, 0.08),
+      0 4px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .press-down {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .press-down:active {
+    transform: scale(0.97);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  /* ─── 3D 카드 효과 (호버 시 미세 기울기) ──────────────────────────────── */
+  .card-3d {
+    perspective: 800px;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-3d:hover {
+    transform: perspective(800px) rotateY(2deg) rotateX(-1deg) scale(1.01);
+  }
+
+  /* ─── 블렌드/그라데이션 효과 ─────────────────────────────────────────── */
+  .gradient-shine {
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.15) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+  }
+
+  .gradient-shine:hover {
+    animation: shimmer 1.5s ease-in-out;
+  }
+
+  /* 통일 버튼 베이스 */
+  .btn-unified {
+    @apply rounded-full font-medium transition-all duration-200;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .btn-unified:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+  }
+
+  .btn-unified:active {
+    transform: scale(0.98) translateY(0);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  /* 통일 입력 필드 */
+  .input-unified {
+    @apply rounded-xl text-sm transition-all duration-200;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: inset 1px 1px 4px rgba(0, 0, 0, 0.04);
+  }
+
+  .input-unified:focus {
+    border-color: rgba(0, 0, 0, 0.2);
+    box-shadow:
+      inset 1px 1px 4px rgba(0, 0, 0, 0.06),
+      0 0 0 3px rgba(0, 0, 0, 0.04);
+  }
+
+  /* 현재 단계 glow */
+  .step-glow {
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08), 0 0 12px rgba(0, 0, 0, 0.06);
+    animation: pulse-step 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-step {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08), 0 0 12px rgba(0, 0, 0, 0.06); }
+    50% { box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.12), 0 0 20px rgba(0, 0, 0, 0.1); }
   }
 }

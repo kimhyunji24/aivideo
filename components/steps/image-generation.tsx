@@ -171,10 +171,10 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-up">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">이미지 생성</h2>
+          <h2 className="text-xl font-semibold text-black">이미지 생성</h2>
           <p className="text-sm text-muted-foreground">
             각 씬에 대한 이미지를 생성합니다
           </p>
@@ -188,8 +188,8 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
       </div>
 
       {/* Progress Summary */}
-      <Card className="glass-card">
-        <CardContent className="py-4">
+      <Card className="glass-surface">
+        <CardContent className="py-4 px-5">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -222,7 +222,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
                     <TooltipContent>모든 이미지 재생성</TooltipContent>
                   </Tooltip>
                 ) : (
-                  <Button size="sm" className="h-8" onClick={generateImages}>
+                  <Button size="sm" className="h-8 bg-black hover:bg-gray-800 text-white press-down" onClick={generateImages}>
                     <Play className="h-3.5 w-3.5 mr-2" />
                     {completedCount > 0 ? "계속" : "생성 시작"}
                   </Button>
@@ -236,7 +236,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
 
       {/* Consistency Options */}
       {(keepStyle || keepCharacter) && (
-        <Card className="glass-card border-dashed">
+          <Card className="glass-surface border-dashed">
           <CardContent className="py-3">
             <div className="flex items-center gap-4 text-sm">
               <span className="text-muted-foreground">일관성 유지:</span>
@@ -273,7 +273,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {project.scenes.map((scene, index) => (
           <Card key={scene.id} className={cn(
-            "glass-card group",
+            "glass-surface group hover-lift",
             scene.status === "error" && "border-destructive/50"
           )}>
             <CardContent className="p-3">
@@ -394,10 +394,10 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
 
       {/* Navigation */}
       <div className="flex justify-between pt-4 border-t">
-        <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
+        <Button variant="ghost" size="sm" onClick={onBack} className="h-8 press-down">
           이전
         </Button>
-        <Button size="sm" onClick={onNext} disabled={completedCount === 0} className="h-8">
+        <Button size="sm" onClick={onNext} disabled={completedCount === 0} className="h-8 bg-black hover:bg-gray-800 text-white press-down">
           영상 생성으로 계속
           <ArrowRight className="h-3.5 w-3.5 ml-2" />
         </Button>

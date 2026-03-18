@@ -8,10 +8,10 @@ import { VideoGeneration } from "@/components/steps/video-generation"
 import { FinalMerge } from "@/components/steps/final-merge"
 import { WorkflowProgress } from "@/components/workflow-progress"
 import { AssetLibrary } from "@/components/asset-library"
-import { AIChatPanel } from "@/components/ai-chat-panel"
+
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Sparkles, PanelLeftClose, PanelLeftOpen, MessageSquare } from "lucide-react"
+import { Clapperboard, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import type { ProjectState, Scene } from "@/lib/types"
@@ -71,7 +71,7 @@ export default function MainWorkflowPage() {
   const [readyToMerge, setReadyToMerge] = useState(false)
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0)
   const [assetPanelOpen, setAssetPanelOpen] = useState(true)
-  const [chatPanelOpen, setChatPanelOpen] = useState(true)
+
 
   const [project, setProject] = useState<ProjectState>({
     idea: "",
@@ -218,8 +218,8 @@ export default function MainWorkflowPage() {
       <header className="border-b border-[#E5E7EB] bg-white z-20 flex-shrink-0">
         <div className="px-4 py-3 sm:px-6 sm:py-3.5 flex items-center justify-between gap-2 max-w-[1440px] mx-auto w-full">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-black flex items-center justify-center shrink-0">
-              <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" />
+            <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-black flex items-center justify-center shrink-0 shadow-lg hover-lift">
+              <Clapperboard className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-white" strokeWidth={1.5} />
             </div>
             <div className="min-w-0">
               <h1 className="text-sm sm:text-base font-semibold tracking-tight text-gray-900 truncate">
@@ -250,24 +250,11 @@ export default function MainWorkflowPage() {
                   </TooltipTrigger>
                   <TooltipContent>{assetPanelOpen ? "에셋 패널 닫기" : "에셋 패널 열기"}</TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                      onClick={() => setChatPanelOpen((v) => !v)}
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{chatPanelOpen ? "AI 채팅 닫기" : "AI 채팅 열기"}</TooltipContent>
-                </Tooltip>
               </div>
             )}
 
             {/* Mode toggle: sm 이상에서만 풀 레이블, 작은 화면에서도 터치 가능 */}
-            <div className="flex items-center rounded-lg p-1 bg-gray-100 border border-[#BABABA]/50">
+            <div className="flex items-center rounded-lg p-1 bg-gray-100 border border-gray-200">
               {(["beginner", "advanced"] as const).map((m) => (
                 <Tooltip key={m}>
                   <TooltipTrigger asChild>
@@ -321,15 +308,7 @@ export default function MainWorkflowPage() {
               {renderContent()}
             </div>
 
-            {showPanels && chatPanelOpen && (
-              <div className="hidden lg:flex w-64 flex-shrink-0 overflow-hidden border-l border-[#E5E7EB] bg-white">
-                <AIChatPanel
-                  project={project}
-                  setProject={setProject}
-                  currentSceneIndex={selectedSceneIndex}
-                />
-              </div>
-            )}
+
           </div>
         </div>
       )}

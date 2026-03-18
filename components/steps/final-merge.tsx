@@ -80,16 +80,16 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-6 px-4 sm:px-0">
+    <div className="w-full max-w-3xl mx-auto space-y-6 px-4 sm:px-0 animate-fade-up">
       <div className="text-center space-y-2">
-        <h2 className="text-lg sm:text-xl font-semibold">최종 병합</h2>
+        <h2 className="text-xl font-semibold text-black">최종 병합</h2>
         <p className="text-sm text-muted-foreground">
           영상 클립을 하나로 합치고 배경음악과 전환 효과를 추가하세요.
         </p>
       </div>
 
       {/* Summary */}
-      <Card>
+      <Card className="glass-surface">
         <CardContent className="py-4">
           <div className="flex items-center justify-around text-center">
             <div>
@@ -125,7 +125,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
       </Card>
 
       {/* Scene Timeline Preview */}
-      <Card>
+      <Card className="glass-surface">
         <CardHeader className="py-3">
           <CardTitle className="text-sm">타임라인 미리보기</CardTitle>
         </CardHeader>
@@ -157,7 +157,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
       {/* Settings */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* Music Settings */}
-        <Card>
+        <Card className="glass-surface">
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Music className="h-3.5 w-3.5" />
@@ -208,7 +208,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
         </Card>
 
         {/* Output Settings */}
-        <Card>
+        <Card className="glass-surface">
           <CardHeader className="py-3">
             <CardTitle className="text-sm">출력 설정</CardTitle>
           </CardHeader>
@@ -247,7 +247,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
       </div>
 
       {/* Merge Progress / Actions */}
-      <Card>
+      <Card className="glass-surface">
         <CardContent className="py-4">
           {isMerging ? (
             <div className="space-y-3">
@@ -306,7 +306,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
               </div>
             </div>
           ) : (
-            <Button className="w-full" onClick={handleMerge}>
+            <Button className="w-full bg-black hover:bg-gray-800 text-white press-down btn-unified" onClick={handleMerge}>
               <Film className="h-4 w-4 mr-2" />
               최종 영상 생성
             </Button>
@@ -316,7 +316,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
 
       {/* Navigation */}
       <div className="flex justify-between pt-4">
-        <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
+        <Button variant="ghost" size="sm" onClick={onBack} className="h-8 press-down">
           영상 생성으로 돌아가기
         </Button>
         <Tooltip>
