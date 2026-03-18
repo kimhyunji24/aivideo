@@ -250,7 +250,7 @@ function CharactersSection({
 
       {characters.length === 0 ? (
         <Card
-          className="border-2 border-dashed border-[#E0E0E0] rounded-xl p-12 text-center bg-white cursor-pointer hover:bg-gray-50 transition-colors"
+          className="border border-dashed border-[#E0E0E0] rounded-xl p-12 text-center bg-white cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={onAdd}
         >
           <p className="text-gray-500 text-sm mb-3">아직 캐릭터가 없습니다</p>
@@ -1076,7 +1076,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
             <Button
               variant="outline"
               onClick={onBack}
-              className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0] gap-2 w-full sm:w-auto"
+              className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0] gap-2 w-full sm:w-auto btn-unified"
             >
               <ArrowLeft className="h-4 w-4" />
               이전 단계로
@@ -1087,7 +1087,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
           <Button
             onClick={onNext}
             disabled={!canProceed}
-            className="rounded-lg text-white font-medium px-5 py-2.5 gap-2 disabled:opacity-50 w-full sm:w-auto"
+            className="rounded-lg text-white font-medium px-5 py-2.5 gap-2 disabled:opacity-50 w-full sm:w-auto btn-unified shadow-md"
             style={{ backgroundColor: canProceed ? COLORS.primary : COLORS.border }}
           >
             다음 단계로

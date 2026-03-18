@@ -123,7 +123,7 @@ export function AssetLibrary({ onDrop, pinnedAssets = {} }: AssetLibraryProps) {
                       )}
                     </div>
                     {dragging === asset.id && (
-                      <div className="absolute inset-0 border-2 border-dashed border-gray-400 rounded-xl pointer-events-none" />
+                      <div className="absolute inset-0 border border-dashed border-gray-400 rounded-xl pointer-events-none" />
                     )}
                   </div>
                 </TooltipTrigger>

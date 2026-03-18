@@ -254,7 +254,7 @@ export default function MainWorkflowPage() {
             )}
 
             {/* Mode toggle: sm 이상에서만 풀 레이블, 작은 화면에서도 터치 가능 */}
-            <div className="flex items-center rounded-lg p-1 bg-gray-100 border border-gray-200 neumo-inset">
+            <div className="flex items-center rounded-lg p-1 bg-gray-100 border border-gray-200">
               {(["beginner", "advanced"] as const).map((m) => (
                 <Tooltip key={m}>
                   <TooltipTrigger asChild>

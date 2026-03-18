@@ -10,6 +10,7 @@ type EditScene = {
   id: string | number
   title: string
   description: string
+  frames?: any[]
 }
 
 type ReturnState = {
@@ -181,7 +182,7 @@ export default function SceneEditPage() {
           <h1 className="text-xl font-semibold">2. 시각화</h1>
           <button
             onClick={persistAndReturn}
-            className="inline-flex items-center gap-1 rounded-full border border-[#d9d9d9] bg-white px-3 py-1.5 text-xs font-medium hover:bg-[#f2f2f2]"
+            className="btn-unified inline-flex items-center gap-1 rounded-full border border-[#d9d9d9] bg-white px-4 py-2 text-xs font-semibold hover:bg-[#f2f2f2]"
           >
             수정 완료
           </button>
@@ -256,7 +257,7 @@ export default function SceneEditPage() {
                       value={selectedDetail[label] ?? ""}
                       onChange={(e) => handleDetailChange(label, e.target.value)}
                       placeholder="(default)"
-                      className="h-9 w-full rounded-xl border border-[#dfdfdf] bg-[#fafafa] px-3 text-sm text-[#555] outline-none focus:border-[#bfbfbf] neumo-inset"
+                      className="h-9 w-full input-unified px-3 bg-white outline-none"
                     />
                   </label>
                 ))}
@@ -276,7 +277,7 @@ export default function SceneEditPage() {
                       value={selectedDetail[label] ?? ""}
                       onChange={(e) => handleDetailChange(label, e.target.value)}
                       placeholder="(default)"
-                      className="h-9 w-full rounded-xl border border-[#dfdfdf] bg-[#fafafa] px-3 text-sm text-[#555] outline-none focus:border-[#bfbfbf] neumo-inset"
+                      className="h-9 w-full input-unified px-3 bg-white outline-none"
                     />
                   </label>
                 ))}
@@ -303,6 +304,26 @@ export default function SceneEditPage() {
             ))}
           </div>
         </section>
+
+        {/* 하단 네비게이션 버튼 추가 */}
+        <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white/50 backdrop-blur-sm rounded-2xl px-4 py-4 sm:px-6">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              onClick={persistAndReturn}
+              className="btn-unified inline-flex items-center justify-center gap-2 rounded-xl border border-[#E0E0E0] bg-white px-6 py-3 text-sm font-semibold text-gray-800 hover:bg-[#F0F0F0] w-full sm:w-auto transition-all"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              이전 단계로
+            </button>
+            <button
+              onClick={persistAndReturn}
+              className="btn-unified inline-flex items-center justify-center gap-2 rounded-xl bg-black px-6 py-3 text-sm font-semibold text-white hover:bg-[#333] w-full sm:w-auto transition-all shadow-lg"
+            >
+              다음 단계로
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </main>
   )

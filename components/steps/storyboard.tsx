@@ -4,7 +4,7 @@ import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check
+  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft
 } from "lucide-react"
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
@@ -332,6 +332,27 @@ export function Storyboard({
             })}
           </div>
         </div>
+        </div>
+
+        {/* ── 하단 네비게이션 ── */}
+        <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4 mt-auto">
+          <div className="max-w-[1440px] mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={onBack}
+              className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0] gap-2 w-full sm:w-auto btn-unified"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              이전 단계로
+            </Button>
+            <Button
+              onClick={onNext}
+              className="rounded-lg text-white font-medium px-6 py-2.5 gap-2 w-full sm:w-auto btn-unified bg-black hover:bg-black/90"
+            >
+              다음 단계로
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

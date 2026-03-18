@@ -232,7 +232,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
           <div className="flex justify-center">
             <Button
               onClick={handleMoveToWorkspace}
-              className="h-11 rounded-full bg-black px-8 text-sm font-semibold text-white hover:bg-black/90"
+              className="h-11 rounded-full bg-black px-8 text-sm font-semibold text-white hover:bg-black/90 btn-unified"
             >
               기획 워크스페이스로 이동
             </Button>
@@ -276,7 +276,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
 
           {showConfirm && (
             <div className="flex justify-center pt-2 pb-1">
-              <Button onClick={handleConfirmLogline} className="bg-black hover:bg-gray-800 text-white gap-2 rounded-full px-8 h-11 btn-unified press-down">
+              <Button onClick={handleConfirmLogline} className="bg-black hover:bg-gray-800 text-white gap-2 rounded-full px-8 h-11 btn-unified press-down shadow-lg">
                 이 로그라인으로 확정
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -296,7 +296,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
             }}
             placeholder="이야기 아이디어를 입력하세요... (Enter로 전송)"
             rows={2}
-            className="resize-none text-sm bg-white border-gray-200 focus-visible:ring-black/20 neumo-inset"
+            className="resize-none text-sm bg-white border-gray-200 focus-visible:ring-black/20 input-unified"
           />
           <Button
             onClick={() => handleSend()}
