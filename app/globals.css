@@ -757,11 +757,19 @@ body {
     font-weight: 500;
     border: none;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background 0.15s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .scene-edit-btn:hover {
     background: #333;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  }
+
+  .scene-edit-btn:active {
+    transform: scale(0.97);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10);
   }
 
   /* 하단 스크립트 섹션 */
@@ -990,20 +998,38 @@ body {
     animation: shimmer 1.5s ease-in-out;
   }
 
-  /* 통일 버튼 베이스 */
   .btn-unified {
-    @apply rounded-full font-medium transition-all duration-200;
+    @apply rounded-full font-medium;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s ease !important;
   }
 
   .btn-unified:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    transform: translateY(-1px);
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15) !important;
   }
 
   .btn-unified:active {
-    transform: scale(0.98) translateY(0);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    transform: scale(0.97) translateY(0) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1) !important;
+  }
+
+
+  /* 아이콘 버튼 통일 (새로고침 등) */
+  .icon-btn {
+    @apply transition-all duration-200 rounded-lg;
+    color: #bbb;
+    cursor: pointer;
+  }
+
+  .icon-btn:hover {
+    color: #555;
+    background: rgba(0, 0, 0, 0.05);
+    transform: rotate(45deg);
+  }
+
+  .icon-btn:active {
+    transform: rotate(135deg) scale(0.9);
   }
 
   /* 통일 입력 필드 */

@@ -8,7 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   Layers,
   GripVertical,
-  Pen
+  Pen,
+  X
 } from "lucide-react"
 import { ASSETS, CATEGORIES } from "@/lib/constants"
 import { ProjectState } from "@/lib/types"
@@ -29,9 +30,10 @@ interface AssetLibraryProps {
   pinnedAssets?: Record<string | number, string[]>
   project?: ProjectState
   setProject?: (project: ProjectState) => void
+  onClose?: () => void
 }
 
-export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject }: AssetLibraryProps) {
+export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject, onClose }: AssetLibraryProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<"character" | "background" | "style">("character")
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null)
@@ -86,9 +88,21 @@ export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject }:
     <div className="flex flex-col h-full border-r border-gray-200 bg-white">
       {/* Header */}
       <div className="px-4 py-4 border-b border-gray-100">
-        <div className="flex items-center gap-2 mb-3">
-          <Layers className="h-4 w-4 text-gray-500" strokeWidth={1.5} />
-          <span className="text-xs font-semibold text-gray-500 tracking-wide uppercase">에셋</span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-gray-500" strokeWidth={1.5} />
+            <span className="text-xs font-semibold text-gray-500 tracking-wide uppercase">에셋</span>
+          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-6 w-6 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all duration-150"
+              aria-label="에셋 패널 닫기"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg">
           {CATEGORIES.map((cat) => (

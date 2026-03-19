@@ -274,7 +274,7 @@ function CharactersSection({
                 className="border border-[#E0E0E0] shadow-none bg-white rounded-2xl overflow-hidden p-5 relative flex flex-col justify-between hover-lift animate-fade-up"
               >
                 <div className="absolute top-4 right-4">
-                  <button type="button" className="text-gray-400 hover:text-gray-700">
+                  <button type="button" className="icon-btn p-1">
                     <RefreshCcw className="w-4 h-4" />
                   </button>
                 </div>
@@ -325,7 +325,7 @@ function CharactersSection({
 
                 <Button
                   onClick={() => onEditClick(char.id)}
-                  className="w-full rounded-full text-white text-sm font-medium h-10 transition-colors press-down btn-unified"
+                  className="w-full rounded-full text-white text-sm font-medium h-10 btn-unified press-down"
                   style={{ backgroundColor: COLORS.primary }}
                 >
                   수정하기
@@ -421,7 +421,7 @@ function PlotSection({
         <Input
           value={userPrompt}
           onChange={(e) => onUserPromptChange(e.target.value)}
-          placeholder="사용자 지시사항 작성하는 추가 요구사항 작성 창"
+          placeholder="추가 요구사항 작성 창"
           className="border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 w-full"
         />
         <button type="button" className="text-gray-500 hover:text-gray-800 ml-2">
@@ -433,7 +433,7 @@ function PlotSection({
         {plotPlan.stages.map((stage, i) => (
           <Card
             key={stage.id}
-            className="border border-[#E0E0E0] shadow-sm bg-white rounded-2xl overflow-hidden flex flex-col p-5 hover-lift card-3d animate-fade-up"
+          className="border border-[#E0E0E0] shadow-sm bg-white rounded-2xl overflow-hidden flex flex-col p-5 hover-lift animate-fade-up"
           >
             <div className="flex items-center justify-between border-b border-[#E0E0E0] pb-3 mb-4">
                <div className="flex items-center gap-2">
@@ -442,7 +442,7 @@ function PlotSection({
                   </span>
                   <span className="text-sm font-bold text-gray-900">{stage.label}</span>
                </div>
-               <button type="button" className="text-gray-400 hover:text-gray-700">
+               <button type="button" className="icon-btn p-1">
                   <RefreshCcw className="w-4 h-4" />
                </button>
             </div>
@@ -452,7 +452,7 @@ function PlotSection({
             </p>
             
             <Button
-              className="w-full rounded-full text-white text-sm font-medium h-10 transition-colors mt-auto"
+              className="w-full rounded-full text-white text-sm font-medium h-10 btn-unified press-down mt-auto"
               style={{ backgroundColor: COLORS.primary }}
               onClick={() => onStageEditClick(stage.id)}
             >
@@ -1063,7 +1063,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
           <Button
             onClick={onNext}
             disabled={!canProceed}
-            className="rounded-lg text-white font-medium px-5 py-2.5 gap-2 disabled:opacity-50 w-full sm:w-auto btn-unified shadow-md"
+            className="rounded-lg text-white font-medium px-5 py-2.5 gap-2 disabled:opacity-50 w-full sm:w-auto btn-unified press-down shadow-md"
             style={{ backgroundColor: canProceed ? COLORS.primary : COLORS.border }}
           >
             다음 단계로

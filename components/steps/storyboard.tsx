@@ -352,29 +352,33 @@ export function Storyboard({
             })}
           </div>
         </div>
-        </div>
+      </div>
 
-        {/* ── 하단 네비게이션 ── */}
-        <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4 mt-12 mb-8">
-          <div className="max-w-5xl mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              variant="ghost"
-              onClick={onBack}
-              className="rounded-lg text-gray-500 hover:text-black hover:bg-gray-100 gap-2 w-full sm:w-auto h-10 px-4 transition-all"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              이전 단계로
-            </Button>
-            <Button
-              onClick={onNext}
-              className="rounded-lg text-white font-semibold px-8 h-10 gap-2 w-full sm:w-auto bg-black hover:bg-gray-800 transition-all shadow-md press-down"
-            >
-              다음 단계로
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
+      {/* flex-1 overflow-auto (B) 닫힘 */}
+      </div>
+
+      {/* ── 하단 네비게이션 ── */}
+      <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4">
+        <div className="max-w-5xl mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            variant="ghost"
+            onClick={onBack}
+            className="rounded-lg text-gray-500 hover:text-black hover:bg-gray-100 gap-2 w-full sm:w-auto h-10 px-4 transition-all"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            이전 단계로
+          </Button>
+          <Button
+            onClick={onNext}
+            className="rounded-lg text-white font-semibold px-8 h-10 gap-2 w-full sm:w-auto bg-black hover:bg-gray-800 transition-all shadow-md press-down btn-unified"
+          >
+            다음 단계로
+            <ArrowRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
+
+      {/* storyboard-root (A) 닫힘 */}
     </div>
   )
 }

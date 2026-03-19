@@ -305,11 +305,11 @@ export default function MainWorkflowPage() {
           <div className="flex flex-1 min-h-0 max-w-[1440px] w-full flex-col lg:flex-row">
             {showPanels && assetPanelOpen && (
               <div className="hidden lg:flex w-52 flex-shrink-0 border-r border-[#E5E7EB] overflow-hidden bg-white">
-                <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} project={project} setProject={setProject} />
+                <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} project={project} setProject={setProject} onClose={() => setAssetPanelOpen(false)} />
               </div>
             )}
 
-            <div className="flex-1 overflow-auto px-4 py-4 sm:px-6 sm:py-6 min-w-0">
+            <div className="flex-1 overflow-hidden min-w-0">
               {renderContent()}
             </div>
 

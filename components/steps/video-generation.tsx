@@ -127,7 +127,9 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 px-4 sm:px-0 animate-fade-up">
+    <div className="h-full flex flex-col bg-white">
+      <div className="flex-1 overflow-auto">
+        <div className="w-full max-w-5xl mx-auto space-y-6 px-4 py-6 sm:px-6 sm:py-8 animate-fade-up">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-black">영상 생성</h2>
@@ -299,9 +301,11 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
           )
         })}
       </div>
+        </div>
+      </div>
 
-      {/* Navigation */}
-      <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4 mt-10 mb-6">
+      {/* Navigation - 하단 고정 */}
+      <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4">
         <div className="max-w-5xl mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Button 
             variant="ghost" 
@@ -314,7 +318,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
           <Button 
             onClick={onNext} 
             disabled={completedCount === 0} 
-            className="rounded-lg text-white font-semibold px-8 h-10 gap-2 w-full sm:w-auto bg-black hover:bg-gray-800 transition-all shadow-md press-down"
+            className="rounded-lg text-white font-semibold px-8 h-10 gap-2 w-full sm:w-auto bg-black hover:bg-gray-800 transition-all shadow-md press-down btn-unified"
           >
             최종 병합으로 계속
             <ArrowRight className="h-4 w-4" />
