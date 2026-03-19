@@ -65,9 +65,10 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   }, [messages])
 
   const loglinePreview = useMemo(() => {
+    if (loglineDraft?.trim()) return loglineDraft
     if (project.logline?.trim()) return project.logline
     return buildLogline(project.idea ?? latestUserIdea ?? input)
-  }, [project.logline, project.idea, latestUserIdea, input])
+  }, [loglineDraft, project.logline, project.idea, latestUserIdea, input])
 
   const handleSend = async (idea?: string) => {
     const text = (idea ?? input).trim()
@@ -80,10 +81,12 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
     if (sessionId) {
       try {
         const updatedProject = await generateLogline(sessionId, text);
-        setProject(updatedProject);
+        const merged: ProjectState = { ...project, ...updatedProject, scenes: updatedProject.scenes ?? project.scenes ?? [] };
+        setProject(merged);
         setLoglineDraft(updatedProject.logline ?? "");
       } catch (err) {
         console.error("Failed to generate logline via API:", err);
+        alert("API Error in Logline: " + err);
       }
     }
 
@@ -102,7 +105,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   const handleConfirmLogline = () => {
     const idea = (project.idea ?? latestUserIdea ?? "").trim()
     if (!idea) return
-    const nextLogline = buildLogline(idea)
+    const nextLogline = loglineDraft?.trim() ? loglineDraft : buildLogline(idea)
     setLoglineDraft(nextLogline)
 
     setProject({

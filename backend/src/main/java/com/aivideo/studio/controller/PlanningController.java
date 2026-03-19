@@ -20,4 +20,18 @@ public class PlanningController {
         ProjectState updatedState = planningService.generateLogline(sessionId, idea);
         return ResponseEntity.ok(updatedState);
     }
+
+    @PostMapping("/characters")
+    public ResponseEntity<ProjectState> generateCharacters(@PathVariable String sessionId) {
+        ProjectState updatedState = planningService.generateCharacters(sessionId);
+        return ResponseEntity.ok(updatedState);
+    }
+
+    @PostMapping("/plot")
+    public ResponseEntity<ProjectState> generatePlot(
+            @PathVariable String sessionId,
+            @RequestBody com.aivideo.studio.dto.PlotGenerateRequest request) {
+        ProjectState updatedState = planningService.generatePlot(sessionId, request.getStageCount(), request.getUserPrompt());
+        return ResponseEntity.ok(updatedState);
+    }
 }

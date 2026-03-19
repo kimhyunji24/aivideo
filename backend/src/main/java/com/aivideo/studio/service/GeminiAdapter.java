@@ -26,6 +26,14 @@ public class GeminiAdapter {
     private String textModel;
 
     public String generateText(String prompt) {
+        return sendRequest(prompt, "text/plain");
+    }
+
+    public String generateJson(String prompt) {
+        return sendRequest(prompt, "application/json");
+    }
+
+    private String sendRequest(String prompt, String mimeType) {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("Google API Key is not configured in application.yml or environment variables.");
         }
@@ -37,7 +45,10 @@ public class GeminiAdapter {
                 Map.of("parts", new Object[]{
                     Map.of("text", prompt)
                 })
-            }
+            },
+            "generationConfig", Map.of(
+                "responseMimeType", mimeType
+            )
         );
 
         try {
@@ -46,13 +57,19 @@ public class GeminiAdapter {
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(requestBody)
                     .retrieve()
+                    .onStatus(status -> status.isError(), clientResponse -> {
+                        return clientResponse.bodyToMono(String.class)
+                                .doOnNext(body -> log.error("Gemini API error response body: {}", body))
+                                .map(body -> new RuntimeException("Gemini API error " + clientResponse.statusCode() + ": " + body));
+                    })
                     .bodyToMono(String.class)
                     .block();
 
+            log.info("Gemini raw response: {}", response);
             JsonNode root = objectMapper.readTree(response);
             return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
         } catch (Exception e) {
-            log.error("Failed to generate text from Gemini", e);
+            log.error("Failed to generate from Gemini", e);
             throw new RuntimeException("AI generation failed: " + e.getMessage());
         }
     }

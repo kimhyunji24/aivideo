@@ -87,6 +87,31 @@ export default function MainWorkflowPage() {
   })
 
   useEffect(() => {
+    const initSession = async () => {
+      try {
+        let sid = sessionStorage.getItem("aivideo:sessionId")
+        if (sid) {
+          try {
+            const { getSession } = await import("@/lib/api")
+            await getSession(sid)
+          } catch {
+            sid = null
+          }
+        }
+        if (!sid) {
+          sid = await createSession()
+          sessionStorage.setItem("aivideo:sessionId", sid)
+        }
+        setSessionId(sid)
+      } catch (err) {
+        console.error("Failed to create session", err)
+        alert("CRITICAL ERROR: Failed to create session! Check if backend is running on 8080. " + err)
+      }
+    }
+    void initSession()
+  }, [])
+
+  useEffect(() => {
     if (!shouldRestore) return
     const raw = sessionStorage.getItem("aivideo:return-state")
     if (!raw) return
@@ -107,7 +132,7 @@ export default function MainWorkflowPage() {
   }, [shouldRestore])
 
 
-  const pinnedAssets = project.scenes.reduce<Record<string | number, string[]>>((acc, s) => {
+  const pinnedAssets = (project.scenes ?? []).reduce<Record<string | number, string[]>>((acc, s) => {
     if (s.pinnedAssets && s.pinnedAssets.length > 0) acc[s.id] = s.pinnedAssets
 
     return acc
@@ -158,6 +183,7 @@ export default function MainWorkflowPage() {
           setProject={setProject}
           onNext={handlePlanningDone}
           onBack={() => setPlanPhase("summary")}
+          sessionId={sessionId}
         />
       )
     }

@@ -17,7 +17,7 @@ google:
   api-key: ${GOOGLE_API_KEY:}
 
 gemini:
-  text-model: ${GEMINI_TEXT_MODEL:gemini-1.5-pro}
+  text-model: ${GEMINI_TEXT_MODEL:gemini-2.5-flash}
   image-model: ${GEMINI_IMAGE_MODEL:imagen-3.0-generate-002}
   video-model: ${GEMINI_VIDEO_MODEL:veo-3.0-generate-001}
   max-tokens: ${GEMINI_MAX_TOKENS:8192}
