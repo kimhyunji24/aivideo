@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   ArrowRight,
+  ArrowLeft,
   RefreshCw,
   Check,
   Loader2,
@@ -393,14 +394,25 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-between pt-4 border-t">
-        <Button variant="ghost" size="sm" onClick={onBack} className="h-8 press-down">
-          이전
-        </Button>
-        <Button size="sm" onClick={onNext} disabled={completedCount === 0} className="h-8 bg-black hover:bg-gray-800 text-white press-down">
-          영상 생성으로 계속
-          <ArrowRight className="h-3.5 w-3.5 ml-2" />
-        </Button>
+      <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4 mt-10 mb-6">
+        <div className="max-w-5xl mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button 
+            variant="ghost" 
+            onClick={onBack} 
+            className="rounded-lg text-gray-500 hover:text-black hover:bg-gray-100 gap-2 w-full sm:w-auto h-10 px-4 transition-all"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            이전 단계로
+          </Button>
+          <Button 
+            onClick={onNext} 
+            disabled={completedCount === 0} 
+            className="rounded-lg text-white font-semibold px-8 h-10 gap-2 w-full sm:w-auto bg-black hover:bg-gray-800 transition-all shadow-md press-down"
+          >
+            영상 생성으로 계속
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   )

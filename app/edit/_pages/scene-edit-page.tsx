@@ -306,7 +306,7 @@ export default function SceneEditPage() {
         </section>
 
         {/* 하단 네비게이션 버튼 추가 */}
-        <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white/50 backdrop-blur-sm rounded-2xl px-4 py-4 sm:px-6">
+        <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white/50 backdrop-blur-sm rounded-2xl px-4 py-4 sm:px-6 mt-12">
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               onClick={persistAndReturn}
