@@ -996,30 +996,6 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
       {/* ── 상단: 반응형 — 모바일에서 세로 배치 ── */}
       <div className="flex-shrink-0 border-b border-[#E0E0E0] bg-white">
         <div className="px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 tracking-tight">1. 기획</h1>
-          <div className="flex items-center gap-1 rounded-lg overflow-hidden border border-[#E0E0E0] w-full sm:w-auto">
-            <button
-              type="button"
-              className="px-4 py-2 text-sm font-medium text-white rounded-l-md"
-              style={{ backgroundColor: COLORS.tabActive }}
-            >
-              기획
-            </button>
-            <button
-              type="button"
-              onClick={onNext}
-              disabled={!canProceed}
-              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              시각화
-            </button>
-            <button
-              type="button"
-              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8] rounded-r-md"
-            >
-              영상화
-            </button>
-          </div>
         </div>
       </div>
 

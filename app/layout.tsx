@@ -6,7 +6,7 @@ import './globals.css'
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'AI 팬콘텐츠 영상 제작',
+  title: '사이트명',
   description: 'AI 기반 팬콘텐츠 영상 제작 플랫폼',
   generator: 'v0.app',
   icons: {

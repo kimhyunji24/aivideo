@@ -15,6 +15,7 @@ export interface SceneElements {
     lighting: string;
     mood: string;
     story: string;
+    quality?: string;
 }
 
 export interface SceneParams {
@@ -36,7 +37,7 @@ export interface Scene {
     elements: SceneElements;
     params?: SceneParams;
     styleChip?: string;
-    pinnedAsset?: string;
+    pinnedAssets?: string[];
     /** Up to 4 frames for the scene's flow */
     frames?: Frame[];
 }
@@ -91,6 +92,7 @@ export interface ProjectState {
     selectedPlot: Plot | null;
     scenes: Scene[];
     mode?: "beginner" | "advanced";
+    customAssets?: Record<string, { description?: string; imageUrl?: string }>;
 }
 
 export interface PlanningSeedRequest {

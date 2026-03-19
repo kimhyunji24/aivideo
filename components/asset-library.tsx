@@ -7,59 +7,71 @@ import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Layers,
-  CircleUser,
-  UserCheck,
-  Users,
-  Mountain,
-  CupSoda,
-  Waves,
-  Film,
-  Paintbrush,
-  Wand2,
-  Moon,
   GripVertical,
+  Pen
 } from "lucide-react"
-
-interface Asset {
-  id: string
-  label: string
-  category: "character" | "background" | "style"
-  icon: React.ElementType
-  description: string
-}
-
-const ASSETS: Asset[] = [
-  // Characters
-  { id: "char-1", label: "주인공 A", category: "character", icon: CircleUser, description: "메인 캐릭터 A" },
-  { id: "char-2", label: "주인공 B", category: "character", icon: UserCheck, description: "메인 캐릭터 B" },
-  { id: "char-3", label: "조연 A", category: "character", icon: Users, description: "보조 캐릭터 A" },
-  { id: "char-4", label: "조연 B", category: "character", icon: Users, description: "보조 캐릭터 B" },
-  // Backgrounds
-  { id: "bg-1", label: "도시 거리", category: "background", icon: Mountain, description: "도시 배경" },
-  { id: "bg-2", label: "자연 숲", category: "background", icon: Mountain, description: "자연 배경" },
-  { id: "bg-3", label: "실내 카페", category: "background", icon: CupSoda, description: "실내 배경" },
-  { id: "bg-4", label: "해변", category: "background", icon: Waves, description: "해변 배경" },
-  // Styles
-  { id: "style-1", label: "시네마틱", category: "style", icon: Film, description: "영화적 스타일" },
-  { id: "style-2", label: "수채화", category: "style", icon: Paintbrush, description: "수채화 스타일" },
-  { id: "style-3", label: "애니메이션", category: "style", icon: Wand2, description: "애니메이션 스타일" },
-  { id: "style-4", label: "누아르", category: "style", icon: Moon, description: "누아르 스타일" },
-]
-
-const CATEGORIES = [
-  { id: "character", label: "캐릭터" },
-  { id: "background", label: "배경" },
-  { id: "style", label: "스타일" },
-] as const
+import { ASSETS, CATEGORIES } from "@/lib/constants"
+import { ProjectState } from "@/lib/types"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 
 interface AssetLibraryProps {
   onDrop?: (assetId: string, sceneId: string | number) => void
-  pinnedAssets?: Record<string | number, string>
+  pinnedAssets?: Record<string | number, string[]>
+  project?: ProjectState
+  setProject?: (project: ProjectState) => void
 }
 
-export function AssetLibrary({ onDrop, pinnedAssets = {} }: AssetLibraryProps) {
+export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject }: AssetLibraryProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<"character" | "background" | "style">("character")
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null)
+  
+  const editingAsset = ASSETS.find(a => a.id === editingAssetId)
+  const customData = editingAssetId && project?.customAssets ? project.customAssets[editingAssetId] : null
+  const [editImageUrl, setEditImageUrl] = useState("")
+  const [editDesc, setEditDesc] = useState("")
+
+  const handleEditOpen = (assetId: string) => {
+    setEditingAssetId(assetId)
+    const cData = project?.customAssets?.[assetId]
+    setEditImageUrl(cData?.imageUrl ?? "")
+    setEditDesc(cData?.description ?? ASSETS.find(a => a.id === assetId)?.description ?? "")
+  }
+
+  const handleEditSave = () => {
+    if (!editingAssetId || !setProject || !project) return
+    setProject({
+      ...project,
+      customAssets: {
+        ...(project.customAssets || {}),
+        [editingAssetId]: {
+          imageUrl: editImageUrl,
+          description: editDesc,
+        }
+      }
+    })
+    setEditingAssetId(null)
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setEditImageUrl(ev.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
 
   const filtered = ASSETS.filter((a) => a.category === activeCategory)
 
@@ -97,38 +109,54 @@ export function AssetLibrary({ onDrop, pinnedAssets = {} }: AssetLibraryProps) {
       </div>
 
       {/* Assets grid */}
-      <ScrollArea className="flex-1 px-4 py-4">
-        <div className="space-y-3 pb-4">
+      <ScrollArea className="flex-1 px-8 py-8" type="auto">
+        <div className="space-y-4 pb-8">
           {filtered.map((asset) => {
-            const isPinned = Object.values(pinnedAssets).includes(asset.id)
+            const isPinned = Object.values(pinnedAssets).some(arr => arr.includes(asset.id))
+            const custom = project?.customAssets?.[asset.id]
+            const bgImage = custom?.imageUrl ? `url(${custom.imageUrl})` : undefined
+            const currentDesc = custom?.description || asset.description
+
             return (
               <Tooltip key={asset.id}>
                 <TooltipTrigger asChild>
-                  <div
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, asset.id)}
-                    onDragEnd={handleDragEnd}
-                    className={cn(
-                      "group relative rounded-xl border border-gray-200 bg-white overflow-hidden cursor-grab active:cursor-grabbing transition-all select-none hover-lift",
-                      dragging === asset.id ? "opacity-50 scale-95" : "hover:border-gray-300 hover:shadow-md"
-                    )}
-                  >
-                    <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center border-b border-gray-100 transition-colors group-hover:bg-gray-100">
-                      <asset.icon className="w-7 h-7 text-gray-400 transition-colors group-hover:text-gray-600" strokeWidth={1.5} />
-                    </div>
-                    <div className="px-3 py-2 flex items-center justify-between">
-                      <span className="text-[11px] font-medium text-gray-700 group-hover:text-gray-900 transition-colors">{asset.label}</span>
-                      {isPinned && (
-                        <GripVertical className="h-3 w-3 text-gray-400" strokeWidth={1.5} />
+                  <div className="relative group/wrapper">
+                    <div
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, asset.id)}
+                      onDragEnd={handleDragEnd}
+                      className={cn(
+                        "group relative rounded-xl border border-gray-200 bg-white overflow-hidden cursor-grab active:cursor-grabbing transition-all select-none hover-lift",
+                        dragging === asset.id ? "opacity-50 scale-95" : "hover:border-gray-300 hover:shadow-md"
+                      )}
+                    >
+                      <div 
+                        className="aspect-[4/3] bg-gray-50 flex items-center justify-center border-b border-gray-100 transition-colors group-hover:bg-gray-100 bg-cover bg-center"
+                        style={bgImage ? { backgroundImage: bgImage } : {}}
+                      >
+                        {!bgImage && <asset.icon className="w-7 h-7 text-gray-400 transition-colors group-hover:text-gray-600" strokeWidth={1.5} />}
+                      </div>
+                      <div className="px-3 py-2 flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-gray-700 group-hover:text-gray-900 transition-colors truncate">{asset.label}</span>
+                        {isPinned && (
+                          <GripVertical className="h-3 w-3 text-gray-400 flex-shrink-0" strokeWidth={1.5} />
+                        )}
+                      </div>
+                      {dragging === asset.id && (
+                        <div className="absolute inset-0 border border-dashed border-gray-400 rounded-xl pointer-events-none" />
                       )}
                     </div>
-                    {dragging === asset.id && (
-                      <div className="absolute inset-0 border border-dashed border-gray-400 rounded-xl pointer-events-none" />
-                    )}
+                    {/* Hover Edit Button */}
+                    <button
+                      onClick={() => handleEditOpen(asset.id)}
+                      className="absolute top-2 right-2 opacity-0 group-hover/wrapper:opacity-100 transition-opacity bg-white/90 backdrop-blur text-gray-700 p-1.5 rounded-md border border-gray-200 shadow-sm hover:bg-gray-100 z-10"
+                    >
+                      <Pen className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="text-xs">
-                  {asset.description}
+                  {currentDesc}
                 </TooltipContent>
               </Tooltip>
             )
@@ -149,6 +177,48 @@ export function AssetLibrary({ onDrop, pinnedAssets = {} }: AssetLibraryProps) {
           </Badge>
         </div>
       )}
+
+      {/* Edit Modal */}
+      <Dialog open={!!editingAssetId} onOpenChange={(open) => !open && setEditingAssetId(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>에셋 수정: {editingAsset?.label}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-4">
+              <Label>사진 업로드</Label>
+              <div className="flex items-center gap-4">
+                {editImageUrl && (
+                  <div className="w-16 h-16 rounded-md overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+                    <img src={editImageUrl} alt="preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="cursor-pointer text-xs flex-1"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">설명</Label>
+              <Textarea
+                id="description"
+                placeholder="에셋에 대한 상세 설명을 입력하세요."
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingAssetId(null)}>취소</Button>
+            <Button onClick={handleEditSave} className="bg-black text-white hover:bg-gray-800">저장하기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

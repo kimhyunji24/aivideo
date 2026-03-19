@@ -26,7 +26,7 @@ type ReturnState = {
 
 const STEPS = [
   { id: 1, name: "기획", description: "로그라인 & 플롯" },
-  { id: 2, name: "제작", description: "스토리보드 & 이미지" },
+  { id: 2, name: "시각화", description: "스토리보드 & 이미지" },
   { id: 3, name: "영상", description: "애니메이션 & 완성" },
 ]
 
@@ -104,15 +104,20 @@ export default function MainWorkflowPage() {
     }
   }, [shouldRestore])
 
-  const pinnedAssets = project.scenes.reduce<Record<string | number, string>>((acc, s) => {
-    if (s.pinnedAsset) acc[s.id] = s.pinnedAsset
+  const pinnedAssets = project.scenes.reduce<Record<string | number, string[]>>((acc, s) => {
+    if (s.pinnedAssets && s.pinnedAssets.length > 0) acc[s.id] = s.pinnedAssets
     return acc
   }, {})
 
   const handleAssetDrop = (assetId: string, sceneId: string | number) => {
     setProject((prev) => ({
       ...prev,
-      scenes: prev.scenes.map((s) => (s.id === sceneId ? { ...s, pinnedAsset: assetId } : s)),
+      scenes: prev.scenes.map((s) => {
+        if (s.id !== sceneId) return s
+        const currentPins = s.pinnedAssets || []
+        if (currentPins.includes(assetId)) return s
+        return { ...s, pinnedAssets: [...currentPins, assetId] }
+      }),
     }))
   }
 
@@ -223,7 +228,7 @@ export default function MainWorkflowPage() {
             </div>
             <div className="min-w-0">
               <h1 className="text-sm sm:text-base font-semibold tracking-tight text-gray-900 truncate">
-                AI Video Studio
+                사이트명
               </h1>
               <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">아이디어를 영상으로</p>
             </div>
@@ -300,7 +305,7 @@ export default function MainWorkflowPage() {
           <div className="flex flex-1 min-h-0 max-w-[1440px] w-full flex-col lg:flex-row">
             {showPanels && assetPanelOpen && (
               <div className="hidden lg:flex w-52 flex-shrink-0 border-r border-[#E5E7EB] overflow-hidden bg-white">
-                <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} />
+                <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} project={project} setProject={setProject} />
               </div>
             )}
 

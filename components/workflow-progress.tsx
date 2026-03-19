@@ -18,16 +18,16 @@ interface WorkflowProgressProps {
 
 export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowProgressProps) {
   return (
-    <div className="w-full">
+    <div className="w-full max-w-2xl mx-auto">
       {/* Desktop view */}
-      <div className="hidden md:flex items-center justify-between">
+      <div className="hidden md:flex items-center justify-center">
         {steps.map((step, index) => {
           const isCompleted = step.id < currentStep
           const isCurrent = step.id === currentStep
           const isClickable = step.id <= currentStep
 
           return (
-            <div key={step.id} className="flex items-center flex-1">
+            <div key={step.id} className="flex items-center">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -63,7 +63,7 @@ export function WorkflowProgress({ steps, currentStep, onStepClick }: WorkflowPr
               </Tooltip>
               {index < steps.length - 1 && (
                 <div className={cn(
-                  "flex-1 h-px mx-3",
+                  "w-12 lg:w-24 h-px mx-4",
                   isCompleted ? "bg-black" : "bg-gray-200"
                 )} />
               )}
