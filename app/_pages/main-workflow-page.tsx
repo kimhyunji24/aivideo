@@ -106,30 +106,10 @@ export default function MainWorkflowPage() {
     }
   }, [shouldRestore])
 
-<<<<<<< HEAD
-  useEffect(() => {
-    if (shouldRestore) return
-    const initSession = async () => {
-      let sid = sessionStorage.getItem("aivideo:sessionId")
-      if (!sid) {
-        try {
-          sid = await createSession()
-          sessionStorage.setItem("aivideo:sessionId", sid)
-        } catch (err) {
-          console.error("Failed to create session", err)
-        }
-      }
-      setSessionId(sid)
-    }
-    initSession()
-  }, [shouldRestore])
 
-  const pinnedAssets = project.scenes.reduce<Record<string | number, string>>((acc, s) => {
-    if (s.pinnedAsset) acc[s.id] = s.pinnedAsset
-=======
   const pinnedAssets = project.scenes.reduce<Record<string | number, string[]>>((acc, s) => {
     if (s.pinnedAssets && s.pinnedAssets.length > 0) acc[s.id] = s.pinnedAssets
->>>>>>> c91e8f764b65559505e89b258006b88cdf9f7dc3
+
     return acc
   }, {})
 
@@ -291,11 +271,10 @@ export default function MainWorkflowPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className={`h-7 rounded-md text-xs font-medium px-2 sm:px-3 transition-colors ${
-                        project.mode === m
+                      className={`h-7 rounded-md text-xs font-medium px-2 sm:px-3 transition-colors ${project.mode === m
                           ? "bg-white text-gray-900 shadow-sm border border-gray-200"
                           : "text-gray-600 hover:text-gray-900"
-                      }`}
+                        }`}
                       onClick={() => setProject({ ...project, mode: m })}
                     >
                       {m === "beginner" ? "초보자" : "전문가"}
