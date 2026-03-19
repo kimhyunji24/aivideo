@@ -10,9 +10,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
 
-const DEFAULT_GENRES = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "화려한 색감"]
+const DEFAULT_GENRES = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "귀멸의 칼날"]  
 const DEFAULT_WORLDVIEWS = ["우주", "전쟁터", "일상생활"]
-const GENRE_OPTIONS = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "화려한 색감", "로맨스", "스릴러"]
+const GENRE_OPTIONS = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "귀멸의 칼날", "로맨스", "스릴러"]
 const WORLDVIEW_OPTIONS = ["우주", "전쟁터", "일상생활", "근미래 도시", "판타지 왕국", "학교"]
 
 interface ChatMessage {
@@ -247,7 +247,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
       <div className="text-center mb-5 sm:mb-6 flex-shrink-0">
         <div className="inline-flex items-center gap-2 bg-gray-100 border border-gray-200 rounded-full px-4 py-2 mb-3">
           <PenTool className="h-4 w-4 text-black" />
-          <span className="text-sm font-semibold text-black">기획 어시스턴트</span>
+          <span className="text-sm font-semibold text-black">사이트명</span>
         </div>
         <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-black animate-fade-up">어떤 이야기를 만들고 싶으신가요?</h2>
         <p className="text-xl text-gray-500 mt-3 animate-fade-up stagger-1">아이디어를 이야기해 주시면 로그라인·캐릭터·플롯으로 발전시켜 드립니다</p>
@@ -296,7 +296,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
             }}
             placeholder="이야기 아이디어를 입력하세요... (Enter로 전송)"
             rows={2}
-            className="resize-none text-sm bg-white border-gray-200 focus-visible:ring-black/20 input-unified"
+            className="resize-none text-sm bg-white focus-visible:ring-0 input-unified outline-none border-none ring-0"
           />
           <Button
             onClick={() => handleSend()}

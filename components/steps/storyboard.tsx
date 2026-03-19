@@ -4,11 +4,12 @@ import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft
+  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X
 } from "lucide-react"
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { ASSETS } from "@/lib/constants"
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ interface StoryboardProps {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DETAIL_ROWS: { left: { key: keyof SceneElements; label: string }; right: { key: keyof SceneElements; label: string } }[] = [
-  { left: { key: "mainCharacter", label: "주제" },  right: { key: "story",       label: "품질" } },
+  { left: { key: "mainCharacter", label: "주제" },  right: { key: "quality",       label: "품질" } },
   { left: { key: "action",       label: "동작" },  right: { key: "lighting",     label: "조명" } },
   { left: { key: "background",   label: "배경" },  right: { key: "pose",         label: "영글" } },
   { left: { key: "composition",  label: "렌즈" },  right: { key: "subCharacter", label: "날짜" } },
@@ -47,6 +48,20 @@ export function Storyboard({
   const selectedScene = project.scenes[selectedSceneIndex]
 
   // ── 씬 선택 및 스크롤 포커싱 ──
+  const handleRemoveAsset = (sceneId: string | number, assetId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setProject((prev) => ({
+      ...prev,
+      scenes: prev.scenes.map((s) => {
+        if (s.id !== sceneId) return s
+        return {
+          ...s,
+          pinnedAssets: (s.pinnedAssets || []).filter(id => id !== assetId)
+        }
+      }),
+    }))
+  }
+
   const handleSceneSelect = (index: number) => {
     onSceneSelect(index)
     // 약간의 딜레이 후 해당 씬 카드로 스크롤 이동
@@ -127,34 +142,6 @@ export function Storyboard({
 
   return (
     <div className="storyboard-root bg-white h-full flex flex-col">
-      {/* ── 상단: 타이틀 및 탭 ── */}
-      <div className="flex-shrink-0 border-b border-[#E0E0E0] bg-white">
-        <div className="px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between max-w-[1440px] mx-auto w-full">
-          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 tracking-tight">2. 시각화</h1>
-          <div className="flex items-center gap-1 rounded-lg overflow-hidden border border-[#E0E0E0] w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={onBack}
-              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8] rounded-l-md"
-            >
-              기획
-            </button>
-            <button
-              type="button"
-              className="px-4 py-2 text-sm font-medium text-white bg-black"
-            >
-              시각화
-            </button>
-            <button
-              type="button"
-              onClick={onNext}
-              className="px-4 py-2 text-sm font-medium text-gray-800 bg-[#F0F0F0] hover:bg-[#E8E8E8] rounded-r-md"
-            >
-              영상화
-            </button>
-          </div>
-        </div>
-      </div>
 
       <div className="flex-1 overflow-auto flex flex-col p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto w-full">
         {/* ── 개별 씬 인디케이터 (1, 2, 3...) ── */}
@@ -194,17 +181,51 @@ export function Storyboard({
                     if (assetId) {
                       setProject((prev) => ({
                         ...prev,
-                        scenes: prev.scenes.map((s) => (s.id === scene.id ? { ...s, pinnedAsset: assetId } : s)),
+                        scenes: prev.scenes.map((s) => {
+                          if (s.id !== scene.id) return s
+                          const currentPins = s.pinnedAssets || []
+                          if (currentPins.includes(assetId)) return s
+                          return { ...s, pinnedAssets: [...currentPins, assetId] }
+                        }),
                       }))
                     }
                   }}
                   className={cn("storyboard-scene-card", selectedSceneIndex === index && "selected")}
                 >
-                  {/* 카드 헤더 */}
                   <div className="scene-card-header">
-                    <div className="scene-card-header-left">
-                      <span className="scene-badge">S#{index + 1}</span>
-                      <span className="scene-title">{scene.title}</span>
+                    <div className="scene-card-header-left flex items-center gap-2">
+                       <div className="flex items-center gap-2">
+                         <span className="scene-badge">S#{index + 1}</span>
+                         <span className="scene-title">{scene.title}</span>
+                       </div>
+                       <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5 max-w-[200px] sm:max-w-[300px]">
+                         {scene.pinnedAssets?.map((pinnedId) => {
+                           const pinnedAssetItem = ASSETS.find(a => a.id === pinnedId);
+                           if (!pinnedAssetItem) return null;
+                           const customImg = project.customAssets?.[pinnedId]?.imageUrl;
+                           return (
+                             <div 
+                               key={pinnedId} 
+                               className="group/pin flex items-center gap-1.5 px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded-md flex-shrink-0 cursor-default"
+                             >
+                               {customImg ? (
+                                 <img src={customImg} alt={pinnedAssetItem.label} className="w-3.5 h-3.5 rounded-sm object-cover flex-shrink-0" />
+                               ) : (
+                                 <pinnedAssetItem.icon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" strokeWidth={2} />
+                               )}
+                               <span className="text-[10px] font-medium text-gray-600 truncate max-w-[60px]">
+                                 {pinnedAssetItem.label}
+                                </span>
+                               <button 
+                                 onClick={(e) => handleRemoveAsset(scene.id, pinnedId, e)}
+                                 className="opacity-0 group-hover/pin:opacity-100 ml-0.5 hover:text-indigo-900 transition-opacity"
+                                >
+                                 <X size={10} />
+                               </button>
+                             </div>
+                           );
+                         })}
+                       </div>
                     </div>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -305,18 +326,17 @@ export function Storyboard({
                         {project.characters && project.characters.length > 0 ? (
                            project.characters.slice(0, 3).map(c => (
                              <div key={c.id} className="scene-detail-item">
-                               <span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">{c.name || "인물"}:</span>
-                               <span className="detail-value text-gray-600">{"세부적인"}</span>
+                               <span className="detail-label w-12 flex-shrink-0">{c.name || "인물"}:</span>
+                               <span className="detail-value">{"세부적인"}</span>
                              </div>
                            ))
                         ) : (
                           <>
-                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">잭:</span><span className="detail-value text-gray-600">{"세부적인"}</span></div>
-                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">엘라:</span><span className="detail-value text-gray-600">{"세부적인"}</span></div>
-                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">벤:</span><span className="detail-value text-gray-600">{"세부적인"}</span></div>
+                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0">사물1:</span><span className="detail-value">{"설명"}</span></div>
+                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0">사물2:</span><span className="detail-value">{"설명"}</span></div>
+                             <div className="scene-detail-item"><span className="detail-label w-12 flex-shrink-0">사물3:</span><span className="detail-value">{"설명"}</span></div>
                           </>
                         )}
-                        <div className="scene-detail-item mt-2"><span className="detail-label w-12 flex-shrink-0 text-gray-800 font-medium">효과음:</span><span className="detail-value text-gray-600">{"{value}"}</span></div>
                       </div>
                     </div>
                   </div>
@@ -332,29 +352,33 @@ export function Storyboard({
             })}
           </div>
         </div>
-        </div>
+      </div>
 
-        {/* ── 하단 네비게이션 ── */}
-        <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4 mt-auto">
-          <div className="max-w-[1440px] mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              variant="outline"
-              onClick={onBack}
-              className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0] gap-2 w-full sm:w-auto btn-unified"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              이전 단계로
-            </Button>
-            <Button
-              onClick={onNext}
-              className="rounded-lg text-white font-medium px-6 py-2.5 gap-2 w-full sm:w-auto btn-unified bg-black hover:bg-black/90"
-            >
-              다음 단계로
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
+      {/* flex-1 overflow-auto (B) 닫힘 */}
+      </div>
+
+      {/* ── 하단 네비게이션 ── */}
+      <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-4 py-3 sm:px-6 sm:py-4">
+        <div className="max-w-5xl mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            variant="ghost"
+            onClick={onBack}
+            className="rounded-lg text-gray-500 hover:text-black hover:bg-gray-100 gap-2 w-full sm:w-auto h-10 px-4 transition-all"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            이전 단계로
+          </Button>
+          <Button
+            onClick={onNext}
+            className="rounded-lg text-white font-semibold px-8 h-10 gap-2 w-full sm:w-auto bg-black hover:bg-gray-800 transition-all shadow-md press-down btn-unified"
+          >
+            다음 단계로
+            <ArrowRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
+
+      {/* storyboard-root (A) 닫힘 */}
     </div>
   )
 }
