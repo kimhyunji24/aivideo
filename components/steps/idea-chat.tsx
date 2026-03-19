@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { generateLogline } from "@/lib/api"
 
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
@@ -25,6 +26,7 @@ interface IdeaChatProps {
   setProject: (p: ProjectState) => void
   initialView?: "chat" | "summary"
   onNext: () => void
+  sessionId?: string | null
 }
 
 function buildLogline(idea: string): string {
@@ -34,7 +36,7 @@ function buildLogline(idea: string): string {
   return `${coreIdea}를 바탕으로, 주인공이 예상치 못한 위기 속에서 감정적 성장과 반전을 만들어내는 단편 서사.`
 }
 
-export function IdeaChat({ project, setProject, initialView = "chat", onNext }: IdeaChatProps) {
+export function IdeaChat({ project, setProject, initialView = "chat", onNext, sessionId }: IdeaChatProps) {
   const [viewMode, setViewMode] = useState<"chat" | "summary">(initialView)
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: "ai", content: AI_GREETING }])
   const [input, setInput] = useState(project.idea ?? "")
@@ -67,13 +69,23 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext }: 
     return buildLogline(project.idea ?? latestUserIdea ?? input)
   }, [project.logline, project.idea, latestUserIdea, input])
 
-  const handleSend = (idea?: string) => {
+  const handleSend = async (idea?: string) => {
     const text = (idea ?? input).trim()
     if (!text) return
 
     setInput("")
     setMessages((prev) => [...prev, { role: "user", content: text }])
     setProject({ ...project, idea: text })
+
+    if (sessionId) {
+      try {
+        const updatedProject = await generateLogline(sessionId, text);
+        setProject(updatedProject);
+        setLoglineDraft(updatedProject.logline ?? "");
+      } catch (err) {
+        console.error("Failed to generate logline via API:", err);
+      }
+    }
 
     setTimeout(() => {
       setMessages((prev) => [

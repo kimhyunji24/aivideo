@@ -15,6 +15,7 @@ import { Clapperboard, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import type { ProjectState, Scene } from "@/lib/types"
+import { createSession } from "@/lib/api"
 
 type ReturnState = {
   project: ProjectState
@@ -71,6 +72,7 @@ export default function MainWorkflowPage() {
   const [readyToMerge, setReadyToMerge] = useState(false)
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0)
   const [assetPanelOpen, setAssetPanelOpen] = useState(true)
+  const [sessionId, setSessionId] = useState<string | null>(null)
 
 
   const [project, setProject] = useState<ProjectState>({
@@ -102,6 +104,23 @@ export default function MainWorkflowPage() {
     } finally {
       sessionStorage.removeItem("aivideo:return-state")
     }
+  }, [shouldRestore])
+
+  useEffect(() => {
+    if (shouldRestore) return
+    const initSession = async () => {
+      let sid = sessionStorage.getItem("aivideo:sessionId")
+      if (!sid) {
+        try {
+          sid = await createSession()
+          sessionStorage.setItem("aivideo:sessionId", sid)
+        } catch (err) {
+          console.error("Failed to create session", err)
+        }
+      }
+      setSessionId(sid)
+    }
+    initSession()
   }, [shouldRestore])
 
   const pinnedAssets = project.scenes.reduce<Record<string | number, string>>((acc, s) => {
@@ -139,6 +158,7 @@ export default function MainWorkflowPage() {
             setProject={setProject}
             initialView={planPhase}
             onNext={() => setPlanPhase("workspace")}
+            sessionId={sessionId}
           />
         )
       }
