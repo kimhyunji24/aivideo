@@ -1,6 +1,10 @@
 spring:
   application:
     name: aivideo-studio
+  data:
+    redis:
+      host: localhost
+      port: 6379
   datasource:
     url: jdbc:h2:mem:aivideodb
     driver-class-name: org.h2.Driver
