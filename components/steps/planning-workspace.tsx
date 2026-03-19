@@ -1050,9 +1050,9 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
         <div className="max-w-4xl mx-auto flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
           {onBack ? (
             <Button
-              variant="outline"
+              variant="ghost"
               onClick={onBack}
-              className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0] gap-2 w-full sm:w-auto btn-unified"
+              className="rounded-lg text-gray-500 hover:text-black hover:bg-gray-100 gap-2 w-full sm:w-auto h-10 px-4 transition-all"
             >
               <ArrowLeft className="h-4 w-4" />
               이전 단계로
