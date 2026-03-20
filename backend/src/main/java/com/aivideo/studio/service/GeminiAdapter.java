@@ -120,9 +120,12 @@ public class GeminiAdapter {
     private Map<String, Object> buildRequestBody(String prompt, String mimeType) {
         return Map.of(
                 "contents", new Object[]{
-                        Map.of("parts", new Object[]{
+                        Map.of(
+                                "role", "user",
+                                "parts", new Object[]{
                                 Map.of("text", prompt)
-                        })
+                                }
+                        )
                 },
                 "generationConfig", Map.of(
                         "responseMimeType", mimeType
