@@ -9,7 +9,12 @@ version = '0.0.1-SNAPSHOT'
 
 java {
     sourceCompatibility = '17'
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
 }
+
+ext['lombok.version'] = '1.18.36'
 
 configurations {
     compileOnly {
@@ -26,9 +31,15 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    compileOnly 'org.projectlombok:lombok'
+
+    // Google Cloud Vertex AI — Imagen 3 이미지 생성
+    implementation 'com.google.cloud:google-cloud-aiplatform:3.42.0'
+    // Google Auth — 서비스 계정 JSON 인증
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.23.0'
+
+    compileOnly 'org.projectlombok:lombok:1.18.36'
     runtimeOnly 'com.h2database:h2'
-    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok:1.18.36'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 

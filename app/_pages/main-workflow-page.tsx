@@ -15,7 +15,7 @@ import { Clapperboard, PanelLeftOpen } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import type { ProjectState, Scene } from "@/lib/types"
-import { createSession } from "@/lib/api"
+import { createSession, updateSession } from "@/lib/api"
 
 type ReturnState = {
   project: ProjectState
@@ -138,16 +138,23 @@ export default function MainWorkflowPage() {
     return acc
   }, {})
 
-  const handleAssetDrop = (assetId: string, sceneId: string | number) => {
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s) => {
-        if (s.id !== sceneId) return s
-        const currentPins = s.pinnedAssets || []
-        if (currentPins.includes(assetId)) return s
-        return { ...s, pinnedAssets: [...currentPins, assetId] }
-      }),
-    }))
+  const handleAssetDrop = async (assetId: string, sceneId: string | number) => {
+    const updatedScenes = (project.scenes ?? []).map((s) => {
+      if (s.id !== sceneId) return s
+      const currentPins = s.pinnedAssets || []
+      if (currentPins.includes(assetId)) return s
+      return { ...s, pinnedAssets: [...currentPins, assetId] }
+    })
+    const updatedProject = { ...project, scenes: updatedScenes }
+    setProject(updatedProject)
+    // 에셋 핀 고정 정보를 Redis에 즉시 저장
+    if (sessionId) {
+      try {
+        await updateSession(sessionId, updatedProject)
+      } catch (e) {
+        console.error("에셋 핀 동기화 실패", e)
+      }
+    }
   }
 
   const goToStep = (step: number) => {
@@ -155,9 +162,18 @@ export default function MainWorkflowPage() {
   }
 
   /** Called when user finishes planning workspace → move to storyboard */
-  const handlePlanningDone = () => {
+  const handlePlanningDone = async () => {
     const scenes = buildScenesFromPlan(project)
-    setProject((prev) => ({ ...prev, scenes }))
+    const updatedProject = { ...project, scenes }
+    setProject(updatedProject)
+    // 씬 목록을 Redis에 동기화 — 이미지 생성 시 백엔드에서 씬을 찾을 수 있도록
+    if (sessionId) {
+      try {
+        await updateSession(sessionId, updatedProject)
+      } catch (e) {
+        console.error("씬 동기화 실패", e)
+      }
+    }
     setCurrentStep(2)
   }
 
@@ -201,6 +217,7 @@ export default function MainWorkflowPage() {
           }}
           selectedSceneIndex={selectedSceneIndex}
           onSceneSelect={setSelectedSceneIndex}
+          sessionId={sessionId}
         />
       )
     }
@@ -314,7 +331,7 @@ export default function MainWorkflowPage() {
           <div className="flex flex-1 min-h-0 max-w-[1440px] w-full flex-col lg:flex-row">
             {showPanels && assetPanelOpen && (
               <div className="hidden lg:flex w-52 flex-shrink-0 border-r border-[#E5E7EB] overflow-hidden bg-white">
-                <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} project={project} setProject={setProject} onClose={() => setAssetPanelOpen(false)} />
+                <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} project={project} setProject={setProject} onClose={() => setAssetPanelOpen(false)} sessionId={sessionId} />
               </div>
             )}
             {showPanels && !assetPanelOpen && (

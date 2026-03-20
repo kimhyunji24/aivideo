@@ -33,7 +33,7 @@ export interface Scene {
     imageUrl?: string;
     videoUrl?: string;
     duration: number;
-    status: "pending" | "generating" | "done" | "error";
+    status: "pending" | "generating" | "generating_video" | "completed" | "done" | "error";
     elements: SceneElements;
     params?: SceneParams;
     styleChip?: string;

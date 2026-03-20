@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { ASSETS, CATEGORIES } from "@/lib/constants"
 import { ProjectState } from "@/lib/types"
+import { updateSession } from "@/lib/api"
 import {
   Dialog,
   DialogContent,
@@ -32,9 +33,11 @@ interface AssetLibraryProps {
   project?: ProjectState
   setProject?: (project: ProjectState) => void
   onClose?: () => void
+  /** 에셋 커스텀 데이터를 Redis에 저장하기 위한 세션 ID */
+  sessionId?: string | null
 }
 
-export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject, onClose }: AssetLibraryProps) {
+export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject, onClose, sessionId }: AssetLibraryProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<"character" | "background" | "style">("character")
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null)
@@ -51,9 +54,9 @@ export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject, o
     setEditDesc(cData?.description ?? ASSETS.find(a => a.id === assetId)?.description ?? "")
   }
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editingAssetId || !setProject || !project) return
-    setProject({
+    const updatedProject = {
       ...project,
       customAssets: {
         ...(project.customAssets || {}),
@@ -62,7 +65,16 @@ export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject, o
           description: editDesc,
         }
       }
-    })
+    }
+    setProject(updatedProject)
+    // 커스텀 에셋 정보를 Redis에 즉시 저장
+    if (sessionId) {
+      try {
+        await updateSession(sessionId, updatedProject)
+      } catch (e) {
+        console.error("에셋 커스텀 데이터 동기화 실패", e)
+      }
+    }
     setEditingAssetId(null)
   }
 

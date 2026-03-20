@@ -3,6 +3,7 @@ package com.aivideo.studio.service;
 import com.aivideo.studio.dto.Character;
 import com.aivideo.studio.dto.PlotPlan;
 import com.aivideo.studio.dto.ProjectState;
+import com.aivideo.studio.exception.SessionNotFoundException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -23,12 +24,13 @@ public class PlanningService {
 
     public ProjectState generateLogline(String sessionId, String idea) {
         ProjectState state = sessionService.getSession(sessionId);
-        if (state == null) throw new IllegalArgumentException("Session not found");
+        if (state == null) throw new SessionNotFoundException(sessionId);
+        if (idea == null || idea.isBlank()) throw new IllegalArgumentException("idea must not be blank");
         
         String prompt = "다음 사용자의 아이디어를 바탕으로, 주인공이 무언가를 겪는 1~2줄짜리 흥미로운 단편 영화 로그라인을 작성해줘. 추가적인 말이나 설명 없이 로그라인 한문장만 출력해줘.\n아이디어: " + idea;
         String logline = geminiAdapter.generateText(prompt);
         
-        state.setIdea(idea);
+        state.setIdea(idea.trim());
         state.setLogline(logline.trim());
         
         sessionService.updateSession(sessionId, state);
@@ -37,7 +39,7 @@ public class PlanningService {
 
     public ProjectState generateCharacters(String sessionId) {
         ProjectState state = sessionService.getSession(sessionId);
-        if (state == null) throw new IllegalArgumentException("Session not found");
+        if (state == null) throw new SessionNotFoundException(sessionId);
 
         String prompt = String.format(
             "다음 로그라인과 장르, 세계관을 바탕으로 주인공과 대립/조력 인물 총 2명의 캐릭터를 생성해줘.\n" +
@@ -79,7 +81,7 @@ public class PlanningService {
 
     public ProjectState generatePlot(String sessionId, int stageCount, String userPrompt) {
         ProjectState state = sessionService.getSession(sessionId);
-        if (state == null) throw new IllegalArgumentException("Session not found");
+        if (state == null) throw new SessionNotFoundException(sessionId);
 
         String charactersStr = "";
         try {

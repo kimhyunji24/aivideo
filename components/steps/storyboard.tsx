@@ -4,12 +4,13 @@ import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X
+  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X, Video
 } from "lucide-react"
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { ASSETS } from "@/lib/constants"
+import { updateSession } from "@/lib/api"
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,8 @@ interface StoryboardProps {
   onBack: () => void
   selectedSceneIndex: number
   onSceneSelect: (i: number) => void
+  /** 에셋 핀 제거 시 Redis 동기화에 필요 */
+  sessionId?: string | null
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -41,25 +44,32 @@ function getElementValue(elements: SceneElements, key: keyof SceneElements): str
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Storyboard({
-  project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect,
+  project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect, sessionId,
 }: StoryboardProps) {
   const router = useRouter()
 
   const selectedScene = project.scenes[selectedSceneIndex]
 
   // ── 씬 선택 및 스크롤 포커싱 ──
-  const handleRemoveAsset = (sceneId: string | number, assetId: string, e: React.MouseEvent) => {
+  const handleRemoveAsset = async (sceneId: string | number, assetId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s) => {
-        if (s.id !== sceneId) return s
-        return {
-          ...s,
-          pinnedAssets: (s.pinnedAssets || []).filter(id => id !== assetId)
-        }
-      }),
-    }))
+    const updatedScenes = project.scenes.map((s) => {
+      if (s.id !== sceneId) return s
+      return {
+        ...s,
+        pinnedAssets: (s.pinnedAssets || []).filter(id => id !== assetId)
+      }
+    })
+    const updatedProject = { ...project, scenes: updatedScenes }
+    setProject(updatedProject)
+    // 핀 제거를 Redis에 동기화
+    if (sessionId) {
+      try {
+        await updateSession(sessionId, updatedProject)
+      } catch (e) {
+        console.error("에셋 핀 제거 동기화 실패", e)
+      }
+    }
   }
 
   const handleSceneSelect = (index: number) => {
@@ -95,13 +105,47 @@ export function Storyboard({
                 ...prev,
                 scenes: prev.scenes.map(s => (s.id === sceneId ? updated : s)),
               }))
-              if (updated.status === "done" || updated.status === "error") clearInterval(interval)
+              if (updated.status === "completed" || updated.status === "done" || updated.status === "error") clearInterval(interval)
             }
           } catch { clearInterval(interval) }
         }, 2000)
       }
     } catch { /* silently fail */ }
   }
+
+  // ── 비디오 생성 (Phase 3) ──
+  const handleGenerateVideo = async (sceneId: string | number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!sessionId) return
+    setProject(prev => ({
+      ...prev,
+      scenes: prev.scenes.map(s =>
+        s.id === sceneId ? { ...s, status: "generating_video" } : s
+      ),
+    }))
+    try {
+      const res = await fetch(`http://localhost:8080/api/v1/sessions/${sessionId}/generation/videos/${sceneId}`, { method: "POST" })
+      if (res.ok) {
+        const interval = setInterval(async () => {
+          try {
+            const sr = await fetch(`http://localhost:8080/api/v1/sessions/${sessionId}`)
+            if (sr.ok) {
+              const state = await sr.json()
+              const updated = state.scenes.find((s: Scene) => s.id === sceneId)
+              if (updated) {
+                setProject(prev => ({
+                  ...prev,
+                  scenes: prev.scenes.map(s => (s.id === sceneId ? updated : s)),
+                }))
+                if (updated.status === "completed" || updated.status === "error") clearInterval(interval)
+              }
+            }
+          } catch { clearInterval(interval) }
+        }, 3000)
+      }
+    } catch { /* silently fail */ }
+  }
+
 
   // ── 이미지 다운로드 ──
   const handleDownload = (scene: Scene, e: React.MouseEvent) => {
@@ -242,9 +286,15 @@ export function Storyboard({
 
                   {/* 카드 스크롤 영역 */}
                   <div className="scene-card-body">
-                    {/* 이미지 + 호버 오버레이 */}
+                    {/* 미디어(비디오 혹은 이미지) + 호버 오버레이 */}
                     <div className="scene-image-wrapper">
-                      {scene.imageUrl ? (
+                      {scene.status === "generating_video" ? (
+                        <div className="scene-image-placeholder">
+                          <span>비디오 생성 중...</span>
+                        </div>
+                      ) : scene.videoUrl ? (
+                        <video src={scene.videoUrl} autoPlay loop muted playsInline className="scene-image" />
+                      ) : scene.imageUrl ? (
                         <img src={scene.imageUrl} alt={scene.title} className="scene-image" />
                       ) : (
                         <div className="scene-image-placeholder">
@@ -263,11 +313,19 @@ export function Storyboard({
                           </Tooltip>
                           <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
+                              <button className="scene-overlay-btn" onClick={(e) => handleGenerateVideo(scene.id, e)} disabled={!scene.imageUrl}>
+                                <Video size={16} />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">비디오(모션) 부여</TooltipContent>
+                          </Tooltip>
+                          <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
                               <button className="scene-overlay-btn" onClick={(e) => handleDownload(scene, e)}>
                                 <Download size={16} />
                               </button>
                             </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">이미지 다운로드</TooltipContent>
+                            <TooltipContent side="bottom" className="text-xs">다운로드</TooltipContent>
                           </Tooltip>
                         </div>
                       </div>

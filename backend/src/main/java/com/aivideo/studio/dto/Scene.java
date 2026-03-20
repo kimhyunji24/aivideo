@@ -23,6 +23,7 @@ public class Scene implements Serializable {
     private SceneElements elements;
     private SceneParams params;
     private String styleChip;
-    private String pinnedAsset;
+    /** 에셋 라이브러리에서 이 씬에 핀 고정된 에셋 ID 목록 */
+    private List<String> pinnedAssets;
     private List<Frame> frames;
 }
