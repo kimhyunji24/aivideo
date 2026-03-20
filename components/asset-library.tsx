@@ -9,7 +9,8 @@ import {
   Layers,
   GripVertical,
   Pen,
-  X
+  PanelLeftClose,
+  PanelLeftOpen
 } from "lucide-react"
 import { ASSETS, CATEGORIES } from "@/lib/constants"
 import { ProjectState } from "@/lib/types"
@@ -97,10 +98,10 @@ export function AssetLibrary({ onDrop, pinnedAssets = {}, project, setProject, o
             <button
               type="button"
               onClick={onClose}
-              className="h-6 w-6 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all duration-150"
+              className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
               aria-label="에셋 패널 닫기"
             >
-              <X className="h-3.5 w-3.5" />
+              <PanelLeftClose className="h-4 w-4" />
             </button>
           )}
         </div>

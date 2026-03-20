@@ -11,7 +11,7 @@ import { AssetLibrary } from "@/components/asset-library"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Clapperboard, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { Clapperboard, PanelLeftOpen } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import type { ProjectState, Scene } from "@/lib/types"
@@ -266,28 +266,7 @@ export default function MainWorkflowPage() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {/* Panel toggles (step 2+): 목업 스타일 — 회색 아이콘, rounded-lg 호버 */}
-            {showPanels && (
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                      onClick={() => setAssetPanelOpen((v) => !v)}
-                    >
-                      {assetPanelOpen ? (
-                        <PanelLeftClose className="h-4 w-4" />
-                      ) : (
-                        <PanelLeftOpen className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{assetPanelOpen ? "에셋 패널 닫기" : "에셋 패널 열기"}</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
+
 
             {/* Mode toggle: sm 이상에서만 풀 레이블, 작은 화면에서도 터치 가능 */}
             <div className="flex items-center rounded-lg p-1 bg-gray-100 border border-gray-200">
@@ -336,6 +315,23 @@ export default function MainWorkflowPage() {
             {showPanels && assetPanelOpen && (
               <div className="hidden lg:flex w-52 flex-shrink-0 border-r border-[#E5E7EB] overflow-hidden bg-white">
                 <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} project={project} setProject={setProject} onClose={() => setAssetPanelOpen(false)} />
+              </div>
+            )}
+            {showPanels && !assetPanelOpen && (
+              <div className="hidden lg:flex flex-col items-center pt-4 w-10 flex-shrink-0 border-r border-[#E5E7EB] bg-white">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setAssetPanelOpen(true)}
+                      className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                      aria-label="에셋 패널 열기"
+                    >
+                      <PanelLeftOpen className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">에셋 패널 열기</TooltipContent>
+                </Tooltip>
               </div>
             )}
 
