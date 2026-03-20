@@ -15,6 +15,7 @@ import { Clapperboard, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import type { ProjectState, Scene } from "@/lib/types"
+import { createSession } from "@/lib/api"
 
 type ReturnState = {
   project: ProjectState
@@ -71,6 +72,7 @@ export default function MainWorkflowPage() {
   const [readyToMerge, setReadyToMerge] = useState(false)
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0)
   const [assetPanelOpen, setAssetPanelOpen] = useState(true)
+  const [sessionId, setSessionId] = useState<string | null>(null)
 
 
   const [project, setProject] = useState<ProjectState>({
@@ -83,6 +85,31 @@ export default function MainWorkflowPage() {
     scenes: [],
     mode: "beginner",
   })
+
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        let sid = sessionStorage.getItem("aivideo:sessionId")
+        if (sid) {
+          try {
+            const { getSession } = await import("@/lib/api")
+            await getSession(sid)
+          } catch {
+            sid = null
+          }
+        }
+        if (!sid) {
+          sid = await createSession()
+          sessionStorage.setItem("aivideo:sessionId", sid)
+        }
+        setSessionId(sid)
+      } catch (err) {
+        console.error("Failed to create session", err)
+        alert("CRITICAL ERROR: Failed to create session! Check if backend is running on 8080. " + err)
+      }
+    }
+    void initSession()
+  }, [])
 
   useEffect(() => {
     if (!shouldRestore) return
@@ -104,8 +131,10 @@ export default function MainWorkflowPage() {
     }
   }, [shouldRestore])
 
-  const pinnedAssets = project.scenes.reduce<Record<string | number, string[]>>((acc, s) => {
+
+  const pinnedAssets = (project.scenes ?? []).reduce<Record<string | number, string[]>>((acc, s) => {
     if (s.pinnedAssets && s.pinnedAssets.length > 0) acc[s.id] = s.pinnedAssets
+
     return acc
   }, {})
 
@@ -144,6 +173,7 @@ export default function MainWorkflowPage() {
             setProject={setProject}
             initialView={planPhase}
             onNext={() => setPlanPhase("workspace")}
+            sessionId={sessionId}
           />
         )
       }
@@ -153,6 +183,7 @@ export default function MainWorkflowPage() {
           setProject={setProject}
           onNext={handlePlanningDone}
           onBack={() => setPlanPhase("summary")}
+          sessionId={sessionId}
         />
       )
     }
@@ -266,11 +297,10 @@ export default function MainWorkflowPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className={`h-7 rounded-md text-xs font-medium px-2 sm:px-3 transition-colors ${
-                        project.mode === m
+                      className={`h-7 rounded-md text-xs font-medium px-2 sm:px-3 transition-colors ${project.mode === m
                           ? "bg-white text-gray-900 shadow-sm border border-gray-200"
                           : "text-gray-600 hover:text-gray-900"
-                      }`}
+                        }`}
                       onClick={() => setProject({ ...project, mode: m })}
                     >
                       {m === "beginner" ? "초보자" : "전문가"}

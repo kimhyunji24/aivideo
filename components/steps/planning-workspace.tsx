@@ -9,6 +9,7 @@ import type {
   PlanningSeedRequest,
   PlanningSeedResponse,
 } from "@/lib/types"
+import { generateCharacters, generatePlot, updateSession } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -793,9 +794,10 @@ interface PlanningWorkspaceProps {
   setProject: (p: ProjectState) => void
   onNext: () => void
   onBack?: () => void
+  sessionId: string | null
 }
 
-export function PlanningWorkspace({ project, setProject, onNext, onBack }: PlanningWorkspaceProps) {
+export function PlanningWorkspace({ project, setProject, onNext, onBack, sessionId }: PlanningWorkspaceProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [characterModalId, setCharacterModalId] = useState<string | null>(null)
   const [plotModalStageId, setPlotModalStageId] = useState<string | null>(null)
@@ -868,53 +870,16 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
     })
   }
 
-  const requestPlanningSeed = async (targetStageCount: 3 | 4 | 5) => {
-    const payload: PlanningSeedRequest = {
-      idea: project.idea,
-      logline,
-      selectedGenres,
-      selectedWorldviews,
-      userPrompt: planningPrompt,
-      stageCount: targetStageCount,
-    }
-
-    const response = await fetch("/api/planning-seed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) {
-      throw new Error(`planning-seed API failed: ${response.status}`)
-    }
-
-    const seed = (await response.json()) as PlanningSeedResponse
-    return {
-      characters: toCharacterSeeds(seed.characters),
-      plotPlan: toPlotPlanSeed(seed.plotPlan),
-    }
-  }
-
   const generatePlotForStage = async (targetStageCount: 3 | 4 | 5) => {
+    if (!sessionId) return
     setIsGenerating(true)
     try {
-      const seed = await requestPlanningSeed(targetStageCount)
-      const nextPlotPlan =
-        seed.plotPlan ?? { stageCount: targetStageCount, stages: generatePlotStages(logline, characters, targetStageCount) }
-
-      setProject({
-        ...project,
-        characters,
-        charactersConfirmed: true,
-        plotPlan: nextPlotPlan,
-      })
-    } catch {
-      const fallbackStages = generatePlotStages(logline, characters, targetStageCount)
-      setProject({
-        ...project,
-        characters,
-        charactersConfirmed: true,
-        plotPlan: { stageCount: targetStageCount, stages: fallbackStages },
-      })
+      await updateSession(sessionId, project)
+      const nextState = await generatePlot(sessionId, targetStageCount, planningPrompt)
+      setProject(nextState)
+    } catch (e) {
+      console.error(e);
+      alert("API Error in Plot/Characters: " + e);
     } finally {
       setIsGenerating(false)
     }
@@ -931,8 +896,6 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
     if (!logline.trim()) return
 
     const hasCharacters = characters.length > 0
-    const targetStageCount = normalizeStageCount(plotPlan?.stageCount)
-
     if (hasCharacters) {
       hasAutoSeededRef.current = true
       return
@@ -943,31 +906,13 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
     let cancelled = false
     const autoSeed = async () => {
       try {
-        const seed = await requestPlanningSeed(targetStageCount)
-        if (cancelled) return
-
-        const nextCharacters = hasCharacters
-          ? characters
-          : (seed.characters.length > 0
-            ? seed.characters
-            : generateCharactersFromLogline(logline, selectedGenres, selectedWorldviews))
-
-        setProject({
-          ...project,
-          characters: nextCharacters,
-          charactersConfirmed: false,
-        })
-      } catch {
-        if (cancelled) return
-        const nextCharacters = hasCharacters
-          ? characters
-          : generateCharactersFromLogline(logline, selectedGenres, selectedWorldviews)
-
-        setProject({
-          ...project,
-          characters: nextCharacters,
-          charactersConfirmed: false,
-        })
+        if (!sessionId) return
+        await updateSession(sessionId, project)
+        const nextState = await generateCharacters(sessionId)
+        if (!cancelled) setProject({ ...project, ...nextState, scenes: nextState.scenes ?? project.scenes ?? [] })
+      } catch (e) {
+        console.error(e);
+        alert("API Error in autoSeed Characters: " + e);
       }
     }
 
@@ -975,14 +920,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack }: Plann
     return () => {
       cancelled = true
     }
-  }, [
-    characters,
-    logline,
-    project,
-    selectedGenres,
-    selectedWorldviews,
-    setProject,
-  ])
+  }, [characters, logline, project, sessionId, setProject])
 
   const plot = project.plotPlan ?? {
     stageCount: 3 as const,

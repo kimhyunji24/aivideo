@@ -1,11 +1,27 @@
 spring:
   application:
     name: aivideo-studio
-  data:
-    redis:
-      host: localhost
-      port: 6379
+  datasource:
+    url: jdbc:h2:mem:aivideodb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
 
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
 aivideo:
   mock-mode: ${MOCK_MODE:false}
@@ -17,7 +33,7 @@ google:
   api-key: ${GOOGLE_API_KEY:}
 
 gemini:
-  text-model: ${GEMINI_TEXT_MODEL:gemini-2.5-flash}
+  text-model: ${GEMINI_TEXT_MODEL:gemini-1.5-pro}
   image-model: ${GEMINI_IMAGE_MODEL:imagen-3.0-generate-002}
   video-model: ${GEMINI_VIDEO_MODEL:veo-3.0-generate-001}
   max-tokens: ${GEMINI_MAX_TOKENS:8192}
