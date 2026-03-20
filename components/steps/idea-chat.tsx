@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { generateLogline } from "@/lib/api"
+import { generateCharacters, generateLogline } from "@/lib/api"
 
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
@@ -28,6 +28,8 @@ interface IdeaChatProps {
   onNext: () => void
   sessionId?: string | null
 }
+
+const LOGLINE_LOADING_MESSAGE = "로그라인 생성중..."
 
 function buildLogline(idea: string): string {
   const coreIdea = idea.trim()
@@ -75,31 +77,60 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
     if (!text) return
 
     setInput("")
-    setMessages((prev) => [...prev, { role: "user", content: text }])
+    setShowConfirm(false)
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: text },
+      { role: "ai", content: LOGLINE_LOADING_MESSAGE },
+    ])
     setProject({ ...project, idea: text })
+
+    let generatedLogline = buildLogline(text)
 
     if (sessionId) {
       try {
-        const updatedProject = await generateLogline(sessionId, text);
-        const merged: ProjectState = { ...project, ...updatedProject, scenes: updatedProject.scenes ?? project.scenes ?? [] };
-        setProject(merged);
-        setLoglineDraft(updatedProject.logline ?? "");
+        const loglineState = await generateLogline(sessionId, text)
+        let merged: ProjectState = {
+          ...project,
+          ...loglineState,
+          scenes: loglineState.scenes ?? project.scenes ?? [],
+        }
+        generatedLogline = loglineState.logline?.trim() || generatedLogline
+
+        try {
+          const characterState = await generateCharacters(sessionId)
+          merged = {
+            ...merged,
+            ...characterState,
+            scenes: characterState.scenes ?? merged.scenes ?? [],
+          }
+        } catch (err) {
+          console.error("Failed to generate characters via API:", err)
+        }
+
+        setProject(merged)
+        setLoglineDraft(generatedLogline)
       } catch (err) {
-        console.error("Failed to generate logline via API:", err);
-        alert("API Error in Logline: " + err);
+        console.error("Failed to generate logline via API:", err)
+        alert("API Error in Logline: " + err)
+        setLoglineDraft(generatedLogline)
       }
+    } else {
+      setProject({ ...project, idea: text, logline: generatedLogline })
+      setLoglineDraft(generatedLogline)
     }
 
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          content: `훌륭한 아이디어네요! "${text}"를 기반으로 로그라인·캐릭터·플롯을 함께 설계해 볼게요. 기획 워크스페이스로 이동하면 캐릭터 시트가 자동 생성되고, 캐릭터 확정 후 1차 플롯을 생성할 수 있습니다.`,
-        },
-      ])
-      setShowConfirm(true)
-    }, 500)
+    setMessages((prev) => {
+      const next = [...prev]
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].role === "ai" && next[i].content === LOGLINE_LOADING_MESSAGE) {
+          next[i] = { role: "ai", content: generatedLogline }
+          break
+        }
+      }
+      return next
+    })
+    setShowConfirm(true)
   }
 
   const handleConfirmLogline = () => {
