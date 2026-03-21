@@ -1,7 +1,6 @@
 package com.aivideo.studio.service;
 
 import com.google.auth.oauth2.GoogleCredentials;
-import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.aiplatform.v1.EndpointName;
 import com.google.cloud.aiplatform.v1.PredictResponse;
 import com.google.cloud.aiplatform.v1.PredictionServiceClient;
@@ -49,6 +48,12 @@ public class ImagenAdapter {
     @Value("${google.application-credentials:#{null}}")
     private String credentialsPath;
 
+    @Value("${aivideo.mock-mode:false}")
+    private boolean mockMode;
+
+    @Value("${aivideo.mock-image-url:}")
+    private String mockImageUrl;
+
     private static final String ENDPOINT_SUFFIX = "-aiplatform.googleapis.com:443";
 
     /**
@@ -59,6 +64,13 @@ public class ImagenAdapter {
      * @return 저장된 이미지 파일의 URL 경로 (예: /generated-images/scene-1.png)
      */
     public String generateImage(String prompt, String sceneId) {
+        if (mockMode) {
+            log.info("[Mock] Imagen 이미지 생성을 스킵합니다. Mock URL 반환");
+            return (mockImageUrl != null && !mockImageUrl.isBlank())
+                    ? mockImageUrl
+                    : "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80";
+        }
+
         log.info("[Imagen3] 이미지 생성 시작 — sceneId: {}, prompt 길이: {}", sceneId, prompt.length());
 
         try {

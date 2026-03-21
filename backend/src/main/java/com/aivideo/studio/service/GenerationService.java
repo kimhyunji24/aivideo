@@ -2,10 +2,12 @@ package com.aivideo.studio.service;
 
 import com.aivideo.studio.dto.ProjectState;
 import com.aivideo.studio.dto.Scene;
+import com.aivideo.studio.dto.Frame;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -72,6 +74,9 @@ public class GenerationService {
     public List<Scene> generateAllImages(String sessionId) {
         ProjectState state = sessionService.getSession(sessionId);
         if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+        if (state.getScenes() == null || state.getScenes().isEmpty()) {
+            return List.of();
+        }
 
         return state.getScenes().stream()
                 .filter(s -> !"done".equals(s.getStatus()))
@@ -84,6 +89,92 @@ public class GenerationService {
                     }
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 특정 씬에 프레임을 1개 추가합니다. (최대 4개)
+     */
+    public Frame addFrameToScene(String sessionId, String sceneId) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        Scene target = findScene(state.getScenes(), sceneId);
+        if (target == null) throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
+
+        List<Frame> frames = target.getFrames() == null ? new ArrayList<>() : new ArrayList<>(target.getFrames());
+        if (frames.size() >= 4) {
+            throw new IllegalArgumentException("프레임은 최대 4개까지 추가할 수 있습니다.");
+        }
+
+        Frame newFrame = Frame.builder()
+                .id("f-" + System.currentTimeMillis())
+                .script("")
+                .imageUrl(null)
+                .build();
+
+        frames.add(newFrame);
+        target.setFrames(frames);
+        sessionService.updateSession(sessionId, state);
+        return newFrame;
+    }
+
+    /**
+     * 특정 씬의 프레임 이미지를 생성합니다.
+     * frameId가 없으면 첫 프레임을 사용하고, 프레임이 없으면 자동 생성합니다.
+     */
+    public Frame generateFrameForScene(String sessionId, String sceneId, String frameId, String frameScript) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        Scene target = findScene(state.getScenes(), sceneId);
+        if (target == null) throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
+
+        List<Frame> frames = target.getFrames() == null ? new ArrayList<>() : new ArrayList<>(target.getFrames());
+        if (frames.isEmpty()) {
+            Frame seed = Frame.builder()
+                    .id(resolveFrameId(frameId, 0))
+                    .script(firstNonBlank(frameScript, target.getDescription(), target.getPrompt()))
+                    .imageUrl(target.getImageUrl())
+                    .build();
+            frames.add(seed);
+        }
+
+        Frame targetFrame = findFrame(frames, frameId);
+        if (targetFrame == null) {
+            if (frames.size() >= 4) {
+                throw new IllegalArgumentException("프레임은 최대 4개까지 추가할 수 있습니다.");
+            }
+            targetFrame = Frame.builder()
+                    .id(resolveFrameId(frameId, frames.size()))
+                    .script("")
+                    .imageUrl(null)
+                    .build();
+            frames.add(targetFrame);
+        }
+
+        if (frameScript != null && !frameScript.isBlank()) {
+            targetFrame.setScript(frameScript.trim());
+        }
+
+        String prompt = firstNonBlank(
+                targetFrame.getScript(),
+                target.getPrompt(),
+                target.getDescription()
+        );
+
+        if (prompt == null || prompt.isBlank()) {
+            throw new IllegalArgumentException("프레임 생성에 사용할 script 또는 scene prompt가 필요합니다.");
+        }
+
+        String imageUrl = imagenAdapter.generateImage(prompt, buildFrameSceneKey(sceneId, targetFrame.getId()));
+        targetFrame.setImageUrl(imageUrl);
+        if (targetFrame.getScript() == null || targetFrame.getScript().isBlank()) {
+            targetFrame.setScript(prompt);
+        }
+
+        target.setFrames(frames);
+        sessionService.updateSession(sessionId, state);
+        return targetFrame;
     }
 
     // ─── Private 헬퍼 ────────────────────────────────────────────────────────
@@ -150,29 +241,85 @@ public class GenerationService {
                 .orElse(null);
     }
 
+    private Frame findFrame(List<Frame> frames, String frameId) {
+        if (frames == null || frames.isEmpty()) {
+            return null;
+        }
+        if (frameId == null || frameId.isBlank()) {
+            return frames.get(0);
+        }
+        return frames.stream()
+                .filter(f -> frameId.equals(String.valueOf(f.getId())))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String resolveFrameId(String frameId, int index) {
+        if (frameId != null && !frameId.isBlank()) {
+            return frameId;
+        }
+        return "f-" + (index + 1) + "-" + System.currentTimeMillis();
+    }
+
+    private String buildFrameSceneKey(String sceneId, String frameId) {
+        String safeSceneId = sanitizeIdentifier(sceneId, "scene");
+        String safeFrameId = sanitizeIdentifier(frameId, "frame");
+        return safeSceneId + "-" + safeFrameId;
+    }
+
+    private String sanitizeIdentifier(String value, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        String sanitized = value.replaceAll("[^a-zA-Z0-9_-]", "-");
+        return sanitized.isBlank() ? fallback : sanitized;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) return null;
+        for (String v : values) {
+            if (v != null && !v.isBlank()) {
+                return v.trim();
+            }
+        }
+        return null;
+    }
+
     /**
      * Phase 3: 이미지가 생성된 씬(의 imageUrl)을 바탕으로 Veo 3.1 모델을 호출하여 영상을 생성
      */
-    public void generateVideo(String sessionId, Object sceneId) {
+    public void validateVideoGenerationRequest(String sessionId, String sceneId) {
         ProjectState state = sessionService.getSession(sessionId);
         if (state == null) {
-            throw new RuntimeException("Session not found: " + sessionId);
+            throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
         }
 
-        Scene target = null;
-        for (Scene s : state.getScenes()) {
-            if (s.getId().equals(sceneId)) {
-                target = s;
-                break;
-            }
-        }
-
+        Scene target = findScene(state.getScenes(), sceneId);
         if (target == null) {
-            throw new RuntimeException("Scene not found: " + sceneId);
+            throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
         }
 
-        if (target.getImageUrl() == null || target.getImageUrl().isEmpty()) {
-            throw new RuntimeException("기준 이미지가 먼저 생성되어야 영상을 만들 수 있습니다.");
+        if (target.getImageUrl() == null || target.getImageUrl().isBlank()) {
+            throw new IllegalArgumentException("기준 이미지가 먼저 생성되어야 영상을 만들 수 있습니다.");
+        }
+    }
+
+    /**
+     * Phase 3: 이미지가 생성된 씬(의 imageUrl)을 바탕으로 Veo 3.1 모델을 호출하여 영상을 생성
+     */
+    public void generateVideo(String sessionId, String sceneId) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) {
+            throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+        }
+
+        Scene target = findScene(state.getScenes(), sceneId);
+        if (target == null) {
+            throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
+        }
+
+        if (target.getImageUrl() == null || target.getImageUrl().isBlank()) {
+            throw new IllegalArgumentException("기준 이미지가 먼저 생성되어야 영상을 만들 수 있습니다.");
         }
 
         // 상태를 생성 중으로 업데이트
@@ -197,8 +344,9 @@ public class GenerationService {
         } catch (Exception e) {
             log.error("Failed to generate video for scene: {}", sceneId, e);
             target.setStatus("error");
+            throw new RuntimeException("비디오 생성 실패: " + e.getMessage(), e);
+        } finally {
+            sessionService.updateSession(sessionId, state);
         }
-
-        sessionService.updateSession(sessionId, state);
     }
 }

@@ -62,12 +62,7 @@ public class PlanningService {
         );
 
         String jsonResponse = geminiAdapter.generateJson(prompt);
-        // Gemini may wrap response in ```json ... ``` code blocks, strip them
-        String cleaned = jsonResponse.trim()
-            .replaceAll("(?s)^```json\\s*", "")
-            .replaceAll("(?s)^```\\s*", "")
-            .replaceAll("\\s*```$", "")
-            .trim();
+        String cleaned = stripMarkdownCodeFence(jsonResponse);
         try {
             List<Character> characters = objectMapper.readValue(cleaned, new TypeReference<List<Character>>(){});
             state.setCharacters(characters);
@@ -114,13 +109,25 @@ public class PlanningService {
         );
 
         String jsonResponse = geminiAdapter.generateJson(prompt);
+        String cleaned = stripMarkdownCodeFence(jsonResponse);
         try {
-            PlotPlan plotPlan = objectMapper.readValue(jsonResponse, PlotPlan.class);
+            PlotPlan plotPlan = objectMapper.readValue(cleaned, PlotPlan.class);
             state.setPlotPlan(plotPlan);
             sessionService.updateSession(sessionId, state);
             return state;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse plot plan JSON from: " + jsonResponse, e);
+            throw new RuntimeException("Failed to parse plot plan JSON from: " + cleaned, e);
         }
+    }
+
+    private String stripMarkdownCodeFence(String response) {
+        if (response == null) {
+            return "";
+        }
+        return response.trim()
+                .replaceAll("(?s)^```json\\s*", "")
+                .replaceAll("(?s)^```\\s*", "")
+                .replaceAll("\\s*```$", "")
+                .trim();
     }
 }

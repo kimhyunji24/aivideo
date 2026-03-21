@@ -19,6 +19,7 @@ interface FrameEditProps {
   onNext: () => void
   selectedFrameIndex?: number
   onSelectedFrameIndexChange?: (index: number) => void
+  sessionId?: string | null
 }
 
 export function FrameEdit({
@@ -30,6 +31,7 @@ export function FrameEdit({
   onNext,
   selectedFrameIndex: selectedFrameIndexProp = 0,
   onSelectedFrameIndexChange,
+  sessionId,
 }: FrameEditProps) {
   const scene = project.scenes[sceneIndex]
   if (!scene) return null
@@ -67,12 +69,20 @@ export function FrameEdit({
     onSelectedFrameIndexChange?.(safeSelectedFrameIndex)
   }, [onSelectedFrameIndexChange, safeSelectedFrameIndex])
 
+  const resolveSessionId = () => {
+    if (sessionId && sessionId.trim()) return sessionId
+    if (typeof window === "undefined") return null
+    return sessionStorage.getItem("aivideo:sessionId")
+  }
+
   const updateFrameScript = (script: string) => {
     setProject((prev) => ({
       ...prev,
       scenes: prev.scenes.map((s, i) => {
-        if (i !== sceneIndex || !s.frames) return s
-        const newFrames = [...s.frames]
+        if (i !== sceneIndex) return s
+        const existingFrames = s.frames ?? []
+        if (existingFrames.length === 0) return s
+        const newFrames = [...existingFrames]
         newFrames[safeSelectedFrameIndex] = { ...newFrames[safeSelectedFrameIndex], script }
         return { ...s, frames: newFrames }
       }),
@@ -84,8 +94,9 @@ export function FrameEdit({
     setProject((prev) => ({
       ...prev,
       scenes: prev.scenes.map((s, i) => {
-        if (i !== sceneIndex || !s.frames) return s
-        const newFrames = [...s.frames, { id: `f-${Date.now()}`, script: "", imageUrl: undefined }]
+        if (i !== sceneIndex) return s
+        const existingFrames = s.frames ?? []
+        const newFrames = [...existingFrames, { id: `f-${Date.now()}`, script: "", imageUrl: undefined }]
         return { ...s, frames: newFrames }
       }),
     }))
@@ -97,14 +108,90 @@ export function FrameEdit({
     setProject((prev) => ({
       ...prev,
       scenes: prev.scenes.map((s, i) => {
-        if (i !== sceneIndex || !s.frames) return s
-        const newFrames = [...s.frames]
+        if (i !== sceneIndex) return s
+        const existingFrames = s.frames ?? []
+        if (existingFrames.length <= 1) return s
+        const newFrames = [...existingFrames]
         newFrames.splice(idx, 1)
         return { ...s, frames: newFrames }
       }),
     }))
     if (selectedFrameIndex >= frames.length - 1) {
       setSelectedFrameIndex(Math.max(0, frames.length - 2))
+    }
+  }
+
+  const handleGenerateFrame = async () => {
+    if (!currentFrame) return
+    const script = currentFrame.script?.trim()
+    if (!script) return
+
+    let sid = resolveSessionId()
+    if (!sid) {
+      const createRes = await fetch("http://localhost:8080/api/v1/sessions", { method: "POST" })
+      if (!createRes.ok) {
+        alert("세션 생성에 실패해 프레임 이미지를 만들 수 없습니다.")
+        return
+      }
+
+      sid = (await createRes.text()).replace(/"/g, "").trim()
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("aivideo:sessionId", sid)
+      }
+
+      await fetch("http://localhost:8080/api/v1/sessions/" + encodeURIComponent(sid), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(project),
+      })
+    }
+
+    setIsGenerating(true)
+    try {
+      const response = await fetch(
+        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/frames/${encodeURIComponent(String(scene.id ?? sceneIndex))}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            frameId: currentFrame.id,
+            script,
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => "")
+        throw new Error(errorBody || `HTTP ${response.status}`)
+      }
+
+      const generatedFrame = (await response.json()) as Frame
+
+      setProject((prev) => ({
+        ...prev,
+        scenes: prev.scenes.map((s, i) => {
+          if (i !== sceneIndex) return s
+          const existingFrames = s.frames ?? []
+          if (existingFrames.length === 0) {
+            return { ...s, frames: [generatedFrame] }
+          }
+
+          const nextFrames = [...existingFrames]
+          const frameIndex = nextFrames.findIndex((f) => f.id === generatedFrame.id)
+          const indexToUpdate = frameIndex >= 0 ? frameIndex : safeSelectedFrameIndex
+          nextFrames[indexToUpdate] = {
+            ...nextFrames[indexToUpdate],
+            ...generatedFrame,
+            script: nextFrames[indexToUpdate].script || generatedFrame.script || script,
+          }
+          return { ...s, frames: nextFrames }
+        }),
+      }))
+    } catch (error) {
+      console.error("Frame generation error:", error)
+      alert("프레임 생성에 실패했습니다. 잠시 후 다시 시도해주세요.")
+    } finally {
+      setIsGenerating(false)
     }
   }
 
@@ -160,10 +247,10 @@ export function FrameEdit({
               <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-black/5 transition-colors rounded-lg group">
                 <ImageIcon className="w-16 h-16 mb-2 opacity-50 group-hover:opacity-80 transition-opacity text-gray-500" />
                 <p className="text-sm font-medium text-gray-500 group-hover:text-gray-700">여기를 클릭하여 이미지 업로드</p>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  className="hidden" 
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) {
@@ -178,7 +265,7 @@ export function FrameEdit({
                         })
                       }))
                     }
-                  }} 
+                  }}
                 />
               </label>
             )}
@@ -285,10 +372,7 @@ export function FrameEdit({
             <div className="mt-8 pt-4 border-t border-border/50">
               <Button
                 size="sm"
-                onClick={async () => {
-                  setIsGenerating(true)
-                  setTimeout(() => setIsGenerating(false), 2000)
-                }}
+                onClick={handleGenerateFrame}
                 disabled={isGenerating || !currentFrame.script.trim()}
                 className="w-full gap-2 bg-black hover:bg-gray-800 text-white shadow-md h-11 rounded-lg press-down text-sm font-semibold"
               >
