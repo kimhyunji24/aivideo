@@ -412,25 +412,6 @@ export function FrameEdit({
         </Card>
       </div>
 
-      <div className="flex-shrink-0 border-t border-[#E0E0E0] bg-white px-0 py-3 mt-6">
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Button
-            variant="ghost"
-            onClick={onBack}
-            className="rounded-lg text-gray-500 hover:text-black hover:bg-gray-100 gap-2 w-full sm:w-auto h-10 px-4 transition-all"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            이전 단계로
-          </Button>
-          <Button
-            onClick={handleComplete}
-            className="rounded-lg text-white font-semibold px-8 h-10 gap-2 w-full sm:w-auto bg-black hover:bg-gray-800 transition-all shadow-md press-down btn-unified"
-          >
-            수정 완료
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
     </div>
   )
 }

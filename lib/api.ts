@@ -1,4 +1,4 @@
-import { ProjectState } from "./types"
+import { PlanningTagsResponse, ProjectState } from "./types"
 
 const API_BASE = "http://localhost:8080/api/v1/sessions"
 
@@ -65,6 +65,19 @@ export async function generatePlot(sessionId: string, stageCount: number, userPr
     if (!res.ok) {
         const errBody = await res.text().catch(()=>"");
         throw new Error("Failed to generate plot: " + res.status + " " + errBody);
+    }
+    return res.json()
+}
+
+export async function generatePlanningTags(sessionId: string, logline?: string): Promise<PlanningTagsResponse> {
+    const res = await fetch(`${API_BASE}/${sessionId}/planning/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logline: logline || "" }),
+    })
+    if (!res.ok) {
+        const errBody = await res.text().catch(()=>"");
+        throw new Error("Failed to generate planning tags: " + res.status + " " + errBody);
     }
     return res.json()
 }

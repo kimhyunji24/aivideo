@@ -5,16 +5,32 @@ import type { ProjectState } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool } from "lucide-react"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { generateCharacters, generateLogline } from "@/lib/api"
+import { generateCharacters, generateLogline, generatePlanningTags } from "@/lib/api"
 
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
 
-const DEFAULT_GENRES = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "귀멸의 칼날"]  
-const DEFAULT_WORLDVIEWS = ["우주", "전쟁터", "일상생활"]
-const GENRE_OPTIONS = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "귀멸의 칼날", "로맨스", "스릴러"]
-const WORLDVIEW_OPTIONS = ["우주", "전쟁터", "일상생활", "근미래 도시", "판타지 왕국", "학교"]
+const GENRE_POOL = ["SF", "코미디", "사이버펑", "로맨스", "스릴러", "판타지", "미스터리", "액션", "드라마", "느와르"]
+const WORLDVIEW_POOL = ["우주", "근미래 도시", "판타지 왕국", "전쟁터", "일상생활", "학교", "디스토피아", "포스트아포칼립스", "해양", "사막"]
+const DEFAULT_GENRES = ["SF", "코미디", "드라마"]
+const DEFAULT_WORLDVIEWS = ["우주", "근미래 도시", "일상생활"]
+
+type ContextRule = {
+  triggers: string[]
+  genres: string[]
+  worldviews: string[]
+}
+
+const CONTEXT_RULES: ContextRule[] = [
+  { triggers: ["우주", "행성", "은하", "외계", "우주선"], genres: ["SF", "액션"], worldviews: ["우주", "근미래 도시"] },
+  { triggers: ["학교", "교실", "학생", "선생"], genres: ["드라마", "코미디"], worldviews: ["학교", "일상생활"] },
+  { triggers: ["전쟁", "전장", "군인", "반란"], genres: ["액션", "드라마", "느와르"], worldviews: ["전쟁터", "디스토피아"] },
+  { triggers: ["마법", "왕국", "드래곤", "신화", "검"], genres: ["판타지", "액션"], worldviews: ["판타지 왕국", "사막"] },
+  { triggers: ["사랑", "연인", "고백", "이별", "재회"], genres: ["로맨스", "드라마"], worldviews: ["일상생활", "학교"] },
+  { triggers: ["추적", "살인", "범인", "비밀", "음모", "위협"], genres: ["스릴러", "미스터리", "느와르"], worldviews: ["디스토피아", "근미래 도시"] },
+  { triggers: ["해킹", "네온", "기업", "ai", "로봇", "기계"], genres: ["사이버펑", "SF", "스릴러"], worldviews: ["근미래 도시", "디스토피아"] },
+  { triggers: ["생존", "폐허", "멸망", "바이러스"], genres: ["스릴러", "드라마"], worldviews: ["포스트아포칼립스", "사막"] },
+]
 
 interface ChatMessage {
   role: "ai" | "user"
@@ -38,11 +54,59 @@ function buildLogline(idea: string): string {
   return `${coreIdea}를 바탕으로, 주인공이 예상치 못한 위기 속에서 감정적 성장과 반전을 만들어내는 단편 서사.`
 }
 
+function unique(items: string[]): string[] {
+  return Array.from(new Set(items))
+}
+
+function shuffle(items: string[]): string[] {
+  const next = [...items]
+  for (let i = next.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const temp = next[i]
+    next[i] = next[j]
+    next[j] = temp
+  }
+  return next
+}
+
+function buildContextualTags(text: string, randomize = false) {
+  const normalized = text.toLowerCase()
+  const matchedGenres: string[] = []
+  const matchedWorldviews: string[] = []
+
+  CONTEXT_RULES.forEach((rule) => {
+    const hit = rule.triggers.some((trigger) => normalized.includes(trigger.toLowerCase()))
+    if (!hit) return
+    matchedGenres.push(...rule.genres)
+    matchedWorldviews.push(...rule.worldviews)
+  })
+
+  const baseGenres = unique(matchedGenres)
+  const baseWorldviews = unique(matchedWorldviews)
+
+  const genreCandidates =
+    baseGenres.length > 0 ? baseGenres : DEFAULT_GENRES
+  const worldviewCandidates =
+    baseWorldviews.length > 0 ? baseWorldviews : DEFAULT_WORLDVIEWS
+
+  const orderedGenres = randomize ? shuffle(genreCandidates) : genreCandidates
+  const orderedWorldviews = randomize ? shuffle(worldviewCandidates) : worldviewCandidates
+
+  return {
+    genreOptions: orderedGenres.slice(0, 7),
+    worldviewOptions: orderedWorldviews.slice(0, 7),
+    selectedGenres: orderedGenres.slice(0, 3),
+    selectedWorldviews: orderedWorldviews.slice(0, 3),
+  }
+}
+
 export function IdeaChat({ project, setProject, initialView = "chat", onNext, sessionId }: IdeaChatProps) {
   const [viewMode, setViewMode] = useState<"chat" | "summary">(initialView)
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: "ai", content: AI_GREETING }])
   const [input, setInput] = useState(project.idea ?? "")
   const [showConfirm, setShowConfirm] = useState(false)
+  const [isGeneratingLogline, setIsGeneratingLogline] = useState(false)
+  const [isRefreshingTags, setIsRefreshingTags] = useState(false)
   const [loglineDraft, setLoglineDraft] = useState(project.logline ?? "")
   const [selectedGenres, setSelectedGenres] = useState<string[]>(
     project.selectedGenres?.length ? project.selectedGenres : DEFAULT_GENRES
@@ -50,6 +114,8 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   const [selectedWorldviews, setSelectedWorldviews] = useState<string[]>(
     project.selectedWorldviews?.length ? project.selectedWorldviews : DEFAULT_WORLDVIEWS
   )
+  const [genreOptions, setGenreOptions] = useState<string[]>(GENRE_POOL.slice(0, 7))
+  const [worldviewOptions, setWorldviewOptions] = useState<string[]>(WORLDVIEW_POOL.slice(0, 7))
 
   const toggleGenre = (tag: string) => {
     setSelectedGenres((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
@@ -73,11 +139,13 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   }, [loglineDraft, project.logline, project.idea, latestUserIdea, input])
 
   const handleSend = async (idea?: string) => {
+    if (isGeneratingLogline) return
     const text = (idea ?? input).trim()
     if (!text) return
 
     setInput("")
     setShowConfirm(false)
+    setIsGeneratingLogline(true)
     setMessages((prev) => [
       ...prev,
       { role: "user", content: text },
@@ -87,15 +155,40 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
 
     let generatedLogline = buildLogline(text)
 
-    if (sessionId) {
-      try {
+    const applyRecommendedTags = async (generatedText: string) => {
+      const sourceText = `${generatedText} ${text}`
+      if (sessionId) {
+        try {
+          const apiTags = await generatePlanningTags(sessionId, generatedText)
+          setGenreOptions(apiTags.genreOptions)
+          setWorldviewOptions(apiTags.worldviewOptions)
+          setSelectedGenres(apiTags.selectedGenres)
+          setSelectedWorldviews(apiTags.selectedWorldviews)
+          return { recommendedGenres: apiTags.selectedGenres, recommendedWorldviews: apiTags.selectedWorldviews }
+        } catch (tagErr) {
+          console.error("Failed to generate tags via API:", tagErr)
+        }
+      }
+      const contextual = buildContextualTags(sourceText, true)
+      setGenreOptions(contextual.genreOptions)
+      setWorldviewOptions(contextual.worldviewOptions)
+      setSelectedGenres(contextual.selectedGenres)
+      setSelectedWorldviews(contextual.selectedWorldviews)
+      return { recommendedGenres: contextual.selectedGenres, recommendedWorldviews: contextual.selectedWorldviews }
+    }
+
+    try {
+      if (sessionId) {
         const loglineState = await generateLogline(sessionId, text)
+        generatedLogline = loglineState.logline?.trim() || generatedLogline
+        const { recommendedGenres, recommendedWorldviews } = await applyRecommendedTags(generatedLogline)
         let merged: ProjectState = {
           ...project,
           ...loglineState,
           scenes: loglineState.scenes ?? project.scenes ?? [],
+          selectedGenres: recommendedGenres,
+          selectedWorldviews: recommendedWorldviews,
         }
-        generatedLogline = loglineState.logline?.trim() || generatedLogline
 
         try {
           const characterState = await generateCharacters(sessionId)
@@ -103,6 +196,8 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
             ...merged,
             ...characterState,
             scenes: characterState.scenes ?? merged.scenes ?? [],
+            selectedGenres: merged.selectedGenres,
+            selectedWorldviews: merged.selectedWorldviews,
           }
         } catch (err) {
           console.error("Failed to generate characters via API:", err)
@@ -110,14 +205,43 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
 
         setProject(merged)
         setLoglineDraft(generatedLogline)
-      } catch (err) {
-        console.error("Failed to generate logline via API:", err)
-        alert("API Error in Logline: " + err)
+      } else {
+        const { recommendedGenres, recommendedWorldviews } = await applyRecommendedTags(generatedLogline)
+        setProject({
+          ...project,
+          idea: text,
+          logline: generatedLogline,
+          selectedGenres: recommendedGenres,
+          selectedWorldviews: recommendedWorldviews,
+        })
         setLoglineDraft(generatedLogline)
       }
-    } else {
-      setProject({ ...project, idea: text, logline: generatedLogline })
-      setLoglineDraft(generatedLogline)
+    } catch (err) {
+      if (sessionId) {
+        console.error("Failed to generate logline via API:", err)
+        alert("API Error in Logline: " + err)
+        const { recommendedGenres, recommendedWorldviews } = await applyRecommendedTags(generatedLogline)
+        setProject({
+          ...project,
+          idea: text,
+          logline: generatedLogline,
+          selectedGenres: recommendedGenres,
+          selectedWorldviews: recommendedWorldviews,
+        })
+        setLoglineDraft(generatedLogline)
+      } else {
+        const { recommendedGenres, recommendedWorldviews } = await applyRecommendedTags(generatedLogline)
+        setProject({
+          ...project,
+          idea: text,
+          logline: generatedLogline,
+          selectedGenres: recommendedGenres,
+          selectedWorldviews: recommendedWorldviews,
+        })
+        setLoglineDraft(generatedLogline)
+      }
+    } finally {
+      setIsGeneratingLogline(false)
     }
 
     setMessages((prev) => {
@@ -191,19 +315,6 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
                   <FileText className="h-5 w-5 fill-black" />
                   <span>로그라인</span>
                 </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => setLoglineDraft(buildLogline(project.idea ?? latestUserIdea ?? ""))}
-                      className="rounded-full p-1 text-gray-400 hover:text-black hover:bg-black/5 transition-colors press-down"
-                      aria-label="로그라인 다시 생성"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>AI로 로그라인 새로 쓰기</TooltipContent>
-                </Tooltip>
               </div>
               <Textarea
                 value={loglineDraft}
@@ -222,21 +333,44 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedGenres(DEFAULT_GENRES)
-                    setSelectedWorldviews(DEFAULT_WORLDVIEWS)
+                  onClick={async () => {
+                    if (isRefreshingTags) return
+                    setIsRefreshingTags(true)
+                    const sourceText = `${loglineDraft || project.logline || ""} ${project.idea || latestUserIdea || ""}`
+                    try {
+                      if (sessionId && (loglineDraft || project.logline)) {
+                        try {
+                          const apiTags = await generatePlanningTags(sessionId, loglineDraft || project.logline)
+                          setGenreOptions(apiTags.genreOptions)
+                          setWorldviewOptions(apiTags.worldviewOptions)
+                          setSelectedGenres(apiTags.selectedGenres)
+                          setSelectedWorldviews(apiTags.selectedWorldviews)
+                          return
+                        } catch (tagErr) {
+                          console.error("Failed to refresh tags via API:", tagErr)
+                        }
+                      }
+                      const contextual = buildContextualTags(sourceText, true)
+                      setGenreOptions(contextual.genreOptions)
+                      setWorldviewOptions(contextual.worldviewOptions)
+                      setSelectedGenres(contextual.selectedGenres)
+                      setSelectedWorldviews(contextual.selectedWorldviews)
+                    } finally {
+                      setIsRefreshingTags(false)
+                    }
                   }}
+                  disabled={isRefreshingTags}
                   className="rounded-full p-1 text-black hover:bg-black/5"
                   aria-label="태그 다시 생성"
                 >
-                  <RefreshCw className="h-4 w-4" />
+                  <RefreshCw className={`h-4 w-4 ${isRefreshingTags ? "animate-spin" : ""}`} />
                 </button>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-start">
                 <div className="flex flex-wrap gap-2">
                   <p className="w-full text-xs font-semibold text-gray-600">장르 & 스타일</p>
-                  {GENRE_OPTIONS.map((genre) => (
+                  {genreOptions.map((genre) => (
                     <button
                       type="button"
                       key={genre}
@@ -256,7 +390,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
 
                 <div className="flex flex-wrap gap-2">
                   <p className="w-full text-xs font-semibold text-gray-600">세계관 & 배경</p>
-                  {WORLDVIEW_OPTIONS.map((worldview) => (
+                  {worldviewOptions.map((worldview) => (
                     <button
                       type="button"
                       key={worldview}
@@ -334,19 +468,21 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            disabled={isGeneratingLogline}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
+                if (isGeneratingLogline) return
                 handleSend()
               }
             }}
-            placeholder="이야기 아이디어를 입력하세요... (Enter로 전송)"
+            placeholder={isGeneratingLogline ? "로그라인 생성중에는 입력할 수 없습니다." : "이야기 아이디어를 입력하세요... (Enter로 전송)"}
             rows={2}
             className="resize-none text-sm bg-white focus-visible:ring-0 input-unified outline-none border-none ring-0"
           />
           <Button
             onClick={() => handleSend()}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isGeneratingLogline}
             className="bg-black hover:bg-gray-800 text-white self-end h-11 w-11 p-0 flex-shrink-0 rounded-xl press-down shadow-md"
             size="icon"
           >
