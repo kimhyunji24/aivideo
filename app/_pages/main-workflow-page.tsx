@@ -223,9 +223,7 @@ export default function MainWorkflowPage() {
     }
 
     // Step 3
-    const scenesWithImages = project.scenes.filter((s) => s.imageUrl)
-    const autoAllDone = scenesWithImages.length > 0 && scenesWithImages.every((s) => s.videoUrl)
-    const showFinalMerge = readyToMerge || autoAllDone
+    const showFinalMerge = readyToMerge
 
     if (showFinalMerge) {
       return (
@@ -258,6 +256,7 @@ export default function MainWorkflowPage() {
         setProject={setProject}
         onNext={() => setReadyToMerge(true)}
         onBack={() => goToStep(2)}
+        sessionId={sessionId}
       />
     )
   }
@@ -327,7 +326,7 @@ export default function MainWorkflowPage() {
           {renderContent()}
         </div>
       ) : (
-        <div className="flex flex-1 min-h-0 overflow-hidden bg-white justify-center">
+        <div className="flex flex-1 min-h-0 overflow-y-auto bg-white justify-center">
           <div className="flex flex-1 min-h-0 max-w-[1440px] w-full flex-col lg:flex-row">
             {showPanels && assetPanelOpen && (
               <div className="hidden lg:flex w-52 flex-shrink-0 border-r border-[#E5E7EB] overflow-hidden bg-white">
@@ -352,7 +351,7 @@ export default function MainWorkflowPage() {
               </div>
             )}
 
-            <div className="flex-1 overflow-hidden min-w-0">
+            <div className="flex-1 overflow-y-auto min-w-0">
               {renderContent()}
             </div>
 

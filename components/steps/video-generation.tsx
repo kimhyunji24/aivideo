@@ -14,34 +14,73 @@ import {
   Loader2,
   AlertCircle,
   Video,
-  Play,
   Pause,
   Layers,
   Zap
 } from "lucide-react"
 import { useState, Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
+import { updateSession } from "@/lib/api"
 
 interface VideoGenerationProps {
   project: ProjectState
   setProject: Dispatch<SetStateAction<ProjectState>>
   onNext: () => void
   onBack: () => void
+  sessionId?: string | null
 }
 
-export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGenerationProps) {
+export function VideoGeneration({ project, setProject, onNext, onBack, sessionId }: VideoGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false)
+  const [sceneErrors, setSceneErrors] = useState<Record<string, string>>({})
+  const apiBase = sessionId
+    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    : null
 
-  const scenesWithImages = project.scenes.filter((s) => s.imageUrl)
+  const readErrorMessage = async (response: Response) => {
+    try {
+      const json = await response.json()
+      if (json && typeof json.message === "string" && json.message.trim()) {
+        return json.message.trim()
+      }
+    } catch {
+      // ignore json parse failure
+    }
+    const text = await response.text().catch(() => "")
+    if (text && text.trim()) return text.trim()
+    return `요청 실패 (${response.status})`
+  }
+
+  const resolveSceneBaseImage = (scene: Scene): string | undefined => {
+    const startFrameImage = scene.frames?.[0]?.imageUrl
+    if (startFrameImage && startFrameImage.trim()) return startFrameImage.trim()
+    if (scene.imageUrl && scene.imageUrl.trim()) return scene.imageUrl.trim()
+    const pinned = scene.pinnedAssets ?? []
+    if (!pinned.length) return undefined
+    for (const assetId of pinned) {
+      const imageUrl = project.customAssets?.[assetId]?.imageUrl
+      if (imageUrl && imageUrl.trim()) return imageUrl.trim()
+    }
+    return undefined
+  }
+
+  const scenesWithImages = project.scenes.filter((s) => Boolean(resolveSceneBaseImage(s)))
   const completedCount = scenesWithImages.filter((s) => s.videoUrl).length
-  const progress = (completedCount / scenesWithImages.length) * 100
-  const allDone = completedCount === scenesWithImages.length
+  const progress = scenesWithImages.length > 0 ? (completedCount / scenesWithImages.length) * 100 : 0
+  const allDone = scenesWithImages.length > 0 && completedCount === scenesWithImages.length
+
+  const resolvePlayableVideoUrl = (scene: Scene): string | undefined => {
+    if (!scene.videoUrl || !scene.videoUrl.trim()) return undefined
+    if (!apiBase) return scene.videoUrl.trim()
+    return `${apiBase}/videos/${encodeURIComponent(String(scene.id))}/preview`
+  }
 
   const pollVideoStatus = async (sceneId: string | number) => {
+    if (!apiBase) return
     return new Promise<void>((resolve) => {
       const pollInterval = setInterval(async () => {
         try {
-          const response = await fetch(`/api/status/${sceneId}`)
+          const response = await fetch(`${apiBase}/images/${encodeURIComponent(String(sceneId))}/status`)
           if (response.ok) {
             const updatedScene = await response.json()
 
@@ -50,7 +89,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
               scenes: prev.scenes.map(s => s.id === sceneId ? updatedScene : s)
             }))
 
-            if (updatedScene.status === "done" || updatedScene.status === "error") {
+            if (updatedScene.status === "completed" || updatedScene.status === "done" || updatedScene.status === "error") {
               clearInterval(pollInterval)
               resolve()
             }
@@ -65,26 +104,71 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
   }
 
   const generateVideos = async () => {
+    if (!apiBase) {
+      alert("세션이 준비되지 않아 영상 생성을 시작할 수 없습니다.")
+      return
+    }
+
     setIsGenerating(true)
 
+    // scene.imageUrl이 비어 있어도 pinned custom asset 이미지로 보정
+    const hydratedProject: ProjectState = {
+      ...project,
+      scenes: project.scenes.map((s) => {
+        const base = resolveSceneBaseImage(s)
+        return base ? { ...s, imageUrl: s.imageUrl ?? base } : s
+      }),
+    }
+    setProject(hydratedProject)
+    if (sessionId) {
+      try {
+        await updateSession(sessionId, hydratedProject)
+      } catch (e) {
+        console.error("Failed to sync hydrated scenes before video generation", e)
+      }
+    }
+
     // 병렬로 모든 비디오 생성 요청 (또는 순차)
-    const pendingScenes = project.scenes.filter(s => s.imageUrl && !s.videoUrl)
+    const pendingScenes = hydratedProject.scenes.filter(s => resolveSceneBaseImage(s) && !s.videoUrl)
 
     const requests = pendingScenes.map(async (scene) => {
       try {
-        const response = await fetch(`/api/generate-video?id=${scene.id}`, {
+        setProject((prev) => ({
+          ...prev,
+          scenes: prev.scenes.map((s) =>
+            s.id === scene.id ? { ...s, status: "generating_video" as const } : s
+          ),
+        }))
+
+        const response = await fetch(`${apiBase}/videos/${encodeURIComponent(String(scene.id))}`, {
           method: "POST"
         })
         if (response.ok) {
-          const initialScene = await response.json()
+          setSceneErrors((prev) => {
+            const next = { ...prev }
+            delete next[String(scene.id)]
+            return next
+          })
+          await pollVideoStatus(scene.id)
+        } else {
+          const message = await readErrorMessage(response)
           setProject((prev) => ({
             ...prev,
-            scenes: prev.scenes.map(s => s.id === scene.id ? initialScene : s)
+            scenes: prev.scenes.map((s) =>
+              s.id === scene.id ? { ...s, status: "error" as const } : s
+            ),
           }))
-          await pollVideoStatus(scene.id)
+          setSceneErrors((prev) => ({ ...prev, [String(scene.id)]: message }))
         }
       } catch (error) {
         console.error("Generate video error:", error)
+        setProject((prev) => ({
+          ...prev,
+          scenes: prev.scenes.map((s) =>
+            s.id === scene.id ? { ...s, status: "error" as const } : s
+          ),
+        }))
+        setSceneErrors((prev) => ({ ...prev, [String(scene.id)]: "영상 생성 중 네트워크 오류가 발생했습니다." }))
       }
     })
 
@@ -93,20 +177,48 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
   }
 
   const regenerateVideo = async (sceneId: string | number) => {
+    if (!apiBase) {
+      alert("세션이 준비되지 않아 영상을 재생성할 수 없습니다.")
+      return
+    }
+
     try {
-      const response = await fetch(`/api/generate-video?id=${sceneId}`, {
+      setProject((prev) => ({
+        ...prev,
+        scenes: prev.scenes.map((s) =>
+          s.id === sceneId ? { ...s, status: "generating_video" as const } : s
+        ),
+      }))
+
+      const response = await fetch(`${apiBase}/videos/${encodeURIComponent(String(sceneId))}`, {
         method: "POST"
       })
       if (response.ok) {
-        const initialScene = await response.json()
+        setSceneErrors((prev) => {
+          const next = { ...prev }
+          delete next[String(sceneId)]
+          return next
+        })
+        await pollVideoStatus(sceneId)
+      } else {
+        const message = await readErrorMessage(response)
         setProject((prev) => ({
           ...prev,
-          scenes: prev.scenes.map(s => s.id === sceneId ? initialScene : s)
+          scenes: prev.scenes.map((s) =>
+            s.id === sceneId ? { ...s, status: "error" as const } : s
+          ),
         }))
-        await pollVideoStatus(sceneId)
+        setSceneErrors((prev) => ({ ...prev, [String(sceneId)]: message }))
       }
     } catch (error) {
       console.error("Regenerate video error:", error)
+      setProject((prev) => ({
+        ...prev,
+        scenes: prev.scenes.map((s) =>
+          s.id === sceneId ? { ...s, status: "error" as const } : s
+        ),
+      }))
+      setSceneErrors((prev) => ({ ...prev, [String(sceneId)]: "영상 재생성 중 네트워크 오류가 발생했습니다." }))
     }
   }
 
@@ -121,7 +233,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
 
   const getStatusIcon = (scene: Scene) => {
     if (scene.videoUrl) return <Check className="h-3.5 w-3.5" />
-    if (scene.status === "generating") return <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    if (scene.status === "generating_video") return <Loader2 className="h-3.5 w-3.5 animate-spin" />
     if (scene.status === "error") return <AlertCircle className="h-3.5 w-3.5" />
     return <Video className="h-3.5 w-3.5" />
   }
@@ -154,6 +266,11 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                 <p className="text-sm font-medium">
                   {allDone ? "모든 영상 클립 생성 완료" : `${completedCount}개 영상 생성됨`}
                 </p>
+                {scenesWithImages.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    생성 가능한 기준 이미지가 없습니다. 씬 이미지 생성 또는 에셋 핀 고정(이미지 포함) 후 다시 시도하세요.
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {isGenerating ? (
@@ -187,7 +304,8 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
       {/* Scene Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {project.scenes.map((scene, index) => {
-          if (!scene.imageUrl) return null
+          const baseImageUrl = resolveSceneBaseImage(scene)
+          if (!baseImageUrl) return null
 
           return (
             <Card key={scene.id} className={cn(
@@ -200,9 +318,9 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                     <div className={cn(
                       "h-5 w-5 rounded-full flex items-center justify-center",
                       scene.videoUrl && "bg-foreground text-background",
-                      scene.status === "generating" && "bg-muted text-foreground",
+                      scene.status === "generating_video" && "bg-muted text-foreground",
                       scene.status === "error" && !scene.videoUrl && "bg-destructive text-destructive-foreground",
-                      !scene.videoUrl && scene.status !== "generating" && scene.status !== "error" && "bg-muted text-muted-foreground"
+                      !scene.videoUrl && scene.status !== "generating_video" && scene.status !== "error" && "bg-muted text-muted-foreground"
                     )}>
                       {getStatusIcon(scene)}
                     </div>
@@ -229,40 +347,19 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                 <div className="aspect-video bg-muted/30 rounded-lg flex items-center justify-center overflow-hidden relative mb-2">
                   {scene.videoUrl ? (
                     <>
-                      <img
-                        src={scene.imageUrl}
-                        alt={scene.title}
-                        className="w-full h-full object-cover"
+                      <video
+                        src={resolvePlayableVideoUrl(scene)}
+                        controls
+                        preload="metadata"
+                        className="w-full h-full object-cover bg-black"
                       />
-                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                        <div className="h-10 w-10 rounded-full bg-background/90 backdrop-blur-sm flex items-center justify-center">
-                          <Play className="h-5 w-5 ml-0.5" />
-                        </div>
-                      </div>
                       <Badge className="absolute top-2 right-2 text-[10px] bg-foreground text-background">완료</Badge>
 
-                      {/* Hover actions */}
-                      <div className="hover-overlay" />
-                      <div className="hover-actions">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="secondary"
-                              size="icon"
-                              className="h-8 w-8 glass-button"
-                              onClick={() => regenerateVideo(scene.id)}
-                            >
-                              <RefreshCw className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>영상 재생성</TooltipContent>
-                        </Tooltip>
-                      </div>
                     </>
-                  ) : scene.status === "generating" ? (
+                  ) : scene.status === "generating_video" ? (
                     <div className="relative w-full h-full">
                       <img
-                        src={scene.imageUrl}
+                        src={baseImageUrl}
                         alt={scene.title}
                         className="w-full h-full object-cover opacity-50"
                       />
@@ -274,7 +371,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                   ) : scene.status === "error" ? (
                     <div className="relative w-full h-full">
                       <img
-                        src={scene.imageUrl}
+                        src={baseImageUrl}
                         alt={scene.title}
                         className="w-full h-full object-cover opacity-30"
                       />
@@ -285,7 +382,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                     </div>
                   ) : (
                     <img
-                      src={scene.imageUrl}
+                      src={baseImageUrl}
                       alt={scene.title}
                       className="w-full h-full object-cover"
                     />
@@ -296,6 +393,11 @@ export function VideoGeneration({ project, setProject, onNext, onBack }: VideoGe
                   <p className="text-xs text-muted-foreground truncate">{scene.title}</p>
                   <span className="text-[10px] text-muted-foreground">{scene.duration}초</span>
                 </div>
+                {scene.status === "error" && sceneErrors[String(scene.id)] && (
+                  <p className="mt-1 text-[11px] text-destructive line-clamp-2">
+                    {sceneErrors[String(scene.id)]}
+                  </p>
+                )}
               </CardContent>
             </Card>
           )

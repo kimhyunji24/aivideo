@@ -130,7 +130,11 @@ export function FrameEdit({
       const [moved] = newFrames.splice(draggedIdx, 1)
       newFrames.splice(targetIdx, 0, moved)
       
-      newScenes[sceneIndex] = { ...currentScene, frames: newFrames }
+      newScenes[sceneIndex] = {
+        ...currentScene,
+        frames: newFrames,
+        imageUrl: newFrames[0]?.imageUrl || currentScene.imageUrl,
+      }
       
       if (safeSelectedFrameIndex === draggedIdx) {
         syncSelectedFrameIndex(targetIdx)
@@ -179,7 +183,11 @@ export function FrameEdit({
         if (existingFrames.length <= 1) return s
         const newFrames = [...existingFrames]
         newFrames.splice(idx, 1)
-        return { ...s, frames: newFrames }
+        return {
+          ...s,
+          frames: newFrames,
+          imageUrl: newFrames[0]?.imageUrl || s.imageUrl,
+        }
       }),
     }))
     if (selectedFrameIndex >= frames.length - 1) {
@@ -251,7 +259,11 @@ export function FrameEdit({
           if (i !== sceneIndex) return s
           const existingFrames = s.frames ?? []
           if (existingFrames.length === 0) {
-            return { ...s, frames: [generatedFrame] }
+            return {
+              ...s,
+              frames: [generatedFrame],
+              imageUrl: generatedFrame.imageUrl || s.imageUrl,
+            }
           }
 
           const nextFrames = [...existingFrames]
@@ -268,7 +280,11 @@ export function FrameEdit({
               scene.prompt ||
               "",
           }
-          return { ...s, frames: nextFrames }
+          return {
+            ...s,
+            frames: nextFrames,
+            imageUrl: nextFrames[0]?.imageUrl || s.imageUrl,
+          }
         }),
       }))
     } catch (error) {
@@ -338,16 +354,25 @@ export function FrameEdit({
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) {
-                      const url = URL.createObjectURL(file)
-                      setProject((prev) => ({
-                        ...prev,
-                        scenes: prev.scenes.map((s, i) => {
-                          if (i !== sceneIndex || !s.frames) return s
-                          const newFrames = [...s.frames]
-                          newFrames[safeSelectedFrameIndex] = { ...newFrames[safeSelectedFrameIndex], imageUrl: url }
-                          return { ...s, frames: newFrames }
-                        })
-                      }))
+                      const reader = new FileReader()
+                      reader.onload = () => {
+                        const dataUrl = typeof reader.result === "string" ? reader.result : undefined
+                        if (!dataUrl) return
+                        setProject((prev) => ({
+                          ...prev,
+                          scenes: prev.scenes.map((s, i) => {
+                            if (i !== sceneIndex || !s.frames) return s
+                            const newFrames = [...s.frames]
+                            newFrames[safeSelectedFrameIndex] = { ...newFrames[safeSelectedFrameIndex], imageUrl: dataUrl }
+                            return {
+                              ...s,
+                              frames: newFrames,
+                              imageUrl: newFrames[0]?.imageUrl || s.imageUrl,
+                            }
+                          })
+                        }))
+                      }
+                      reader.readAsDataURL(file)
                     }
                   }}
                 />

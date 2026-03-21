@@ -3,6 +3,7 @@ package com.aivideo.studio.controller;
 import com.aivideo.studio.exception.SessionNotFoundException;
 import com.aivideo.studio.exception.UpstreamServiceException;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestControllerAdvice
+@Slf4j
 public class ApiExceptionHandler {
 
     @ExceptionHandler(SessionNotFoundException.class)
@@ -39,6 +41,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex, HttpServletRequest request) {
+        log.error("Unexpected error on {}", request.getRequestURI(), ex);
         return buildError(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected server error", request.getRequestURI());
     }
 
