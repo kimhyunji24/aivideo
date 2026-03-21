@@ -61,9 +61,10 @@ public class ImagenAdapter {
      *
      * @param prompt  영어 이미지 생성 프롬프트
      * @param sceneId 씬 식별자 (파일명에 사용)
+     * @param seed    일관성을 위한 고정 시드값 (null 가능)
      * @return 저장된 이미지 파일의 URL 경로 (예: /generated-images/scene-1.png)
      */
-    public String generateImage(String prompt, String sceneId) {
+    public String generateImage(String prompt, String sceneId, Integer seed) {
         if (mockMode) {
             log.info("[Mock] Imagen 이미지 생성을 스킵합니다. Mock URL 반환");
             return (mockImageUrl != null && !mockImageUrl.isBlank())
@@ -87,9 +88,10 @@ public class ImagenAdapter {
                 String instanceJson = String.format("{\"prompt\": \"%s\"}", escapeJson(prompt));
 
                 // 생성 파라미터 JSON
+                String seedParam = (seed != null) ? ", \"seed\": " + seed : "";
                 String parametersJson =
                         "{ \"sampleCount\": 1, \"aspectRatio\": \"16:9\", " +
-                        "\"safetyFilterLevel\": \"block_some\", \"personGeneration\": \"allow_adult\" }";
+                        "\"safetyFilterLevel\": \"block_some\", \"personGeneration\": \"allow_adult\"" + seedParam + " }";
 
                 // Protobuf Value 빌드 (FQCN으로 충돌 회피)
                 com.google.protobuf.Value.Builder instanceBuilder = com.google.protobuf.Value.newBuilder();

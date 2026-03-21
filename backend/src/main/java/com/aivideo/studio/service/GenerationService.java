@@ -50,8 +50,9 @@ public class GenerationService {
             String englishPrompt = buildEnglishPrompt(target, state);
             log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
 
-            // Imagen 3 이미지 생성
-            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId);
+            // Imagen 3 이미지 생성 - 캐릭터/스타일 일관성을 위해 Scene ID 기반의 고정 Seed 사용
+            Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
+            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed);
 
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
@@ -183,7 +184,9 @@ public class GenerationService {
         String englishPrompt = buildEnglishFramePrompt(prompt);
         log.info("[GenerationService] 씬 {}, 프레임 {} 이미지 생성 — 원본: {}, 번역: {}", sceneId, targetFrame.getId(), prompt, englishPrompt);
 
-        String imageUrl = imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()));
+        // 일관성(캐릭터/의상 유지)을 위해 해당 Scene ID를 기반으로 고정된 Seed 추출
+        Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
+        String imageUrl = imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()), seed);
         targetFrame.setImageUrl(imageUrl);
         if (targetFrame.getScript() == null || targetFrame.getScript().isBlank()) {
             targetFrame.setScript(prompt); // 원본 한국어 스크립트 유지
