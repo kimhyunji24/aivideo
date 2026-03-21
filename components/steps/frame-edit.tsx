@@ -155,12 +155,17 @@ export function FrameEdit({
       if (typeof window !== "undefined") {
         sessionStorage.setItem("aivideo:sessionId", sid)
       }
+    }
 
+    // Always ensure the latest edited script and frames are saved to the backend before generating image
+    try {
       await fetch("http://localhost:8080/api/v1/sessions/" + encodeURIComponent(sid), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(project),
       })
+    } catch(e) {
+      console.warn("Failed to sync project state before generating frame", e)
     }
 
     setIsGenerating(true)

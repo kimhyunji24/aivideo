@@ -54,18 +54,19 @@ public class PlanningService {
         if (state == null) throw new SessionNotFoundException(sessionId);
 
         String prompt = String.format(
-            "다음 로그라인과 장르, 세계관을 바탕으로 주인공과 대립/조력 인물 총 2명의 캐릭터를 생성해줘.\n" +
+            "다음 로그라인과 장르, 세계관을 바탕으로 이 스토리에 등장해야 할 '핵심 인물'들을 생성해줘.\n" +
+            "무조건 2명을 생성하지 마. 로그라인에 명시된 주요 인물이 1명이면 1명, 3명이면 3명 등 사건 전개에 꼭 필요한 인물 수만큼만 배열에 담아줘.\n" +
             "로그라인: %s\n장르: %s\n세계관: %s\n\n" +
             "중요: 반드시 아래의 JSON 배열 규격을 정확히 지켜야 해. 각 항목의 값은 따옴표가 닫히기 전에 절대 큰따옴표(\")를 사용하지 마.\n\n" +
             "[\n" +
             "  {\n" +
-            "    \"id\": \"char-1\",\n" +
-            "    \"name\": \"이름\",\n" +
-            "    \"gender\": \"male\",\n" +
+            "    \"id\": \"char-고유값\",\n" +
+            "    \"name\": \"캐릭터의 자연스러운 이름 (로그라인에 이름이 있다면 그대로 사용)\",\n" +
+            "    \"gender\": \"male 또는 female\",\n" +
             "    \"appearance\": \"외모 묘사 (100자 이내)\",\n" +
             "    \"personality\": \"성격 묘사 (100자 이내)\",\n" +
             "    \"values\": \"가치관 (100자 이내)\",\n" +
-            "    \"trauma\": \"캐릭터 관계성 또는 트라우마 (100자 이내)\"\n" +
+            "    \"trauma\": \"캐릭터 특징 및 관계성 (100자 이내)\"\n" +
             "  }\n" +
             "]",
             state.getLogline() != null ? state.getLogline() : "없음",
@@ -83,6 +84,85 @@ public class PlanningService {
         } catch (Exception e) {
             log.error("Failed to parse characters JSON: {}", cleaned, e);
             throw new RuntimeException("Failed to parse characters JSON: " + cleaned, e);
+        }
+    }
+
+    public ProjectState regenerateCharacter(String sessionId, String charId) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new SessionNotFoundException(sessionId);
+
+        List<Character> characters = state.getCharacters();
+        if (characters == null || characters.isEmpty()) {
+            throw new IllegalArgumentException("No characters exist to regenerate.");
+        }
+
+        Character oldChar = characters.stream()
+            .filter(c -> c.getId().equals(charId))
+            .findFirst()
+            .orElse(null);
+
+        String oldCharName = (oldChar != null && oldChar.getName() != null) ? oldChar.getName() : "이전 캐릭터";
+
+        // 중복 회피를 위해 변경 불변 확정 캐릭터(다른 캐릭터들) 목록 구성
+        String existingProfiles = characters.stream()
+                .filter(c -> !c.getId().equals(charId))
+                .map(c -> String.format("- 이름: %s\n  역할/성격: %s", c.getName(), c.getPersonality()))
+                .collect(java.util.stream.Collectors.joining("\n"));
+
+        String excludeInstruction = existingProfiles.isBlank() ? "" :
+                "현재 스토리에 다음 캐릭터들은 이미 확정되어 있으니 다른 인물을 생성해 (단, 로그라인에 명시된 핵심 인물이어야 해):\n" + existingProfiles + "\n\n";
+
+        String prompt = String.format(
+            "다음 로그라인을 바탕으로, 확정된 캐릭터를 제외하고 스토리에 '반드시 등장해야 하는 핵심 인물' 1명을 새롭게 묘사해줘.\n" +
+            "만약 로그라인에 뽀로로와 크롱이 등장하는데 확정 캐릭터에 크롱만 있다면, 새로 재생성해야 할 인물은 당연히 '뽀로로'야. 로그라인과 무관한 새로운 제3의 인물(예: 아크, 드론 등)을 절대 창조하지 마.\n" +
+            "로그라인: %s\n장르: %s\n세계관: %s\n\n" +
+            "%s" +
+            "이전에는 '%s'라는 인물이 이 자리에 있었지만 사용자가 더 나은 묘사를 원해 새로고침을 요청했어. 만약 이 인물이 로그라인상 '꼭 필요한 핵심 인물'이라면 다른 인물로 바꾸지 말고, 이름과 역할을 유지하되 외모, 성격, 관련 설정 등 묘사를 훨씬 더 매력적이고 자연스럽게 발전시켜줘.\n\n" +
+            "중요: 단 1명의 캐릭터만 포함된 JSON 배열을 반환해. 각 항목의 값은 따옴표가 닫히기 전에 절대 큰따옴표(\")를 사용하지 마.\n\n" +
+            "[\n" +
+            "  {\n" +
+            "    \"id\": \"%s\",\n" +
+            "    \"name\": \"캐릭터의 이름 (로그라인의 핵심 인물 이름 유지)\",\n" +
+            "    \"gender\": \"male 또는 female\",\n" +
+            "    \"appearance\": \"외모 묘사 (100자 이내)\",\n" +
+            "    \"personality\": \"성격 묘사 (100자 이내)\",\n" +
+            "    \"values\": \"가치관 (100자 이내)\",\n" +
+            "    \"trauma\": \"캐릭터 특징 및 기타 관계성 (100자 이내)\"\n" +
+            "  }\n" +
+            "]",
+            state.getLogline() != null ? state.getLogline() : "없음",
+            state.getSelectedGenres() != null ? String.join(", ", state.getSelectedGenres()) : "지정 안됨",
+            state.getSelectedWorldviews() != null ? String.join(", ", state.getSelectedWorldviews()) : "지정 안됨",
+            excludeInstruction,
+            oldCharName,
+            charId
+        );
+
+        log.info("[PlanningService] Regenerating character with prompt: {}", prompt);
+        String jsonResponse = geminiAdapter.generateJson(prompt);
+        log.info("[PlanningService] Regenerated character response: {}", jsonResponse);
+        String cleaned = stripMarkdownCodeFence(jsonResponse);
+        try {
+            List<Character> newChars = objectMapper.readValue(cleaned, new TypeReference<List<Character>>(){});
+            if (newChars != null && !newChars.isEmpty()) {
+                Character newChar = newChars.get(0);
+                newChar.setId(charId); // 기존 ID 유지
+                
+                // 기존 캐릭터 목록에서 교체
+                for (int i = 0; i < characters.size(); i++) {
+                    if (characters.get(i).getId().equals(charId)) {
+                        characters.set(i, newChar);
+                        break;
+                    }
+                }
+                state.setCharacters(characters);
+                sessionService.updateSession(sessionId, state);
+                return state;
+            }
+            throw new RuntimeException("Generated empty character array");
+        } catch (Exception e) {
+            log.error("Failed to parse regenerated character JSON: {}", cleaned, e);
+            throw new RuntimeException("Failed to parse regenerated character JSON: " + cleaned, e);
         }
     }
 

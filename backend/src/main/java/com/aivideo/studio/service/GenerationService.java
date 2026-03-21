@@ -50,8 +50,9 @@ public class GenerationService {
             String englishPrompt = buildEnglishPrompt(target, state);
             log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
 
-            // Imagen 3 이미지 생성
-            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId);
+            // Imagen 3 이미지 생성 - 캐릭터/스타일 일관성을 위해 Scene ID 기반의 고정 Seed 사용
+            Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
+            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed);
 
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
@@ -179,11 +180,15 @@ public class GenerationService {
             throw new IllegalArgumentException("프레임 생성에 사용할 script 또는 scene prompt가 필요합니다.");
         }
 
-        // 프레임 대본(한국어)을 영어 프롬프트로 변환
-        String englishPrompt = buildEnglishFramePrompt(prompt);
+        Frame startFrame = frames.isEmpty() ? null : frames.get(0);
+        
+        // 프레임 대본(한국어)을 영어 프롬프트로 변환 (Start Frame 일관성 유지 포함)
+        String englishPrompt = buildEnglishFramePrompt(prompt, startFrame, targetFrame, state);
         log.info("[GenerationService] 씬 {}, 프레임 {} 이미지 생성 — 원본: {}, 번역: {}", sceneId, targetFrame.getId(), prompt, englishPrompt);
 
-        String imageUrl = imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()));
+        // 일관성(캐릭터/의상 유지)을 위해 해당 Scene ID를 기반으로 고정된 Seed 추출
+        Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
+        String imageUrl = imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()), seed);
         targetFrame.setImageUrl(imageUrl);
         if (targetFrame.getScript() == null || targetFrame.getScript().isBlank()) {
             targetFrame.setScript(prompt); // 원본 한국어 스크립트 유지
@@ -197,12 +202,36 @@ public class GenerationService {
     // ─── Private 헬퍼 ────────────────────────────────────────────────────────
 
     /**
-     * 프레임의 한국어 대본을 영어 프롬프트로 변환합니다.
+     * 프레임의 한국어 대본을 영어 프롬프트로 변환하며, Start Frame 정보를 바탕으로 컨텍스트를 유지합니다.
      */
-    private String buildEnglishFramePrompt(String koreanScript) {
-        String geminiPrompt = "Translate the following storyboard frame script to a highly detailed English prompt for an AI image generator. " +
-                "Only provide the translated English prompt without any conversational text:\n\n" + koreanScript;
-        return geminiAdapter.generateText(geminiPrompt).trim();
+    private String buildEnglishFramePrompt(String koreanScript, Frame startFrame, Frame currentFrame, ProjectState state) {
+        StringBuilder geminiPrompt = new StringBuilder();
+        geminiPrompt.append("You are an expert prompt engineer for AI image generators. We are creating sequential frames for a single scene. Consistency of characters, clothing, and background is CRITICAL.\n\n");
+        
+        boolean isNotStartFrame = startFrame != null && !startFrame.getId().equals(currentFrame.getId());
+        
+        if (state.getCharacters() != null && !state.getCharacters().isEmpty()) {
+            geminiPrompt.append("[Main Characters Info]\n");
+            for (var c : state.getCharacters()) {
+                geminiPrompt.append("- ").append(c.getName()).append(": ").append(c.getAppearance()).append("\n");
+            }
+            geminiPrompt.append("\n");
+        }
+
+        if (isNotStartFrame && startFrame.getScript() != null && !startFrame.getScript().isBlank()) {
+             geminiPrompt.append("[Start Frame Description (Reference for Consistency)]\n");
+             geminiPrompt.append(startFrame.getScript()).append("\n\n");
+             geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt.\n");
+             geminiPrompt.append("CRITICAL REQUIREMENT: To ensure visual consistency with the Start Frame, you MUST explicitly re-use the specific exact descriptions of the characters, their existing clothing/outfits, and the background/environment derived from the [Start Frame Description]. Then, apply the new action, pose, or camera angle from the [Current Frame Script].\n\n");
+        } else {
+             geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt.\n");
+             geminiPrompt.append("Make sure to explicitly include the detailed descriptions of the characters from the [Main Characters Info] if they appear in the script.\n\n");
+        }
+        
+        geminiPrompt.append("[Current Frame Script]\n").append(koreanScript).append("\n\n");
+        geminiPrompt.append("Output ONLY the translated, highly detailed English prompt, without any conversational text or markdown formatting. The prompt should be ready to be passed directly to an image generation model.");
+
+        return geminiAdapter.generateText(geminiPrompt.toString()).trim();
     }
 
     /**

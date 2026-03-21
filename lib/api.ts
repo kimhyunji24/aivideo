@@ -56,6 +56,17 @@ export async function generateCharacters(sessionId: string): Promise<ProjectStat
     return res.json()
 }
 
+export async function regenerateCharacter(sessionId: string, charId: string): Promise<ProjectState> {
+    const res = await fetch(`${API_BASE}/${sessionId}/planning/characters/${charId}/regenerate`, {
+        method: "POST"
+    })
+    if (!res.ok) {
+        const errBody = await res.text().catch(()=>"");
+        throw new Error("Failed to regenerate character: " + res.status + " " + errBody);
+    }
+    return res.json()
+}
+
 export async function generatePlot(sessionId: string, stageCount: number, userPrompt?: string): Promise<ProjectState> {
     const res = await fetch(`${API_BASE}/${sessionId}/planning/plot`, {
         method: "POST",

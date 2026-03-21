@@ -36,6 +36,14 @@ public class PlanningController {
         return ResponseEntity.ok(updatedState);
     }
 
+    @PostMapping("/characters/{charId}/regenerate")
+    public ResponseEntity<ProjectState> regenerateCharacter(
+            @PathVariable String sessionId,
+            @PathVariable String charId) {
+        ProjectState updatedState = planningService.regenerateCharacter(sessionId, charId);
+        return ResponseEntity.ok(updatedState);
+    }
+
     @PostMapping("/plot")
     public ResponseEntity<ProjectState> generatePlot(
             @PathVariable String sessionId,
