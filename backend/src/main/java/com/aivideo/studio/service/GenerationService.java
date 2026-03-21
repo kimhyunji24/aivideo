@@ -156,6 +156,15 @@ public class GenerationService {
             targetFrame.setScript(frameScript.trim());
         }
 
+        int targetIndex = frames.indexOf(targetFrame);
+        if (frames.size() >= 3 && targetIndex > 0 && targetIndex < frames.size() - 1) {
+            Frame startFrame = frames.get(0);
+            Frame endFrame = frames.get(frames.size() - 1);
+            if (!hasGeneratedImage(startFrame) || !hasGeneratedImage(endFrame)) {
+                throw new IllegalArgumentException("프레임이 3개 이상이면 Start/End 프레임 이미지를 먼저 생성해야 합니다.");
+            }
+        }
+
         String prompt = firstNonBlank(
                 targetFrame.getScript(),
                 target.getPrompt(),
@@ -283,6 +292,12 @@ public class GenerationService {
             }
         }
         return null;
+    }
+
+    private boolean hasGeneratedImage(Frame frame) {
+        return frame != null
+                && frame.getImageUrl() != null
+                && !frame.getImageUrl().isBlank();
     }
 
     /**
