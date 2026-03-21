@@ -3,12 +3,16 @@ package com.aivideo.studio.service;
 import com.aivideo.studio.dto.ProjectState;
 import com.aivideo.studio.dto.Scene;
 import com.aivideo.studio.dto.Frame;
+import com.aivideo.studio.dto.CustomAssetData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -43,7 +47,7 @@ public class GenerationService {
 
         try {
             // 영어 프롬프트 준비 (없으면 Gemini로 자동 생성)
-            String englishPrompt = buildEnglishPrompt(target);
+            String englishPrompt = buildEnglishPrompt(target, state);
             log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
 
             // Imagen 3 이미지 생성
@@ -192,21 +196,24 @@ public class GenerationService {
      * 씬의 영어 이미지 생성 프롬프트를 반환합니다.
      * 이미 영어 prompt가 있으면 사용하고, 없으면 씬 정보를 바탕으로 Gemini가 생성합니다.
      */
-    private String buildEnglishPrompt(Scene scene) {
+    private String buildEnglishPrompt(Scene scene, ProjectState state) {
+        String assetHint = buildPinnedAssetHint(scene, state);
+
         // 이미 영어 prompt가 있으면 그대로 사용
         if (scene.getPrompt() != null && !scene.getPrompt().isBlank()) {
-            return scene.getPrompt();
+            return appendAssetHintToEnglishPrompt(scene.getPrompt(), assetHint);
         }
 
         // 씬 정보를 조합해 Gemini에게 영어 프롬프트 생성 요청
-        String koreanInfo = buildKoreanSceneDescription(scene);
+        String koreanInfo = buildKoreanSceneDescription(scene, state);
         String geminiPrompt = "다음 씬 정보를 바탕으로 Imagen 이미지 생성에 사용할 영어 프롬프트를 작성해줘. " +
                 "프롬프트만 출력하고 다른 설명은 하지 마. 영문으로만 작성해.\n\n씬 정보:\n" + koreanInfo;
 
-        return geminiAdapter.generateText(geminiPrompt).trim();
+        String generated = geminiAdapter.generateText(geminiPrompt).trim();
+        return appendAssetHintToEnglishPrompt(generated, assetHint);
     }
 
-    private String buildKoreanSceneDescription(Scene scene) {
+    private String buildKoreanSceneDescription(Scene scene, ProjectState state) {
         StringBuilder sb = new StringBuilder();
         sb.append("제목: ").append(scene.getTitle()).append("\n");
         sb.append("설명: ").append(scene.getDescription()).append("\n");
@@ -221,7 +228,47 @@ public class GenerationService {
             appendIfNotEmpty(sb, "메인 캐릭터", el.getMainCharacter());
             appendIfNotEmpty(sb, "행동", el.getAction());
         }
+        String assetHint = buildPinnedAssetHint(scene, state);
+        if (!assetHint.isBlank()) {
+            sb.append("고정 에셋: ").append(assetHint).append("\n");
+        }
         return sb.toString();
+    }
+
+    private String appendAssetHintToEnglishPrompt(String prompt, String assetHint) {
+        if (prompt == null || prompt.isBlank()) {
+            return prompt;
+        }
+        if (assetHint == null || assetHint.isBlank()) {
+            return prompt;
+        }
+        return prompt.trim() + "\n\nPinned asset requirements: " + assetHint;
+    }
+
+    private String buildPinnedAssetHint(Scene scene, ProjectState state) {
+        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
+            return "";
+        }
+
+        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
+        if (customAssets == null || customAssets.isEmpty()) {
+            return "";
+        }
+
+        LinkedHashSet<String> descriptions = new LinkedHashSet<>();
+        for (String assetId : scene.getPinnedAssets()) {
+            if (assetId == null || assetId.isBlank()) continue;
+            CustomAssetData assetData = customAssets.get(assetId);
+            if (assetData == null) continue;
+            String description = assetData.getDescription();
+            if (description != null && !description.isBlank()) {
+                descriptions.add(description.trim());
+            }
+        }
+        if (descriptions.isEmpty()) {
+            return "";
+        }
+        return String.join("; ", descriptions);
     }
 
     private void appendIfNotEmpty(StringBuilder sb, String label, String value) {
@@ -343,14 +390,22 @@ public class GenerationService {
 
         try {
             // 카메라 워킹 및 추가 모션 프롬프트 구성을 위해 한국어 씬 설명 번역
-            String koreanPrompt = buildKoreanSceneDescription(target);
+            String koreanPrompt = buildKoreanSceneDescription(target, state);
             String englishPrompt = geminiAdapter.generateText(
                 "Translate this scene description to a highly detailed, cinematic English prompt for an AI video generator. Only provide the translated prompt without any conversational text:\n" + koreanPrompt
             ) + " Cinematic, realistic motion, highly detailed.";
 
-            // VeoAdapter를 통해 영상 생성 진행 (이미지 URL과 영문 프롬프트 전달 구조)
-            // 현재 버전은 프롬프트를 우선으로 넘기는 것으로 구현됨
-            String videoUrl = veoAdapter.generateVideo(target, englishPrompt);
+            List<String> referenceImageUrls = collectReferenceImageUrls(target, state);
+            String firstFrameUrl = findFirstFrameImageUrl(target);
+            String lastFrameUrl = findLastFrameImageUrl(target);
+
+            String videoUrl = veoAdapter.generateVideo(
+                    target,
+                    englishPrompt,
+                    referenceImageUrls,
+                    firstFrameUrl,
+                    lastFrameUrl
+            );
 
             // 생성 완료 시 상태 갱신
             target.setVideoUrl(videoUrl);
@@ -363,5 +418,52 @@ public class GenerationService {
         } finally {
             sessionService.updateSession(sessionId, state);
         }
+    }
+
+    private List<String> collectReferenceImageUrls(Scene scene, ProjectState state) {
+        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
+        if (customAssets == null || customAssets.isEmpty()) {
+            return List.of();
+        }
+
+        return scene.getPinnedAssets().stream()
+                .map(customAssets::get)
+                .filter(Objects::nonNull)
+                .map(CustomAssetData::getImageUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .map(String::trim)
+                .distinct()
+                .limit(3)
+                .collect(Collectors.toList());
+    }
+
+    private String findFirstFrameImageUrl(Scene scene) {
+        if (scene == null || scene.getFrames() == null || scene.getFrames().isEmpty()) {
+            return null;
+        }
+        return scene.getFrames().stream()
+                .map(Frame::getImageUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String findLastFrameImageUrl(Scene scene) {
+        if (scene == null || scene.getFrames() == null || scene.getFrames().isEmpty()) {
+            return null;
+        }
+        List<Frame> frames = scene.getFrames();
+        for (int i = frames.size() - 1; i >= 0; i--) {
+            String imageUrl = frames.get(i).getImageUrl();
+            if (imageUrl != null && !imageUrl.isBlank()) {
+                return imageUrl.trim();
+            }
+        }
+        return null;
     }
 }

@@ -26,13 +26,21 @@ public class PlanningService {
         ProjectState state = sessionService.getSession(sessionId);
         if (state == null) throw new SessionNotFoundException(sessionId);
         if (idea == null || idea.isBlank()) throw new IllegalArgumentException("idea must not be blank");
-        
-        String prompt = "다음 사용자의 아이디어를 바탕으로, 주인공이 무언가를 겪는 1~2줄짜리 흥미로운 단편 영화 로그라인을 작성해줘. 추가적인 말이나 설명 없이 로그라인 한문장만 출력해줘.\n아이디어: " + idea;
+
+        String incomingIdea = idea.trim();
+        String baseIdea = state.getIdea() != null && !state.getIdea().isBlank()
+                ? state.getIdea().trim()
+                : incomingIdea;
+        boolean hasOriginalIdea = state.getIdea() != null && !state.getIdea().isBlank();
+
+        String prompt = buildLoglinePrompt(baseIdea, incomingIdea, hasOriginalIdea);
         String logline = geminiAdapter.generateText(prompt);
-        
-        state.setIdea(idea.trim());
+
+        // 최초 아이디어를 기준으로 유지하고, 이후 입력은 수정 지시로만 반영한다.
+        state.setIdea(baseIdea);
+        state.setPlanningPrompt(incomingIdea);
         state.setLogline(logline.trim());
-        
+
         sessionService.updateSession(sessionId, state);
         return state;
     }
@@ -129,5 +137,19 @@ public class PlanningService {
                 .replaceAll("(?s)^```\\s*", "")
                 .replaceAll("\\s*```$", "")
                 .trim();
+    }
+
+    private String buildLoglinePrompt(String baseIdea, String incomingIdea, boolean hasOriginalIdea) {
+        if (!hasOriginalIdea) {
+            return "다음 사용자의 아이디어를 바탕으로, 주인공이 무언가를 겪는 1~2줄짜리 흥미로운 단편 영화 로그라인을 작성해줘. " +
+                    "추가적인 말이나 설명 없이 로그라인 한 문장만 출력해줘.\n" +
+                    "최초 아이디어: " + baseIdea;
+        }
+
+        return "아래의 최초 아이디어를 절대적인 기준으로 유지하고, 사용자의 최신 수정 요청을 반영해 로그라인을 다시 작성해줘. " +
+                "핵심 사건/주제는 최초 아이디어에서 벗어나지 마.\n" +
+                "출력은 추가 설명 없이 로그라인 한 문장만.\n" +
+                "최초 아이디어: " + baseIdea + "\n" +
+                "최신 수정 요청: " + incomingIdea;
     }
 }
