@@ -3,6 +3,7 @@ package com.aivideo.studio.service;
 import com.aivideo.studio.dto.Character;
 import com.aivideo.studio.dto.PlotPlan;
 import com.aivideo.studio.dto.ProjectState;
+import com.aivideo.studio.dto.PlanningTagsResponse;
 import com.aivideo.studio.exception.SessionNotFoundException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,7 +18,10 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class PlanningService {
-    
+
+    private static final List<String> DEFAULT_GENRES = List.of("SF", "코미디", "드라마");
+    private static final List<String> DEFAULT_WORLDVIEWS = List.of("우주", "근미래 도시", "일상생활");
+
     private final SessionService sessionService;
     private final GeminiAdapter geminiAdapter;
     private final ObjectMapper objectMapper;
@@ -128,6 +132,59 @@ public class PlanningService {
         }
     }
 
+    public PlanningTagsResponse generateTags(String sessionId, String requestedLogline) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new SessionNotFoundException(sessionId);
+
+        String effectiveLogline = firstNonBlank(requestedLogline, state.getLogline(), state.getIdea());
+        if (effectiveLogline == null || effectiveLogline.isBlank()) {
+            throw new IllegalArgumentException("logline must not be blank");
+        }
+
+        String prompt =
+                "다음 로그라인과 가장 관련있는 장르/스타일과 세계관/배경 태그를 추천해줘.\n" +
+                "반드시 JSON 객체만 반환하고, 설명 문장은 절대 출력하지 마.\n\n" +
+                "규칙:\n" +
+                "1) selectedGenres, selectedWorldviews는 각각 정확히 3개\n" +
+                "2) genreOptions, worldviewOptions는 각각 4~7개\n" +
+                "3) selected 항목은 반드시 options 안에 포함\n" +
+                "4) 태그는 짧은 한국어 표현으로\n\n" +
+                "반환 JSON 포맷:\n" +
+                "{\n" +
+                "  \"genreOptions\": [\"SF\", \"스릴러\", \"드라마\", \"...\"],\n" +
+                "  \"worldviewOptions\": [\"우주\", \"근미래 도시\", \"...\"],\n" +
+                "  \"selectedGenres\": [\"SF\", \"스릴러\", \"드라마\"],\n" +
+                "  \"selectedWorldviews\": [\"우주\", \"근미래 도시\", \"일상생활\"]\n" +
+                "}\n\n" +
+                "로그라인: " + effectiveLogline;
+
+        PlanningTagsResponse parsed;
+        try {
+            String jsonResponse = geminiAdapter.generateJson(prompt);
+            String cleaned = stripMarkdownCodeFence(jsonResponse);
+            parsed = objectMapper.readValue(cleaned, PlanningTagsResponse.class);
+        } catch (Exception e) {
+            log.error("Failed to generate planning tags via Gemini", e);
+            parsed = PlanningTagsResponse.builder().build();
+        }
+
+        List<String> genreOptions = normalizeList(parsed.getGenreOptions(), DEFAULT_GENRES, 4, 7);
+        List<String> worldviewOptions = normalizeList(parsed.getWorldviewOptions(), DEFAULT_WORLDVIEWS, 4, 7);
+        List<String> selectedGenres = normalizeSelected(parsed.getSelectedGenres(), genreOptions, 3);
+        List<String> selectedWorldviews = normalizeSelected(parsed.getSelectedWorldviews(), worldviewOptions, 3);
+
+        state.setSelectedGenres(selectedGenres);
+        state.setSelectedWorldviews(selectedWorldviews);
+        sessionService.updateSession(sessionId, state);
+
+        return PlanningTagsResponse.builder()
+                .genreOptions(genreOptions)
+                .worldviewOptions(worldviewOptions)
+                .selectedGenres(selectedGenres)
+                .selectedWorldviews(selectedWorldviews)
+                .build();
+    }
+
     private String stripMarkdownCodeFence(String response) {
         if (response == null) {
             return "";
@@ -151,5 +208,54 @@ public class PlanningService {
                 "출력은 추가 설명 없이 로그라인 한 문장만.\n" +
                 "최초 아이디어: " + baseIdea + "\n" +
                 "최신 수정 요청: " + incomingIdea;
+    }
+
+    private List<String> normalizeList(List<String> raw, List<String> fallback, int min, int max) {
+        List<String> unique = raw == null ? List.of() : raw.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .distinct()
+                .limit(max)
+                .toList();
+
+        if (unique.size() >= min) {
+            return unique;
+        }
+
+        return fallback.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .distinct()
+                .limit(max)
+                .toList();
+    }
+
+    private List<String> normalizeSelected(List<String> raw, List<String> options, int size) {
+        List<String> fromRaw = raw == null ? List.of() : raw.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .filter(options::contains)
+                .distinct()
+                .limit(size)
+                .toList();
+
+        if (fromRaw.size() == size) {
+            return fromRaw;
+        }
+
+        return options.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .distinct()
+                .limit(size)
+                .toList();
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) return null;
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v.trim();
+        }
+        return null;
     }
 }

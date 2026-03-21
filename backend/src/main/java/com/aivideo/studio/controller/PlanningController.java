@@ -1,6 +1,8 @@
 package com.aivideo.studio.controller;
 
 import com.aivideo.studio.dto.ProjectState;
+import com.aivideo.studio.dto.PlanningTagsRequest;
+import com.aivideo.studio.dto.PlanningTagsResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,6 +42,15 @@ public class PlanningController {
             @RequestBody com.aivideo.studio.dto.PlotGenerateRequest request) {
         ProjectState updatedState = planningService.generatePlot(sessionId, request.getStageCount(), request.getUserPrompt());
         return ResponseEntity.ok(updatedState);
+    }
+
+    @PostMapping("/tags")
+    public ResponseEntity<PlanningTagsResponse> generateTags(
+            @PathVariable String sessionId,
+            @RequestBody(required = false) PlanningTagsRequest request) {
+        String logline = request != null ? request.getLogline() : null;
+        PlanningTagsResponse response = planningService.generateTags(sessionId, logline);
+        return ResponseEntity.ok(response);
     }
 
     private String extractIdea(String body) {
