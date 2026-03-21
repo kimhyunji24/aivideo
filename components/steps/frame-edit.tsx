@@ -42,6 +42,11 @@ export function FrameEdit({
   const safeSelectedFrameIndex =
     frames.length === 0 ? 0 : Math.max(0, Math.min(selectedFrameIndex, frames.length - 1))
   const currentFrame = frames[safeSelectedFrameIndex]
+  const isMiddleFrame =
+    frames.length >= 3 && safeSelectedFrameIndex > 0 && safeSelectedFrameIndex < frames.length - 1
+  const startGenerated = Boolean(frames[0]?.imageUrl?.trim())
+  const endGenerated = Boolean(frames[frames.length - 1]?.imageUrl?.trim())
+  const canGenerateCurrentFrame = !isMiddleFrame || (startGenerated && endGenerated)
 
   useEffect(() => {
     setSelectedFrameIndex(selectedFrameIndexProp)
@@ -128,6 +133,10 @@ export function FrameEdit({
 
   const handleGenerateFrame = async () => {
     if (!currentFrame) return
+    if (!canGenerateCurrentFrame) {
+      alert("프레임이 3개 이상이면 Start/End 프레임 이미지를 먼저 생성해야 합니다.")
+      return
+    }
     const script = currentFrame.script?.trim() || scene.description?.trim() || scene.prompt?.trim() || ""
     if (!script) {
       alert("프레임 생성에 사용할 스크립트가 없습니다. 스크립트를 입력해 주세요.")
@@ -387,12 +396,17 @@ export function FrameEdit({
               <Button
                 size="sm"
                 onClick={handleGenerateFrame}
-                disabled={isGenerating}
+                disabled={isGenerating || !canGenerateCurrentFrame}
                 className="w-full gap-2 bg-black hover:bg-gray-800 text-white shadow-md h-11 rounded-lg press-down text-sm font-semibold"
               >
                 {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 F{safeSelectedFrameIndex + 1} 프레임 생성하기
               </Button>
+              {!canGenerateCurrentFrame && (
+                <p className="mt-2 text-xs text-red-500">
+                  프레임이 3개 이상이면 Start/End 프레임 이미지를 먼저 생성해야 합니다.
+                </p>
+              )}
             </div>
           </ScrollArea>
         </Card>
