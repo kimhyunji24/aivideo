@@ -177,6 +177,7 @@ public class PlanningService {
 
         String prompt = String.format(
             "다음 로그라인과 캐릭터 설정을 바탕으로, %d단계(발단-전개-위기-절정-결말 중)의 플롯을 JSON으로 생성해줘.\n" +
+            "각 단계의 'content'는 해당 씬의 비디오 생성을 위한 Start Frame과 End Frame의 시각적 묘사로 구성해야 해.\n" +
             "추가 사용자의 요구사항이 있다면 반드시 반영해줘.\n\n" +
             "로그라인: %s\n" +
             "캐릭터 정보: %s\n" +
@@ -188,7 +189,7 @@ public class PlanningService {
             "    {\n" +
             "      \"id\": \"stage-0\",\n" +
             "      \"label\": \"발단\",\n" +
-            "      \"content\": \"발단 내용 (150자 이내)\"\n" +
+            "      \"content\": \"[Start Frame] 주인공이 방에 들어온다. [End Frame] 주인공이 의자에 앉아 편지를 읽는다. (총 150자 이내)\"\n" +
             "    }\n" +
             "  ]\n" +
             "}\n" +
