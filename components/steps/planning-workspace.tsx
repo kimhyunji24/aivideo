@@ -9,7 +9,7 @@ import type {
   PlanningSeedRequest,
   PlanningSeedResponse,
 } from "@/lib/types"
-import { generateCharacters, generatePlot, updateSession } from "@/lib/api"
+import { generateCharacters, regenerateCharacter, generatePlot, updateSession } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -203,6 +203,8 @@ function CharactersSection({
   onRemove,
   onImageUpload,
   onEditClick,
+  onRegenerate,
+  regeneratingId,
 }: {
   characters: Character[]
   isConfirmed: boolean
@@ -213,8 +215,9 @@ function CharactersSection({
   onUpdate: (id: string, field: keyof Character, value: string) => void
   onRemove: (id: string) => void
   onImageUpload: (id: string, file: File) => void
-  /** 수정하기 클릭 시 호출 — 캐릭터 수정 모달을 연다 */
   onEditClick: (id: string) => void
+  onRegenerate: (id: string) => void
+  regeneratingId: string | null
 }) {
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -274,13 +277,18 @@ function CharactersSection({
                 key={char.id}
                 className="border border-[#E0E0E0] shadow-none bg-white rounded-2xl overflow-hidden p-5 relative flex flex-col justify-between hover-lift animate-fade-up"
               >
-                <div className="absolute top-4 right-4">
-                  <button type="button" className="icon-btn p-1">
+                <div className="absolute top-4 right-4 z-10">
+                  <button 
+                    type="button" 
+                    className={`icon-btn p-1 ${regeneratingId === char.id ? 'animate-spin opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); onRegenerate(char.id); }}
+                    disabled={isConfirmed || isGenerating || regeneratingId !== null}
+                  >
                     <RefreshCcw className="w-4 h-4" />
                   </button>
                 </div>
                 
-                <div>
+                <div className={regeneratingId === char.id ? 'opacity-30 pointer-events-none transition-opacity' : 'transition-opacity'}>
                   <div className="flex items-start gap-4 mb-4">
                     <div
                       className="w-24 h-24 rounded-full bg-[#F5F5F5] border border-[#E0E0E0] overflow-hidden flex-shrink-0 cursor-pointer flex items-center justify-center relative"
@@ -799,6 +807,7 @@ interface PlanningWorkspaceProps {
 
 export function PlanningWorkspace({ project, setProject, onNext, onBack, sessionId }: PlanningWorkspaceProps) {
   const [isGenerating, setIsGenerating] = useState(false)
+  const [regeneratingCharId, setRegeneratingCharId] = useState<string | null>(null)
   const [characterModalId, setCharacterModalId] = useState<string | null>(null)
   const [plotModalStageId, setPlotModalStageId] = useState<string | null>(null)
   const hasAutoSeededRef = useRef(false)
@@ -840,6 +849,21 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
   const handleImageUpload = (charId: string, file: File) => {
     const url = URL.createObjectURL(file)
     updateCharacter(charId, "imageUrl", url)
+  }
+
+  const handleRegenerateCharacter = async (charId: string) => {
+    if (!sessionId || isGenerating || regeneratingCharId || charactersConfirmed) return
+    setRegeneratingCharId(charId)
+    try {
+      await updateSession(sessionId, project)
+      const nextState = await regenerateCharacter(sessionId, charId)
+      setProject({ ...project, characters: nextState.characters ?? project.characters ?? [] })
+    } catch (e) {
+      console.error(e)
+      alert("Failed to regenerate character: " + e)
+    } finally {
+      setRegeneratingCharId(null)
+    }
   }
 
   const confirmCharacters = () => {
@@ -956,6 +980,8 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
             onRemove={removeCharacter}
             onImageUpload={handleImageUpload}
             onEditClick={setCharacterModalId}
+            onRegenerate={handleRegenerateCharacter}
+            regeneratingId={regeneratingCharId}
           />
           {charactersConfirmed ? (
             <PlotSection

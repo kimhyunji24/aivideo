@@ -88,10 +88,10 @@ public class ImagenAdapter {
                 String instanceJson = String.format("{\"prompt\": \"%s\"}", escapeJson(prompt));
 
                 // 생성 파라미터 JSON
-                String seedParam = (seed != null) ? ", \"seed\": " + seed : "";
+                // 주의: Vertex AI Imagen 3 (imagen-3.0-generate-001)는 seed 파라미터를 지원하지 않으므로 포함하지 않아야 합니다.
                 String parametersJson =
                         "{ \"sampleCount\": 1, \"aspectRatio\": \"16:9\", " +
-                        "\"safetyFilterLevel\": \"block_some\", \"personGeneration\": \"allow_adult\"" + seedParam + " }";
+                        "\"safetyFilterLevel\": \"block_some\", \"personGeneration\": \"allow_adult\" }";
 
                 // Protobuf Value 빌드 (FQCN으로 충돌 회피)
                 com.google.protobuf.Value.Builder instanceBuilder = com.google.protobuf.Value.newBuilder();
