@@ -1,6 +1,7 @@
 package com.aivideo.studio.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,13 +11,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import com.google.auth.oauth2.GoogleCredentials;
-import com.google.auth.oauth2.GoogleCredentials;
 import com.aivideo.studio.dto.Scene;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Base64;
 
 @Slf4j
 @Service
@@ -32,11 +38,26 @@ public class VeoAdapter {
     @Value("${google.application-credentials:}")
     private String credentialsPath;
 
-    @Value("${veo.model:veo-2.0-generate-001}")
+    @Value("${veo.model:veo-3.1-generate-preview}")
     private String modelName;
 
     @Value("${veo.output-dir:${user.home}/aivideo-generated/videos}")
     private String outputDir;
+
+    @Value("${veo.storage-uri:}")
+    private String veoStorageUri;
+
+    @Value("${veo.duration-seconds:8}")
+    private int durationSeconds;
+
+    @Value("${veo.poll-interval-ms:10000}")
+    private long pollIntervalMs;
+
+    @Value("${veo.poll-timeout-ms:600000}")
+    private long pollTimeoutMs;
+
+    @Value("${imagen.output-dir:${user.home}/aivideo-generated/images}")
+    private String imagenOutputDir;
 
     @Value("${aivideo.mock-mode:false}")
     private boolean mockMode;
@@ -47,68 +68,59 @@ public class VeoAdapter {
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
 
+    public String generateVideo(Scene scene, String prompt) {
+        return generateVideo(scene, prompt, List.of(), null, null);
+    }
+
     /**
      * Scene 데이터를 기반으로 Veo 모델을 호출합니다.
+     *
+     * @param referenceImageUrls 참조 이미지 URL 목록 (최대 3개)
+     * @param firstFrameUrl      시작 프레임 이미지 URL
+     * @param lastFrameUrl       마지막 프레임 이미지 URL
      */
-    public String generateVideo(Scene scene, String prompt) {
+    public String generateVideo(
+            Scene scene,
+            String prompt,
+            List<String> referenceImageUrls,
+            String firstFrameUrl,
+            String lastFrameUrl
+    ) {
         if (mockMode) {
             log.info("[Mock] Veo 비디오 생성을 스킵합니다. Mock URL 반환");
             try { Thread.sleep(3000); } catch (InterruptedException e) {}
             return mockVideoUrl;
         }
 
-        log.info("Generating video using Vertex AI API for model: {}, prompt: {}", modelName, prompt);
+        List<String> refs = sanitizeReferenceImages(referenceImageUrls);
+        String first = normalizeImageUrl(firstFrameUrl);
+        String last = normalizeImageUrl(lastFrameUrl);
+
+        if (requiresVeo31Features(refs, first, last) && !isVeo31Model()) {
+            throw new IllegalArgumentException("참조 이미지/first-last frame 기능은 Veo 3.1 모델에서만 지원됩니다.");
+        }
+        validateStorageUri();
+
+        log.info("[Veo] video generation start - model: {}, refs: {}, firstFrame: {}, lastFrame: {}",
+                modelName, refs.size(), first != null, last != null);
         
         try {
             GoogleCredentials credentials = loadCredentials();
             credentials.refreshIfExpired();
             String accessToken = credentials.getAccessToken().getTokenValue();
 
-            // Vertex AI REST API 엔드포인트 구성 (Google Cloud AI Platform)
-            String url = String.format("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:predict", 
-                location, projectId, location, modelName);
+            String operationName = requestVideoGeneration(accessToken, prompt, refs, first, last);
+            JsonNode operation = pollOperationUntilDone(accessToken, operationName);
+            String videoUri = extractVideoUri(operation);
+            log.info("[Veo] video generation completed - operation: {}, videoUri: {}", operationName, videoUri);
+            return videoUri;
 
-            // 임시: Veo API의 정확한 페이로드는 버전에 따라 다르나, 일반적으로 instances 배열을 취함
-            Map<String, Object> requestBody = Map.of(
-                "instances", new Object[]{
-                    Map.of("prompt", prompt)
-                },
-                "parameters", Map.of(
-                    "aspectRatio", "16:9"
-                )
-            );
-
-            log.info("[Veo] API Request URL: {}", url);
-            
-            // 실제 호출 (주석 해제 시 실제 과금 발생)
-            /*
-            String response = webClient.post()
-                    .uri(url)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-            log.info("[Veo] API Response: {}", response);
-            */
-            
-            // 아직 API 구조가 확정되지 않았거나 과금을 막기 위해 임시로 Mocking URL 생성
-            String generatedVideoId = UUID.randomUUID().toString();
-            String videoUrl = "/generated-videos/" + generatedVideoId + ".mp4";
-            
-            // 실제 응답을 파싱하여 videoUrl에 적용
-            // videoUrl = objectMapper.readTree(response).path("predictions")...
-            
-            // 영상 처리를 위한 딜레이 시뮬레이션
-            try { Thread.sleep(5000); } catch (InterruptedException e) {}
-
-            log.info("Video successfully generated and mapped to: {}", videoUrl);
-            return mockVideoUrl != null && !mockVideoUrl.isBlank() ? mockVideoUrl : videoUrl;
-            
         } catch (IOException e) {
             log.error("Failed to authenticate or connect to Vertex AI Veo API", e);
             throw new RuntimeException("Vertex AI Video Generation failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Veo API polling interrupted", e);
         } catch (Exception e) {
             log.error("Error during Veo video generation", e);
             throw new RuntimeException("Veo API Error", e);
@@ -124,5 +136,261 @@ public class VeoAdapter {
         }
         return GoogleCredentials.getApplicationDefault()
                 .createScoped("https://www.googleapis.com/auth/cloud-platform");
+    }
+
+    private Map<String, Object> buildVideoRequestBody(
+            String prompt,
+            List<String> referenceImageUrls,
+            String firstFrameUrl,
+            String lastFrameUrl
+    ) throws IOException {
+        Map<String, Object> instance = new LinkedHashMap<>();
+        instance.put("prompt", prompt);
+        Map<String, Object> firstFrameImage = resolveImageInput(firstFrameUrl);
+        if (firstFrameImage != null) {
+            instance.put("image", firstFrameImage);
+        }
+
+        if (!referenceImageUrls.isEmpty()) {
+            List<Map<String, Object>> refs = new ArrayList<>();
+            for (String imageUrl : referenceImageUrls) {
+                Map<String, Object> image = resolveImageInput(imageUrl);
+                if (image == null) {
+                    continue;
+                }
+                refs.add(Map.of(
+                        "referenceType", "REFERENCE_TYPE_SUBJECT",
+                        "referenceId", "asset-" + (refs.size() + 1),
+                        "referenceImage", image
+                ));
+            }
+            if (!refs.isEmpty()) {
+                instance.put("referenceImages", refs);
+            }
+        }
+
+        Map<String, Object> lastFrameImage = resolveImageInput(lastFrameUrl);
+        if (lastFrameImage != null) {
+            instance.put("lastFrame", lastFrameImage);
+        }
+
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("aspectRatio", "16:9");
+        parameters.put("sampleCount", 1);
+        parameters.put("durationSeconds", durationSeconds);
+        parameters.put("storageUri", veoStorageUri);
+
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("instances", List.of(instance));
+        requestBody.put("parameters", parameters);
+        return requestBody;
+    }
+
+    private List<String> sanitizeReferenceImages(List<String> referenceImageUrls) {
+        if (referenceImageUrls == null || referenceImageUrls.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (String url : referenceImageUrls) {
+            String normalized = normalizeImageUrl(url);
+            if (normalized == null) continue;
+            if (!result.contains(normalized)) {
+                result.add(normalized);
+            }
+            if (result.size() >= 3) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private String normalizeImageUrl(String url) {
+        if (url == null) return null;
+        String trimmed = url.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private boolean isVeo31Model() {
+        return modelName != null && modelName.startsWith("veo-3.1");
+    }
+
+    private boolean requiresVeo31Features(List<String> refs, String first, String last) {
+        return (refs != null && !refs.isEmpty()) || first != null || last != null;
+    }
+
+    private String requestVideoGeneration(
+            String accessToken,
+            String prompt,
+            List<String> referenceImageUrls,
+            String firstFrameUrl,
+            String lastFrameUrl
+    ) throws IOException {
+        String url = String.format(
+                "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:predictLongRunning",
+                location, projectId, location, modelName
+        );
+
+        Map<String, Object> requestBody = buildVideoRequestBody(prompt, referenceImageUrls, firstFrameUrl, lastFrameUrl);
+        log.info("[Veo] Request URL: {}", url);
+        log.debug("[Veo] Request Body: {}", objectMapper.writeValueAsString(requestBody));
+
+        String responseBody = webClient.post()
+                .uri(url)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(requestBody)
+                .retrieve()
+                .onStatus(status -> status.isError(), clientResponse ->
+                        clientResponse.bodyToMono(String.class)
+                                .map(body -> new RuntimeException("Veo predictLongRunning error "
+                                        + clientResponse.statusCode() + ": " + body)))
+                .bodyToMono(String.class)
+                .block();
+
+        JsonNode root = objectMapper.readTree(responseBody);
+        String operationName = root.path("name").asText(null);
+        if (operationName == null || operationName.isBlank()) {
+            throw new RuntimeException("Veo response missing operation name: " + responseBody);
+        }
+        return operationName;
+    }
+
+    private JsonNode pollOperationUntilDone(String accessToken, String operationName) throws IOException, InterruptedException {
+        String url = String.format(
+                "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:fetchPredictOperation",
+                location, projectId, location, modelName
+        );
+        long startedAt = System.currentTimeMillis();
+        while (true) {
+            String responseBody = webClient.post()
+                    .uri(url)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(Map.of("operationName", operationName))
+                    .retrieve()
+                    .onStatus(status -> status.isError(), clientResponse ->
+                            clientResponse.bodyToMono(String.class)
+                                    .map(body -> new RuntimeException("Veo fetchPredictOperation error "
+                                            + clientResponse.statusCode() + ": " + body)))
+                    .bodyToMono(String.class)
+                    .block();
+
+            JsonNode root = objectMapper.readTree(responseBody);
+            if (root.path("done").asBoolean(false)) {
+                if (root.has("error")) {
+                    throw new RuntimeException("Veo operation failed: " + root.path("error").toString());
+                }
+                return root;
+            }
+
+            if (System.currentTimeMillis() - startedAt > pollTimeoutMs) {
+                throw new RuntimeException("Veo operation polling timeout after " + pollTimeoutMs + "ms");
+            }
+            Thread.sleep(pollIntervalMs);
+        }
+    }
+
+    private String extractVideoUri(JsonNode operation) {
+        JsonNode videos = operation.path("response").path("videos");
+        if (!videos.isArray() || videos.isEmpty()) {
+            throw new RuntimeException("Veo operation completed but no videos were returned: " + operation.toString());
+        }
+        JsonNode firstVideo = videos.get(0);
+        String gcsUri = firstVideo.path("gcsUri").asText(null);
+        if (gcsUri != null && !gcsUri.isBlank()) {
+            return gcsUri;
+        }
+        String uri = firstVideo.path("uri").asText(null);
+        if (uri != null && !uri.isBlank()) {
+            return uri;
+        }
+        throw new RuntimeException("Veo response video URI is missing: " + firstVideo.toString());
+    }
+
+    private Map<String, Object> resolveImageInput(String imageRef) throws IOException {
+        String normalized = normalizeImageUrl(imageRef);
+        if (normalized == null) {
+            return null;
+        }
+        if (normalized.startsWith("gs://")) {
+            return Map.of("gcsUri", normalized);
+        }
+        if (normalized.startsWith("data:image/")) {
+            return parseDataUrl(normalized);
+        }
+
+        String generatedPath = extractGeneratedImagePath(normalized);
+        if (generatedPath != null) {
+            return loadImageAsBase64FromGeneratedDir(generatedPath);
+        }
+
+        log.warn("[Veo] Unsupported image reference type, skipping: {}", normalized);
+        return null;
+    }
+
+    private Map<String, Object> parseDataUrl(String dataUrl) {
+        int commaIndex = dataUrl.indexOf(',');
+        if (commaIndex < 0) {
+            return null;
+        }
+        String meta = dataUrl.substring(5, commaIndex); // remove leading "data:"
+        String dataPart = dataUrl.substring(commaIndex + 1);
+        if (!meta.contains(";base64")) {
+            return null;
+        }
+        String mimeType = meta.split(";")[0];
+        return Map.of(
+                "bytesBase64Encoded", dataPart,
+                "mimeType", mimeType
+        );
+    }
+
+    private Map<String, Object> loadImageAsBase64FromGeneratedDir(String relativePath) throws IOException {
+        Path baseDir = Paths.get(imagenOutputDir).toAbsolutePath().normalize();
+        Path resolved = baseDir.resolve(relativePath).normalize();
+        if (!resolved.startsWith(baseDir)) {
+            throw new IllegalArgumentException("Invalid generated image path: " + relativePath);
+        }
+        byte[] bytes = Files.readAllBytes(resolved);
+        String mimeType = detectMimeType(resolved);
+        return Map.of(
+                "bytesBase64Encoded", Base64.getEncoder().encodeToString(bytes),
+                "mimeType", mimeType
+        );
+    }
+
+    private String detectMimeType(Path path) throws IOException {
+        String mimeType = Files.probeContentType(path);
+        if (mimeType != null && !mimeType.isBlank()) {
+            return mimeType;
+        }
+        String filename = path.getFileName().toString().toLowerCase();
+        if (filename.endsWith(".png")) return "image/png";
+        if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) return "image/jpeg";
+        if (filename.endsWith(".webp")) return "image/webp";
+        return "image/png";
+    }
+
+    private String extractGeneratedImagePath(String imageRef) {
+        String marker = "/generated-images/";
+        int idx = imageRef.indexOf(marker);
+        if (idx < 0) {
+            return null;
+        }
+        String relative = imageRef.substring(idx + marker.length());
+        int queryIndex = relative.indexOf('?');
+        if (queryIndex >= 0) {
+            relative = relative.substring(0, queryIndex);
+        }
+        return relative.isBlank() ? null : relative;
+    }
+
+    private void validateStorageUri() {
+        if (veoStorageUri == null || veoStorageUri.isBlank()) {
+            throw new IllegalArgumentException("veo.storage-uri (gs://...) 설정이 필요합니다.");
+        }
+        if (!veoStorageUri.startsWith("gs://")) {
+            throw new IllegalArgumentException("veo.storage-uri는 gs:// 로 시작해야 합니다.");
+        }
     }
 }

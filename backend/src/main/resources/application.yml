@@ -33,3 +33,11 @@ vertex:
 imagen:
   model: ${IMAGEN_MODEL:imagen-3.0-generate-002}
   output-dir: ${IMAGEN_OUTPUT_DIR:${user.home}/aivideo-generated/images}
+
+veo:
+  model: ${VEO_MODEL:veo-3.1-generate-preview}
+  storage-uri: ${VEO_STORAGE_URI:}
+  duration-seconds: ${VEO_DURATION_SECONDS:8}
+  poll-interval-ms: ${VEO_POLL_INTERVAL_MS:10000}
+  poll-timeout-ms: ${VEO_POLL_TIMEOUT_MS:600000}
+  output-dir: ${VEO_OUTPUT_DIR:${user.home}/aivideo-generated/videos}
