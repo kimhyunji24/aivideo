@@ -78,6 +78,8 @@ export interface ProjectState {
     id?: number;
     idea: string;
     logline?: string;
+    /** 로그라인 보정을 위한 누적 사용자 문맥 */
+    loglineContext?: string;
     /** 선택된 장르·스타일 태그 (예: SF, 코미디) */
     selectedGenres?: string[];
     /** 선택된 세계관·배경 태그 (예: 근미래, 일상) */

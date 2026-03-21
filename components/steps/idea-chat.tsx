@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { generateCharacters, generateLogline } from "@/lib/api"
+import { generateCharacters, generateLogline, updateSession } from "@/lib/api"
 
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
@@ -31,11 +31,28 @@ interface IdeaChatProps {
 
 const LOGLINE_LOADING_MESSAGE = "로그라인 생성중..."
 
-function buildLogline(idea: string): string {
-  const coreIdea = idea.trim()
+function appendLoglineContext(existing: string | undefined, next: string): string {
+  const incoming = next.trim()
+  if (!incoming) return (existing ?? "").trim()
+  const base = (existing ?? "").trim()
+  if (!base) return incoming
+  const lines = base.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const last = lines[lines.length - 1] ?? ""
+  if (last === incoming) return base
+  const merged = [...lines, incoming]
+  return merged.slice(-12).join("\n")
+}
+
+function buildLogline(baseIdea: string, latestPrompt?: string): string {
+  const coreIdea = baseIdea.trim()
+  const revision = latestPrompt?.trim() ?? ""
   if (!coreIdea) return ""
 
-  return `${coreIdea}를 바탕으로, 주인공이 예상치 못한 위기 속에서 감정적 성장과 반전을 만들어내는 단편 서사.`
+  if (!revision || revision === coreIdea) {
+    return `${coreIdea}를 바탕으로, 주인공이 예상치 못한 위기 속에서 감정적 성장과 반전을 만들어내는 단편 서사.`
+  }
+
+  return `${coreIdea}를 기반으로 하되 "${revision}" 요구사항을 반영한 간결한 단편 서사.`
 }
 
 export function IdeaChat({ project, setProject, initialView = "chat", onNext, sessionId }: IdeaChatProps) {
@@ -69,12 +86,16 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   const loglinePreview = useMemo(() => {
     if (loglineDraft?.trim()) return loglineDraft
     if (project.logline?.trim()) return project.logline
-    return buildLogline(project.idea ?? latestUserIdea ?? input)
-  }, [loglineDraft, project.logline, project.idea, latestUserIdea, input])
+    return buildLogline(project.idea ?? latestUserIdea ?? input, project.planningPrompt ?? latestUserIdea ?? input)
+  }, [loglineDraft, project.logline, project.idea, project.planningPrompt, latestUserIdea, input])
 
   const handleSend = async (idea?: string) => {
     const text = (idea ?? input).trim()
     if (!text) return
+
+    const existingBaseIdea = (project.idea ?? "").trim()
+    const baseIdea = existingBaseIdea || text
+    const nextContext = appendLoglineContext(project.loglineContext, text)
 
     setInput("")
     setShowConfirm(false)
@@ -83,12 +104,19 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
       { role: "user", content: text },
       { role: "ai", content: LOGLINE_LOADING_MESSAGE },
     ])
-    setProject({ ...project, idea: text })
+    setProject({ ...project, idea: baseIdea, planningPrompt: text, loglineContext: nextContext })
 
-    let generatedLogline = buildLogline(text)
+    let generatedLogline = buildLogline(baseIdea, text)
 
     if (sessionId) {
       try {
+        await updateSession(sessionId, {
+          ...project,
+          idea: baseIdea,
+          planningPrompt: text,
+          loglineContext: nextContext,
+        })
+
         const loglineState = await generateLogline(sessionId, text)
         let merged: ProjectState = {
           ...project,
@@ -116,7 +144,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
         setLoglineDraft(generatedLogline)
       }
     } else {
-      setProject({ ...project, idea: text, logline: generatedLogline })
+      setProject({ ...project, idea: baseIdea, planningPrompt: text, loglineContext: nextContext, logline: generatedLogline })
       setLoglineDraft(generatedLogline)
     }
 
@@ -136,7 +164,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   const handleConfirmLogline = () => {
     const idea = (project.idea ?? latestUserIdea ?? "").trim()
     if (!idea) return
-    const nextLogline = loglineDraft?.trim() ? loglineDraft : buildLogline(idea)
+    const nextLogline = loglineDraft?.trim() ? loglineDraft : buildLogline(idea, project.planningPrompt ?? latestUserIdea ?? "")
     setLoglineDraft(nextLogline)
 
     setProject({
@@ -195,7 +223,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={() => setLoglineDraft(buildLogline(project.idea ?? latestUserIdea ?? ""))}
+                      onClick={() => setLoglineDraft(buildLogline(project.idea ?? latestUserIdea ?? "", project.planningPrompt ?? latestUserIdea ?? ""))}
                       className="rounded-full p-1 text-gray-400 hover:text-black hover:bg-black/5 transition-colors press-down"
                       aria-label="로그라인 다시 생성"
                     >
@@ -337,7 +365,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
-                handleSend()
+                void handleSend()
               }
             }}
             placeholder="이야기 아이디어를 입력하세요... (Enter로 전송)"
@@ -345,7 +373,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
             className="resize-none text-sm bg-white focus-visible:ring-0 input-unified outline-none border-none ring-0"
           />
           <Button
-            onClick={() => handleSend()}
+            onClick={() => void handleSend()}
             disabled={!input.trim()}
             className="bg-black hover:bg-gray-800 text-white self-end h-11 w-11 p-0 flex-shrink-0 rounded-xl press-down shadow-md"
             size="icon"
