@@ -954,7 +954,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
   const canProceed = charactersConfirmed && plot.stages.some((s) => s.content.trim())
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full min-h-0 bg-white">
       {/* ── 상단: 반응형 — 모바일에서 세로 배치 ── */}
       <div className="flex-shrink-0 border-b border-[#E0E0E0] bg-white">
         <div className="px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -962,7 +962,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       </div>
 
       {/* ── 본문: 반응형 패딩·간격 ── */}
-      <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
+      <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
         <div className="max-w-4xl mx-auto space-y-8 sm:space-y-12">
           <LoglineSection
             logline={logline}
