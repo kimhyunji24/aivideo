@@ -27,7 +27,7 @@ gemini:
 
 # Vertex AI (Imagen 3) 설정
 vertex:
-  project-id: ${VERTEX_PROJECT_ID:your-gcp-project-id}
+  project-id: ${VERTEX_PROJECT_ID:project-1a126ade-f2d4-4793-a08}
   location: ${VERTEX_LOCATION:us-central1}
 
 imagen:

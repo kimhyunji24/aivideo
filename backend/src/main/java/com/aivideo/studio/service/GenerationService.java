@@ -179,10 +179,14 @@ public class GenerationService {
             throw new IllegalArgumentException("프레임 생성에 사용할 script 또는 scene prompt가 필요합니다.");
         }
 
-        String imageUrl = imagenAdapter.generateImage(prompt, buildFrameSceneKey(sceneId, targetFrame.getId()));
+        // 프레임 대본(한국어)을 영어 프롬프트로 변환
+        String englishPrompt = buildEnglishFramePrompt(prompt);
+        log.info("[GenerationService] 씬 {}, 프레임 {} 이미지 생성 — 원본: {}, 번역: {}", sceneId, targetFrame.getId(), prompt, englishPrompt);
+
+        String imageUrl = imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()));
         targetFrame.setImageUrl(imageUrl);
         if (targetFrame.getScript() == null || targetFrame.getScript().isBlank()) {
-            targetFrame.setScript(prompt);
+            targetFrame.setScript(prompt); // 원본 한국어 스크립트 유지
         }
 
         target.setFrames(frames);
@@ -191,6 +195,15 @@ public class GenerationService {
     }
 
     // ─── Private 헬퍼 ────────────────────────────────────────────────────────
+
+    /**
+     * 프레임의 한국어 대본을 영어 프롬프트로 변환합니다.
+     */
+    private String buildEnglishFramePrompt(String koreanScript) {
+        String geminiPrompt = "Translate the following storyboard frame script to a highly detailed English prompt for an AI image generator. " +
+                "Only provide the translated English prompt without any conversational text:\n\n" + koreanScript;
+        return geminiAdapter.generateText(geminiPrompt).trim();
+    }
 
     /**
      * 씬의 영어 이미지 생성 프롬프트를 반환합니다.
