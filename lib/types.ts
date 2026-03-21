@@ -130,3 +130,10 @@ export interface PlanningSeedResponse {
         stages?: PlanningSeedStage[];
     };
 }
+
+export interface PlanningTagsResponse {
+    genreOptions: string[];
+    worldviewOptions: string[];
+    selectedGenres: string[];
+    selectedWorldviews: string[];
+}
