@@ -95,6 +95,62 @@ export function FrameEdit({
     }))
   }
 
+  // ── Drag and Drop Handlers ──
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+    setDraggedIdx(idx)
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  const handleDragEnter = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    setDragOverIdx(idx)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (e: React.DragEvent, targetIdx: number) => {
+    e.preventDefault()
+    if (draggedIdx === null || draggedIdx === targetIdx) {
+      setDraggedIdx(null)
+      setDragOverIdx(null)
+      return
+    }
+
+    setProject(prev => {
+      const newScenes = [...prev.scenes]
+      const currentScene = newScenes[sceneIndex]
+      if (!currentScene.frames) return prev
+      
+      const newFrames = [...currentScene.frames]
+      const [moved] = newFrames.splice(draggedIdx, 1)
+      newFrames.splice(targetIdx, 0, moved)
+      
+      newScenes[sceneIndex] = { ...currentScene, frames: newFrames }
+      
+      if (safeSelectedFrameIndex === draggedIdx) {
+        syncSelectedFrameIndex(targetIdx)
+      } else if (safeSelectedFrameIndex > draggedIdx && safeSelectedFrameIndex <= targetIdx) {
+        syncSelectedFrameIndex(safeSelectedFrameIndex - 1)
+      } else if (safeSelectedFrameIndex < draggedIdx && safeSelectedFrameIndex >= targetIdx) {
+        syncSelectedFrameIndex(safeSelectedFrameIndex + 1)
+      }
+      
+      return { ...prev, scenes: newScenes }
+    })
+    setDraggedIdx(null)
+    setDragOverIdx(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedIdx(null)
+    setDragOverIdx(null)
+  }
+
   const handleAddFrame = () => {
     if (frames.length >= 4) return
     setProject((prev) => ({
@@ -313,11 +369,20 @@ export function FrameEdit({
 
             <div className="flex items-center gap-4">
               {frames.map((frame, idx) => (
-                <div key={frame.id} className="flex items-center gap-4 flex-1 relative group">
+                <div 
+                  key={frame.id} 
+                  className={cn("flex items-center gap-4 flex-1 relative group transition-all", dragOverIdx === idx ? "opacity-40 scale-95" : "")}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragEnter={(e) => handleDragEnter(e, idx)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  onDragEnd={handleDragEnd}
+                >
                   <button
                     onClick={() => syncSelectedFrameIndex(idx)}
                     className={cn(
-                      "relative aspect-video w-full rounded-lg overflow-hidden border transition-all p-0 focus:outline-none",
+                      "relative aspect-video w-full rounded-lg overflow-hidden border transition-all p-0 focus:outline-none cursor-grab active:cursor-grabbing",
                       safeSelectedFrameIndex === idx
                         ? "border-black ring-2 ring-black/10 shadow-md transform scale-[1.02]"
                         : "border-gray-200 bg-gray-50 hover:bg-gray-100 opacity-60 hover:opacity-100"

@@ -4,7 +4,7 @@ import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X, Video
+  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X, Video, Image as ImageIcon
 } from "lucide-react"
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
@@ -84,79 +84,53 @@ export function Storyboard({
     }, 50)
   }
 
-  // ── 이미지 재생성 ──
-  const handleRegenerate = async (sceneId: string | number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setProject(prev => ({
-      ...prev,
-      scenes: prev.scenes.map(s =>
-        s.id === sceneId ? { ...s, status: "generating" as const } : s
-      ),
-    }))
-    try {
-      const res = await fetch(`/api/generate-image?id=${sceneId}`, { method: "POST" })
-      if (res.ok) {
-        const interval = setInterval(async () => {
-          try {
-            const sr = await fetch(`/api/status/${sceneId}`)
-            if (sr.ok) {
-              const updated = await sr.json()
-              setProject(prev => ({
-                ...prev,
-                scenes: prev.scenes.map(s => (s.id === sceneId ? updated : s)),
-              }))
-              if (updated.status === "completed" || updated.status === "done" || updated.status === "error") clearInterval(interval)
-            }
-          } catch { clearInterval(interval) }
-        }, 2000)
-      }
-    } catch { /* silently fail */ }
-  }
-
-  // ── 비디오 생성 (Phase 3) ──
-  const handleGenerateVideo = async (sceneId: string | number, e: React.MouseEvent) => {
+  // ── 시작 프레임 이미지 생성 ──
+  const handleGenerateStartFrame = async (sceneId: string | number, e: React.MouseEvent) => {
     e.stopPropagation()
     if (!sessionId) return
     setProject(prev => ({
       ...prev,
-      scenes: prev.scenes.map(s =>
-        s.id === sceneId ? { ...s, status: "generating_video" } : s
-      ),
+      scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "generating" as const } : s),
     }))
     try {
-      const res = await fetch(`http://localhost:8080/api/v1/sessions/${sessionId}/generation/videos/${sceneId}`, { method: "POST" })
+      const scene = project.scenes.find(s => s.id === sceneId)
+      const currentFrame = scene?.frames?.[0]
+      const res = await fetch(
+        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation/frames/${encodeURIComponent(String(sceneId))}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            frameId: currentFrame?.id,
+            script: currentFrame?.script || scene?.description || scene?.prompt || "",
+          }),
+        }
+      )
       if (res.ok) {
-        const interval = setInterval(async () => {
-          try {
-            const sr = await fetch(`http://localhost:8080/api/v1/sessions/${sessionId}`)
-            if (sr.ok) {
-              const state = await sr.json()
-              const updated = state.scenes.find((s: Scene) => s.id === sceneId)
-              if (updated) {
-                setProject(prev => ({
-                  ...prev,
-                  scenes: prev.scenes.map(s => (s.id === sceneId ? updated : s)),
-                }))
-                if (updated.status === "completed" || updated.status === "error") clearInterval(interval)
-              }
-            }
-          } catch { clearInterval(interval) }
-        }, 3000)
+        const generatedFrame = await res.json()
+        setProject(prev => {
+          const updatedScenes = prev.scenes.map(s => {
+            if (s.id !== sceneId) return s
+            const existingFrames = s.frames ?? []
+            const newFrames = [...existingFrames]
+            if (newFrames.length === 0) newFrames.push(generatedFrame)
+            else newFrames[0] = { ...newFrames[0], ...generatedFrame }
+            return { ...s, status: "completed" as const, frames: newFrames, imageUrl: generatedFrame.imageUrl }
+          })
+          const updatedProject = { ...prev, scenes: updatedScenes }
+          fetch(`http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedProject)
+          }).catch(console.error)
+          return updatedProject
+        })
+      } else {
+        setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
       }
-    } catch { /* silently fail */ }
-  }
-
-
-  // ── 이미지 다운로드 ──
-  const handleDownload = (scene: Scene, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!scene.imageUrl) return
-    const a = document.createElement("a")
-    a.href = scene.imageUrl
-    a.download = `${scene.title}.png`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    } catch {
+      setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
+    }
   }
 
   // ── 수정하기 ──
@@ -271,17 +245,6 @@ export function Storyboard({
                          })}
                        </div>
                     </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          className="scene-header-btn"
-                          onClick={(e) => handleRegenerate(scene.id, e)}
-                        >
-                          <RefreshCw size={14} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>전체 재생성</TooltipContent>
-                    </Tooltip>
                   </div>
 
                   {/* 카드 스크롤 영역 */}
@@ -305,27 +268,21 @@ export function Storyboard({
                         <div className="scene-overlay-buttons">
                           <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
-                              <button className="scene-overlay-btn" onClick={(e) => handleRegenerate(scene.id, e)}>
-                                <RefreshCw size={16} />
+                              <button 
+                                className="scene-overlay-btn" 
+                                onClick={(e) => handleGenerateStartFrame(scene.id, e)}
+                                disabled={scene.status === "generating"}
+                              >
+                                {scene.status === "generating" ? (
+                                  <RefreshCw size={16} className="animate-spin text-gray-500" />
+                                ) : (
+                                  <ImageIcon size={16} />
+                                )}
                               </button>
                             </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">이미지 재생성</TooltipContent>
-                          </Tooltip>
-                          <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                              <button className="scene-overlay-btn" onClick={(e) => handleGenerateVideo(scene.id, e)} disabled={!scene.imageUrl}>
-                                <Video size={16} />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">비디오(모션) 부여</TooltipContent>
-                          </Tooltip>
-                          <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                              <button className="scene-overlay-btn" onClick={(e) => handleDownload(scene, e)}>
-                                <Download size={16} />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">다운로드</TooltipContent>
+                            <TooltipContent side="bottom" className="text-xs">
+                              {scene.status === "generating" ? "프레임 생성 중..." : "이미지 생성"}
+                            </TooltipContent>
                           </Tooltip>
                         </div>
                       </div>
@@ -401,8 +358,17 @@ export function Storyboard({
 
                   {/* 수정하기 */}
                   <div className="scene-card-footer">
-                    <button className="scene-edit-btn" onClick={(e) => handleEdit(index, e)}>
-                      수정하기
+                    <button 
+                      className="scene-edit-btn disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" 
+                      onClick={(e) => {
+                        if (scene.status === "generating") return;
+                        handleEdit(index, e);
+                      }}
+                      disabled={scene.status === "generating"}
+                    >
+                      {scene.status === "generating" ? (
+                        <><RefreshCw className="h-4 w-4 animate-spin" /> 이미지 생성 중...</>
+                      ) : "수정하기"}
                     </button>
                   </div>
                 </div>
