@@ -65,9 +65,10 @@ export function FrameEdit({
     }
   }, [safeSelectedFrameIndex, selectedFrameIndex])
 
-  useEffect(() => {
-    onSelectedFrameIndexChange?.(safeSelectedFrameIndex)
-  }, [onSelectedFrameIndexChange, safeSelectedFrameIndex])
+  const syncSelectedFrameIndex = (nextIndex: number) => {
+    setSelectedFrameIndex(nextIndex)
+    onSelectedFrameIndexChange?.(nextIndex)
+  }
 
   const resolveSessionId = () => {
     if (sessionId && sessionId.trim()) return sessionId
@@ -96,11 +97,15 @@ export function FrameEdit({
       scenes: prev.scenes.map((s, i) => {
         if (i !== sceneIndex) return s
         const existingFrames = s.frames ?? []
-        const newFrames = [...existingFrames, { id: `f-${Date.now()}`, script: "", imageUrl: undefined }]
+        const seedScript = s.description?.trim() || s.prompt?.trim() || ""
+        const newFrames = [
+          ...existingFrames,
+          { id: `f-${Date.now()}-${existingFrames.length + 1}`, script: seedScript, imageUrl: undefined },
+        ]
         return { ...s, frames: newFrames }
       }),
     }))
-    setSelectedFrameIndex(frames.length)
+    syncSelectedFrameIndex(frames.length)
   }
 
   const handleRemoveFrame = (idx: number) => {
@@ -117,14 +122,17 @@ export function FrameEdit({
       }),
     }))
     if (selectedFrameIndex >= frames.length - 1) {
-      setSelectedFrameIndex(Math.max(0, frames.length - 2))
+      syncSelectedFrameIndex(Math.max(0, frames.length - 2))
     }
   }
 
   const handleGenerateFrame = async () => {
     if (!currentFrame) return
-    const script = currentFrame.script?.trim()
-    if (!script) return
+    const script = currentFrame.script?.trim() || scene.description?.trim() || scene.prompt?.trim() || ""
+    if (!script) {
+      alert("프레임 생성에 사용할 스크립트가 없습니다. 스크립트를 입력해 주세요.")
+      return
+    }
 
     let sid = resolveSessionId()
     if (!sid) {
@@ -155,7 +163,7 @@ export function FrameEdit({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             frameId: currentFrame.id,
-            script,
+            script: script || undefined,
           }),
         }
       )
@@ -182,7 +190,13 @@ export function FrameEdit({
           nextFrames[indexToUpdate] = {
             ...nextFrames[indexToUpdate],
             ...generatedFrame,
-            script: nextFrames[indexToUpdate].script || generatedFrame.script || script,
+            script:
+              nextFrames[indexToUpdate].script ||
+              generatedFrame.script ||
+              script ||
+              scene.description ||
+              scene.prompt ||
+              "",
           }
           return { ...s, frames: nextFrames }
         }),
@@ -234,14 +248,14 @@ export function FrameEdit({
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-        <Card className="col-span-1 lg:col-span-8 flex flex-col overflow-hidden border-border/60 shadow-sm glass-card">
-          <div className="relative flex-1 bg-black/5 min-h[200px] flex items-center justify-center p-4">
+        <Card className="col-span-1 lg:col-span-8 flex flex-col border-border/60 shadow-sm glass-card">
+          <div className="relative flex-1 min-h-[220px] max-h-[420px] bg-black/5 flex items-center justify-center p-4">
             {currentFrame.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={currentFrame.imageUrl}
                 alt={`Frame ${safeSelectedFrameIndex + 1}`}
-                className="w-full h-full object-cover rounded-lg"
+                className="w-full h-full object-contain rounded-lg"
               />
             ) : (
               <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-black/5 transition-colors rounded-lg group">
@@ -287,7 +301,7 @@ export function FrameEdit({
               {frames.map((frame, idx) => (
                 <div key={frame.id} className="flex items-center gap-4 flex-1 relative group">
                   <button
-                    onClick={() => setSelectedFrameIndex(idx)}
+                    onClick={() => syncSelectedFrameIndex(idx)}
                     className={cn(
                       "relative aspect-video w-full rounded-lg overflow-hidden border transition-all p-0 focus:outline-none",
                       safeSelectedFrameIndex === idx
@@ -373,7 +387,7 @@ export function FrameEdit({
               <Button
                 size="sm"
                 onClick={handleGenerateFrame}
-                disabled={isGenerating || !currentFrame.script.trim()}
+                disabled={isGenerating}
                 className="w-full gap-2 bg-black hover:bg-gray-800 text-white shadow-md h-11 rounded-lg press-down text-sm font-semibold"
               >
                 {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
