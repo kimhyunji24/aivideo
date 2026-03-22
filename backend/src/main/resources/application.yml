@@ -8,9 +8,6 @@ spring:
 
 
 aivideo:
-  mock-mode: ${MOCK_MODE:false}
-  mock-image-url: ${MOCK_IMAGE_URL:https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80}
-  mock-video-url: ${MOCK_VIDEO_URL:https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4}
   generated-files-path: ${user.home}/aivideo-generated
 
 google:
@@ -31,7 +28,8 @@ vertex:
   location: ${VERTEX_LOCATION:us-central1}
 
 imagen:
-  model: ${IMAGEN_MODEL:imagen-3.0-generate-002}
+  model: ${IMAGEN_MODEL:imagen-3.0-capability-001}
+  fallback-model: ${IMAGEN_FALLBACK_MODEL:imagen-3.0-generate-002}
   output-dir: ${IMAGEN_OUTPUT_DIR:${user.home}/aivideo-generated/images}
 
 veo:

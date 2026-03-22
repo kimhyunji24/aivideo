@@ -14,4 +14,5 @@ public class PlotStage implements Serializable {
     private String id;
     private String label;
     private String content;
+    private SceneElements elements;
 }

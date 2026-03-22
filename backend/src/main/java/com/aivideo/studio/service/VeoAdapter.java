@@ -64,12 +64,6 @@ public class VeoAdapter {
     @Value("${aivideo.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
 
-    @Value("${aivideo.mock-mode:false}")
-    private boolean mockMode;
-
-    @Value("${aivideo.mock-video-url:}")
-    private String mockVideoUrl;
-
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
 
@@ -91,15 +85,14 @@ public class VeoAdapter {
             String firstFrameUrl,
             String lastFrameUrl
     ) {
-        if (mockMode) {
-            log.info("[Mock] Veo 비디오 생성을 스킵합니다. Mock URL 반환");
-            try { Thread.sleep(3000); } catch (InterruptedException e) {}
-            return mockVideoUrl;
-        }
-
         List<String> refs = sanitizeReferenceImages(referenceImageUrls);
         String first = normalizeImageUrl(firstFrameUrl);
         String last = normalizeImageUrl(lastFrameUrl);
+        if (first != null && last != null && first.equals(last)) {
+            // 동일 이미지를 첫/마지막 프레임으로 동시에 넣으면 모델이 한 장면으로 수렴하는 경우가 많아 마지막 프레임 제약은 제거한다.
+            log.info("[Veo] firstFrame and lastFrame are identical. Dropping lastFrame constraint.");
+            last = null;
+        }
 
         if (requiresVeo31Features(refs, first, last) && !isVeo31Model()) {
             throw new IllegalArgumentException("참조 이미지/first-last frame 기능은 Veo 3.1 모델에서만 지원됩니다.");

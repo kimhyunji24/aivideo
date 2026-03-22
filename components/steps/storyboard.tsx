@@ -4,13 +4,11 @@ import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X, Video
+  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, Video, Image as ImageIcon
 } from "lucide-react"
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-import { ASSETS } from "@/lib/constants"
-import { updateSession } from "@/lib/api"
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -21,7 +19,6 @@ interface StoryboardProps {
   onBack: () => void
   selectedSceneIndex: number
   onSceneSelect: (i: number) => void
-  /** 에셋 핀 제거 시 Redis 동기화에 필요 */
   sessionId?: string | null
 }
 
@@ -60,27 +57,6 @@ export function Storyboard({
   }
 
   // ── 씬 선택 및 스크롤 포커싱 ──
-  const handleRemoveAsset = async (sceneId: string | number, assetId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    const updatedScenes = project.scenes.map((s) => {
-      if (s.id !== sceneId) return s
-      return {
-        ...s,
-        pinnedAssets: (s.pinnedAssets || []).filter(id => id !== assetId)
-      }
-    })
-    const updatedProject = { ...project, scenes: updatedScenes }
-    setProject(updatedProject)
-    // 핀 제거를 Redis에 동기화
-    if (sessionId) {
-      try {
-        await updateSession(sessionId, updatedProject)
-      } catch (e) {
-        console.error("에셋 핀 제거 동기화 실패", e)
-      }
-    }
-  }
-
   const handleSceneSelect = (index: number) => {
     onSceneSelect(index)
     // 약간의 딜레이 후 해당 씬 카드로 스크롤 이동
@@ -110,6 +86,7 @@ export function Storyboard({
       id: scene.id,
       title: scene.title,
       description: scene.description,
+      elements: scene.elements,
     }))
     const params = new URLSearchParams({
       sceneIndex: String(globalIndex),
@@ -154,22 +131,6 @@ export function Storyboard({
                   key={scene.id}
                   id={`scene-card-${index}`}
                   onClick={() => handleSceneSelect(index)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    const assetId = e.dataTransfer.getData("assetId")
-                    if (assetId) {
-                      setProject((prev) => ({
-                        ...prev,
-                        scenes: prev.scenes.map((s) => {
-                          if (s.id !== scene.id) return s
-                          const currentPins = s.pinnedAssets || []
-                          if (currentPins.includes(assetId)) return s
-                          return { ...s, pinnedAssets: [...currentPins, assetId] }
-                        }),
-                      }))
-                    }
-                  }}
                   className={cn("storyboard-scene-card", selectedSceneIndex === index && "selected")}
                 >
                   <div className="scene-card-header">
@@ -177,34 +138,6 @@ export function Storyboard({
                        <div className="flex items-center gap-2">
                          <span className="scene-badge">S#{index + 1}</span>
                          <span className="scene-title">{scene.title}</span>
-                       </div>
-                       <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5 max-w-[200px] sm:max-w-[300px]">
-                         {scene.pinnedAssets?.map((pinnedId) => {
-                           const pinnedAssetItem = ASSETS.find(a => a.id === pinnedId);
-                           if (!pinnedAssetItem) return null;
-                           const customImg = project.customAssets?.[pinnedId]?.imageUrl;
-                           return (
-                             <div 
-                               key={pinnedId} 
-                               className="group/pin flex items-center gap-1.5 px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded-md flex-shrink-0 cursor-default"
-                             >
-                               {customImg ? (
-                                 <img src={customImg} alt={pinnedAssetItem.label} className="w-3.5 h-3.5 rounded-sm object-cover flex-shrink-0" />
-                               ) : (
-                                 <pinnedAssetItem.icon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" strokeWidth={2} />
-                               )}
-                               <span className="text-[10px] font-medium text-gray-600 truncate max-w-[60px]">
-                                 {pinnedAssetItem.label}
-                                </span>
-                               <button 
-                                 onClick={(e) => handleRemoveAsset(scene.id, pinnedId, e)}
-                                 className="opacity-0 group-hover/pin:opacity-100 ml-0.5 hover:text-indigo-900 transition-opacity"
-                                >
-                                 <X size={10} />
-                               </button>
-                             </div>
-                           );
-                         })}
                        </div>
                     </div>
                   </div>
