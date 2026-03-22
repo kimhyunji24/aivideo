@@ -5,13 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronLeft, ChevronRight, FileText, Box, ArrowLeft, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FrameEdit } from "@/components/steps/frame-edit"
-import type { ProjectState } from "@/lib/types"
+import type { ProjectState, SceneElements } from "@/lib/types"
 
 type EditScene = {
   id: string | number
   title: string
   description: string
   frames?: any[]
+  elements?: Partial<SceneElements>
 }
 
 type ReturnState = {
@@ -40,6 +41,35 @@ const EMPTY_ELEMENTS = {
   story: "",
 }
 
+const DETAIL_TO_ELEMENT_KEY = {
+  주제: "mainCharacter",
+  동작: "action",
+  배경: "background",
+  비율: "pose",
+  색감: "mood",
+  조명: "lighting",
+  구도: "composition",
+  날씨: "subCharacter",
+  시간: "time",
+} as const
+
+function normalizeElements(input?: Partial<SceneElements> | null, description?: string): SceneElements {
+  return {
+    ...EMPTY_ELEMENTS,
+    ...(input ?? {}),
+    story: input?.story || description || "",
+  }
+}
+
+function buildDetailValuesFromElements(elements?: Partial<SceneElements> | null): Record<string, string> {
+  const normalized = normalizeElements(elements)
+  return ELEMENT_FIELDS.reduce<Record<string, string>>((acc, field) => {
+    const key = DETAIL_TO_ELEMENT_KEY[field as keyof typeof DETAIL_TO_ELEMENT_KEY]
+    acc[field] = key ? normalized[key] || "" : ""
+    return acc
+  }, {})
+}
+
 function parseScenes(raw: string | null): EditScene[] {
   if (!raw) return []
   try {
@@ -51,6 +81,7 @@ function parseScenes(raw: string | null): EditScene[] {
         id: item.id ?? index,
         title: item.title,
         description: typeof item.description === "string" ? item.description : "",
+        elements: item.elements && typeof item.elements === "object" ? item.elements : undefined,
       }))
   } catch {
     return []
@@ -83,7 +114,7 @@ function buildFallbackProject(scenes: EditScene[]): ProjectState {
       prompt: scene.description,
       duration: 3,
       status: "pending",
-      elements: { ...EMPTY_ELEMENTS, story: scene.description },
+      elements: normalizeElements(scene.elements, scene.description),
     })),
     mode: "beginner",
   }
@@ -113,7 +144,7 @@ export default function SceneEditPage() {
   const safeSelectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, scenes.length - 1)))
   const selectedScene = scenes[safeSelectedIndex]
   const selectedSceneKey = String(selectedScene?.id ?? safeSelectedIndex)
-  const selectedDetail = detailByScene[selectedSceneKey] ?? DEFAULT_DETAIL_VALUES
+  const selectedDetail = detailByScene[selectedSceneKey] ?? buildDetailValuesFromElements(selectedScene?.elements)
   const frames = selectedScene?.frames ?? []
   const totalFrames = Math.max(1, frames.length)
   const currentFrameIndex = Math.max(

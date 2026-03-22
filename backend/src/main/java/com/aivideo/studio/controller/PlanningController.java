@@ -1,6 +1,8 @@
 package com.aivideo.studio.controller;
 
 import com.aivideo.studio.dto.ProjectState;
+import com.aivideo.studio.dto.BackgroundReferenceAnalyzeRequest;
+import com.aivideo.studio.dto.CharacterImageAnalyzeRequest;
 import com.aivideo.studio.dto.PlanningTagsRequest;
 import com.aivideo.studio.dto.PlanningTagsResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -41,6 +43,36 @@ public class PlanningController {
             @PathVariable String sessionId,
             @PathVariable String charId) {
         ProjectState updatedState = planningService.regenerateCharacter(sessionId, charId);
+        return ResponseEntity.ok(updatedState);
+    }
+
+    @PostMapping("/characters/{charId}/analyze-image")
+    public ResponseEntity<ProjectState> analyzeCharacterImage(
+            @PathVariable String sessionId,
+            @PathVariable String charId,
+            @RequestBody CharacterImageAnalyzeRequest request) {
+        if (request == null || request.getImageDataUrl() == null || request.getImageDataUrl().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "imageDataUrl must not be blank");
+        }
+        ProjectState updatedState = planningService.updateCharacterAppearanceFromImage(
+                sessionId,
+                charId,
+                request.getImageDataUrl()
+        );
+        return ResponseEntity.ok(updatedState);
+    }
+
+    @PostMapping("/background-reference/analyze-image")
+    public ResponseEntity<ProjectState> analyzeBackgroundReferenceImage(
+            @PathVariable String sessionId,
+            @RequestBody BackgroundReferenceAnalyzeRequest request) {
+        if (request == null || request.getImageDataUrl() == null || request.getImageDataUrl().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "imageDataUrl must not be blank");
+        }
+        ProjectState updatedState = planningService.updateBackgroundReferenceFromImage(
+                sessionId,
+                request.getImageDataUrl()
+        );
         return ResponseEntity.ok(updatedState);
     }
 
