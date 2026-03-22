@@ -75,6 +75,28 @@ export function FrameEdit({
     onSelectedFrameIndexChange?.(nextIndex)
   }
 
+  const readErrorMessage = async (response: Response): Promise<string> => {
+    try {
+      const json = await response.json()
+      if (json && typeof json === "object") {
+        const message =
+          typeof json.userMessage === "string" && json.userMessage.trim()
+            ? json.userMessage.trim()
+            : (typeof json.message === "string" && json.message.trim() ? json.message.trim() : "")
+        const requestId = typeof json.requestId === "string" ? json.requestId.trim() : ""
+        if (message) {
+          return requestId ? `${message}\n(오류 ID: ${requestId})` : message
+        }
+      }
+    } catch {
+      // ignore json parse failure
+    }
+
+    const text = await response.text().catch(() => "")
+    if (text && text.trim()) return text.trim()
+    return `프레임 생성에 실패했습니다. (HTTP ${response.status})`
+  }
+
   const resolveSessionId = () => {
     if (sessionId && sessionId.trim()) return sessionId
     if (typeof window === "undefined") return null
@@ -247,8 +269,8 @@ export function FrameEdit({
       )
 
       if (!response.ok) {
-        const errorBody = await response.text().catch(() => "")
-        throw new Error(errorBody || `HTTP ${response.status}`)
+        const message = await readErrorMessage(response)
+        throw new Error(message)
       }
 
       const generatedFrame = (await response.json()) as Frame
@@ -289,7 +311,10 @@ export function FrameEdit({
       }))
     } catch (error) {
       console.error("Frame generation error:", error)
-      alert("프레임 생성에 실패했습니다. 잠시 후 다시 시도해주세요.")
+      const message = error instanceof Error && error.message?.trim()
+        ? error.message.trim()
+        : "프레임 생성에 실패했습니다. 잠시 후 다시 시도해주세요."
+      alert(message)
     } finally {
       setIsGenerating(false)
     }

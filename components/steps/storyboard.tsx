@@ -4,7 +4,7 @@ import type { ProjectState, Scene, SceneElements } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X, Video, Image as ImageIcon
+  RefreshCw, Download, FileText, SlidersHorizontal, Box, Check, ArrowRight, ArrowLeft, Pin, X, Video
 } from "lucide-react"
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
@@ -91,55 +91,6 @@ export function Storyboard({
         element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
       }
     }, 50)
-  }
-
-  // ── 시작 프레임 이미지 생성 ──
-  const handleGenerateStartFrame = async (sceneId: string | number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!sessionId) return
-    setProject(prev => ({
-      ...prev,
-      scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "generating" as const } : s),
-    }))
-    try {
-      const scene = project.scenes.find(s => s.id === sceneId)
-      const currentFrame = scene?.frames?.[0]
-      const res = await fetch(
-        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation/frames/${encodeURIComponent(String(sceneId))}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            frameId: currentFrame?.id,
-            script: currentFrame?.script || scene?.description || scene?.prompt || "",
-          }),
-        }
-      )
-      if (res.ok) {
-        const generatedFrame = await res.json()
-        setProject(prev => {
-          const updatedScenes = prev.scenes.map(s => {
-            if (s.id !== sceneId) return s
-            const existingFrames = s.frames ?? []
-            const newFrames = [...existingFrames]
-            if (newFrames.length === 0) newFrames.push(generatedFrame)
-            else newFrames[0] = { ...newFrames[0], ...generatedFrame }
-            return { ...s, status: "completed" as const, frames: newFrames, imageUrl: generatedFrame.imageUrl }
-          })
-          const updatedProject = { ...prev, scenes: updatedScenes }
-          fetch(`http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(updatedProject)
-          }).catch(console.error)
-          return updatedProject
-        })
-      } else {
-        setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
-      }
-    } catch {
-      setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
-    }
   }
 
   // ── 수정하기 ──
@@ -283,26 +234,7 @@ export function Storyboard({
                         </div>
                       )}
                       <div className="scene-image-overlay">
-                        <div className="scene-overlay-buttons">
-                          <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                              <button 
-                                className="scene-overlay-btn" 
-                                onClick={(e) => handleGenerateStartFrame(scene.id, e)}
-                                disabled={scene.status === "generating"}
-                              >
-                                {scene.status === "generating" ? (
-                                  <RefreshCw size={16} className="animate-spin text-gray-500" />
-                                ) : (
-                                  <ImageIcon size={16} />
-                                )}
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">
-                              {scene.status === "generating" ? "프레임 생성 중..." : "이미지 생성"}
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
+                        <div className="scene-overlay-buttons" />
                       </div>
                     </div>
 
