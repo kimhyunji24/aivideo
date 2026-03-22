@@ -36,6 +36,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
   const [isPaused, setIsPaused] = useState(false)
   const [keepStyle, setKeepStyle] = useState<string | null>(null)
   const [keepCharacter, setKeepCharacter] = useState<string | null>(null)
+  const [sceneErrors, setSceneErrors] = useState<Record<string, string>>({})
   const apiBase = sessionId
     ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
     : null
@@ -44,6 +45,26 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
   const errorCount = project.scenes.filter((s) => s.status === "error").length
   const progress = (completedCount / project.scenes.length) * 100
   const allDone = completedCount === project.scenes.length
+
+  const readErrorMessage = async (response: Response) => {
+    try {
+      const json = await response.json()
+      if (json && typeof json === "object") {
+        const message = typeof json.userMessage === "string" && json.userMessage.trim()
+          ? json.userMessage.trim()
+          : (typeof json.message === "string" && json.message.trim() ? json.message.trim() : "")
+        const requestId = typeof json.requestId === "string" ? json.requestId.trim() : ""
+        if (message) {
+          return requestId ? `${message} (오류 ID: ${requestId})` : message
+        }
+      }
+    } catch {
+      // ignore json parse failure
+    }
+    const text = await response.text().catch(() => "")
+    if (text && text.trim()) return text.trim()
+    return `요청 실패 (${response.status})`
+  }
 
   const pollSceneStatus = (sceneId: string | number): Promise<void> => {
     if (!apiBase) return Promise.resolve()
@@ -58,6 +79,20 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
             scenes: prev.scenes.map((s) => s.id === sceneId ? updatedScene : s),
           }))
           if (updatedScene.status === "done" || updatedScene.status === "error") {
+            if (updatedScene.status === "error") {
+              const message = updatedScene.lastErrorMessage
+                ? (updatedScene.lastErrorRequestId
+                  ? `${updatedScene.lastErrorMessage} (오류 ID: ${updatedScene.lastErrorRequestId})`
+                  : updatedScene.lastErrorMessage)
+                : "이미지 생성에 실패했습니다."
+              setSceneErrors((prev) => ({ ...prev, [String(sceneId)]: message }))
+            } else {
+              setSceneErrors((prev) => {
+                const next = { ...prev }
+                delete next[String(sceneId)]
+                return next
+              })
+            }
             clearInterval(interval)
             resolve()
           }
@@ -69,6 +104,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
               s.id === sceneId ? { ...s, status: "error" as const } : s
             ),
           }))
+          setSceneErrors((prev) => ({ ...prev, [String(sceneId)]: "상태 확인 중 네트워크 오류가 발생했습니다." }))
           resolve()
         }
       }, 2000)
@@ -92,7 +128,9 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
       setProject((prev: ProjectState) => ({
         ...prev,
         scenes: prev.scenes.map((s) =>
-          s.id === scene.id ? { ...s, status: "generating" as const } : s
+          s.id === scene.id
+            ? { ...s, status: "generating" as const, lastErrorCode: undefined, lastErrorMessage: undefined, lastErrorRetryable: undefined, lastErrorRequestId: undefined }
+            : s
         ),
       }))
 
@@ -101,12 +139,14 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
         if (res.ok) {
           await pollSceneStatus(scene.id)
         } else {
+          const message = await readErrorMessage(res)
           setProject((prev: ProjectState) => ({
             ...prev,
             scenes: prev.scenes.map((s) =>
               s.id === scene.id ? { ...s, status: "error" as const } : s
             ),
           }))
+          setSceneErrors((prev) => ({ ...prev, [String(scene.id)]: message }))
         }
       } catch {
         setProject((prev: ProjectState) => ({
@@ -115,6 +155,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
             s.id === scene.id ? { ...s, status: "error" as const } : s
           ),
         }))
+        setSceneErrors((prev) => ({ ...prev, [String(scene.id)]: "이미지 생성 중 네트워크 오류가 발생했습니다." }))
       }
     }
 
@@ -130,7 +171,9 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
     setProject((prev: ProjectState) => ({
       ...prev,
       scenes: prev.scenes.map((s) =>
-        s.id === sceneId ? { ...s, status: "generating" as const } : s
+        s.id === sceneId
+          ? { ...s, status: "generating" as const, lastErrorCode: undefined, lastErrorMessage: undefined, lastErrorRetryable: undefined, lastErrorRequestId: undefined }
+          : s
       ),
     }))
 
@@ -139,12 +182,14 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
       if (res.ok) {
         await pollSceneStatus(sceneId)
       } else {
+        const message = await readErrorMessage(res)
         setProject((prev: ProjectState) => ({
           ...prev,
           scenes: prev.scenes.map((s) =>
             s.id === sceneId ? { ...s, status: "error" as const } : s
           ),
         }))
+        setSceneErrors((prev) => ({ ...prev, [String(sceneId)]: message }))
       }
     } catch {
       setProject((prev: ProjectState) => ({
@@ -153,6 +198,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
           s.id === sceneId ? { ...s, status: "error" as const } : s
         ),
       }))
+      setSceneErrors((prev) => ({ ...prev, [String(sceneId)]: "이미지 재생성 중 네트워크 오류가 발생했습니다." }))
     }
   }
 
@@ -161,8 +207,13 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
       ...scene,
       status: "pending" as const,
       imageUrl: undefined,
+      lastErrorCode: undefined,
+      lastErrorMessage: undefined,
+      lastErrorRetryable: undefined,
+      lastErrorRequestId: undefined,
     }))
     setProject({ ...project, scenes: resetScenes })
+    setSceneErrors({})
   }
 
   const handleKeepStyle = (sceneId: string) => {
@@ -403,6 +454,11 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
               </div>
 
               <p className="text-xs text-muted-foreground truncate">{scene.title}</p>
+              {scene.status === "error" && sceneErrors[String(scene.id)] && (
+                <p className="mt-1 text-[11px] text-destructive line-clamp-2">
+                  {sceneErrors[String(scene.id)]}
+                </p>
+              )}
             </CardContent>
           </Card>
         ))}

@@ -1,5 +1,6 @@
 package com.aivideo.studio.service;
 
+import com.aivideo.studio.exception.PolicyBlockedException;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.aiplatform.v1.EndpointName;
 import com.google.cloud.aiplatform.v1.PredictResponse;
@@ -105,14 +106,21 @@ public class ImagenAdapter {
                 PredictResponse response = client.predict(endpointName, List.of(instance), parameters);
 
                 if (response.getPredictionsList().isEmpty()) {
-                    throw new RuntimeException("Imagen3 응답에 이미지 데이터가 없습니다.");
+                    throw new PolicyBlockedException("Imagen3 응답에 이미지 데이터가 없습니다. (safety filter)");
                 }
 
                 // Base64 이미지 디코딩
                 com.google.protobuf.Value prediction = response.getPredictions(0);
+                if (!prediction.hasStructValue()
+                        || !prediction.getStructValue().containsFields("bytesBase64Encoded")) {
+                    throw new PolicyBlockedException("Imagen3 응답에 이미지 바이트가 없습니다. (safety filter)");
+                }
                 String base64Image = prediction.getStructValue()
                         .getFieldsOrThrow("bytesBase64Encoded")
                         .getStringValue();
+                if (base64Image == null || base64Image.isBlank()) {
+                    throw new PolicyBlockedException("Imagen3 응답 이미지 바이트가 비어 있습니다. (safety filter)");
+                }
 
                 byte[] imageBytes = Base64.getDecoder().decode(base64Image);
                 String savedPath = saveImageToFile(imageBytes, sceneId);
@@ -121,6 +129,8 @@ public class ImagenAdapter {
                 return savedPath;
             }
 
+        } catch (PolicyBlockedException e) {
+            throw e;
         } catch (Exception e) {
             log.error("[Imagen3] 이미지 생성 실패 — sceneId: {}, 원인: {}", sceneId, e.getMessage(), e);
             throw new RuntimeException("Imagen3 이미지 생성 실패: " + e.getMessage(), e);

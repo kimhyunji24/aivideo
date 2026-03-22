@@ -6,6 +6,8 @@ import com.aivideo.studio.dto.Frame;
 import com.aivideo.studio.dto.CustomAssetData;
 import com.aivideo.studio.dto.PlotStage;
 import com.aivideo.studio.dto.SceneElements;
+import com.aivideo.studio.exception.ApiErrorInfo;
+import com.aivideo.studio.exception.ErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -49,6 +52,7 @@ public class GenerationService {
 
         // 상태를 generating으로 변경 후 저장
         target.setStatus("generating");
+        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
@@ -64,6 +68,7 @@ public class GenerationService {
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
             target.setStatus("done");
+            clearSceneError(target);
             sessionService.updateSession(sessionId, state);
 
             log.info("[GenerationService] 씬 {} 이미지 생성 완료 — imageUrl: {}", sceneId, imageUrl);
@@ -72,6 +77,7 @@ public class GenerationService {
         } catch (Exception e) {
             log.error("[GenerationService] 씬 {} 이미지 생성 실패", sceneId, e);
             target.setStatus("error");
+            applySceneError(target, e);
             sessionService.updateSession(sessionId, state);
             if (e instanceof IllegalArgumentException iae) {
                 throw iae;
@@ -528,6 +534,7 @@ public class GenerationService {
 
         // 상태를 생성 중으로 업데이트
         target.setStatus("generating_video");
+        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
@@ -555,14 +562,37 @@ public class GenerationService {
             // 생성 완료 시 상태 갱신
             target.setVideoUrl(videoUrl);
             target.setStatus("completed");
+            clearSceneError(target);
             log.info("Finished video generation for scene: {}. URL: {}", sceneId, videoUrl);
         } catch (Exception e) {
             log.error("Failed to generate video for scene: {}", sceneId, e);
             target.setStatus("error");
+            applySceneError(target, e);
             throw new RuntimeException("비디오 생성 실패: " + e.getMessage(), e);
         } finally {
             sessionService.updateSession(sessionId, state);
         }
+    }
+
+    private void clearSceneError(Scene scene) {
+        if (scene == null) {
+            return;
+        }
+        scene.setLastErrorCode(null);
+        scene.setLastErrorMessage(null);
+        scene.setLastErrorRetryable(null);
+        scene.setLastErrorRequestId(null);
+    }
+
+    private void applySceneError(Scene scene, Throwable throwable) {
+        if (scene == null) {
+            return;
+        }
+        ApiErrorInfo info = ErrorClassifier.classify(throwable);
+        scene.setLastErrorCode(info.code());
+        scene.setLastErrorMessage(info.userMessage());
+        scene.setLastErrorRetryable(info.retryable());
+        scene.setLastErrorRequestId(UUID.randomUUID().toString());
     }
 
     private List<String> collectReferenceImageUrls(Scene scene, ProjectState state) {
