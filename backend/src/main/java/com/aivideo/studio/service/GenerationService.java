@@ -6,6 +6,7 @@ import com.aivideo.studio.dto.Frame;
 import com.aivideo.studio.dto.CustomAssetData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -331,6 +332,18 @@ public class GenerationService {
         return scene;
     }
 
+    public ResponseEntity<byte[]> getVideoPreview(String sessionId, String sceneId) {
+        Scene scene = getSceneStatus(sessionId, sceneId);
+        if (scene.getVideoUrl() == null || scene.getVideoUrl().isBlank()) {
+            throw new IllegalArgumentException("미리보기 가능한 비디오가 없습니다: " + sceneId);
+        }
+        try {
+            return veoAdapter.fetchVideoBinary(scene.getVideoUrl());
+        } catch (Exception e) {
+            throw new RuntimeException("비디오 미리보기 로드 실패: " + e.getMessage(), e);
+        }
+    }
+
     private Scene findScene(List<Scene> scenes, String sceneId) {
         if (scenes == null) return null;
         return scenes.stream()
@@ -438,7 +451,7 @@ public class GenerationService {
             ) + " Cinematic, realistic motion, highly detailed.";
 
             List<String> referenceImageUrls = collectReferenceImageUrls(target, state);
-            String firstFrameUrl = findFirstFrameImageUrl(target);
+            String firstFrameUrl = firstNonBlank(findFirstFrameImageUrl(target), target.getImageUrl());
             String lastFrameUrl = findLastFrameImageUrl(target);
 
             String videoUrl = veoAdapter.generateVideo(

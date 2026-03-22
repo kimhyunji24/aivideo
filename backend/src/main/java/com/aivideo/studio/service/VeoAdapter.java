@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -18,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,6 +60,9 @@ public class VeoAdapter {
 
     @Value("${imagen.output-dir:${user.home}/aivideo-generated/images}")
     private String imagenOutputDir;
+
+    @Value("${aivideo.frontend-base-url:http://localhost:3000}")
+    private String frontendBaseUrl;
 
     @Value("${aivideo.mock-mode:false}")
     private boolean mockMode;
@@ -298,13 +303,78 @@ public class VeoAdapter {
         JsonNode firstVideo = videos.get(0);
         String gcsUri = firstVideo.path("gcsUri").asText(null);
         if (gcsUri != null && !gcsUri.isBlank()) {
-            return gcsUri;
+            return toHttpUrlIfGsUri(gcsUri);
         }
         String uri = firstVideo.path("uri").asText(null);
         if (uri != null && !uri.isBlank()) {
             return uri;
         }
         throw new RuntimeException("Veo response video URI is missing: " + firstVideo.toString());
+    }
+
+    private String toHttpUrlIfGsUri(String uri) {
+        if (uri == null || !uri.startsWith("gs://")) {
+            return uri;
+        }
+        String withoutScheme = uri.substring("gs://".length());
+        int slashIndex = withoutScheme.indexOf('/');
+        if (slashIndex < 0) {
+            return uri;
+        }
+        String bucket = withoutScheme.substring(0, slashIndex);
+        String object = withoutScheme.substring(slashIndex + 1);
+        if (bucket.isBlank() || object.isBlank()) {
+            return uri;
+        }
+        return "https://storage.googleapis.com/" + bucket + "/" + object;
+    }
+
+    public ResponseEntity<byte[]> fetchVideoBinary(String videoUrl) throws IOException {
+        String normalized = normalizeImageUrl(videoUrl);
+        if (normalized == null) {
+            throw new IllegalArgumentException("비디오 URL이 비어 있습니다.");
+        }
+
+        String fetchUrl = normalized.startsWith("gs://")
+                ? toHttpUrlIfGsUri(normalized)
+                : normalized;
+
+        boolean needsAuth = isGoogleStorageUrl(fetchUrl);
+        WebClient.RequestHeadersSpec<?> request = webClient.get()
+                .uri(fetchUrl)
+                .accept(MediaType.parseMediaType("video/mp4"), MediaType.ALL);
+
+        if (needsAuth) {
+            GoogleCredentials credentials = loadCredentials();
+            credentials.refreshIfExpired();
+            String accessToken = credentials.getAccessToken().getTokenValue();
+            request = request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+        }
+
+        ResponseEntity<byte[]> entity = request
+                .retrieve()
+                .toEntity(byte[].class)
+                .block();
+
+        if (entity == null || entity.getBody() == null || entity.getBody().length == 0) {
+            throw new IllegalStateException("비디오 데이터를 불러오지 못했습니다: " + fetchUrl);
+        }
+        return entity;
+    }
+
+    private boolean isGoogleStorageUrl(String url) {
+        if (url == null || url.isBlank()) return false;
+        try {
+            URI uri = URI.create(url);
+            String host = uri.getHost();
+            if (host == null) return false;
+            return host.equals("storage.googleapis.com")
+                    || host.equals("storage.cloud.google.com")
+                    || host.endsWith(".storage.googleapis.com")
+                    || host.endsWith(".googleapis.com");
+        } catch (Exception e) {
+            return url.contains("storage.googleapis.com") || url.contains("googleapis.com");
+        }
     }
 
     private Map<String, Object> resolveImageInput(String imageRef) throws IOException {
@@ -318,10 +388,19 @@ public class VeoAdapter {
         if (normalized.startsWith("data:image/")) {
             return parseDataUrl(normalized);
         }
+        if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+            return loadImageAsBase64FromHttpUrl(normalized);
+        }
 
         String generatedPath = extractGeneratedImagePath(normalized);
         if (generatedPath != null) {
             return loadImageAsBase64FromGeneratedDir(generatedPath);
+        }
+        if (normalized.startsWith("/")) {
+            String base = (frontendBaseUrl == null || frontendBaseUrl.isBlank())
+                    ? "http://localhost:3000"
+                    : frontendBaseUrl.replaceAll("/+$", "");
+            return loadImageAsBase64FromHttpUrl(base + normalized);
         }
 
         log.warn("[Veo] Unsupported image reference type, skipping: {}", normalized);
@@ -357,6 +436,37 @@ public class VeoAdapter {
                 "bytesBase64Encoded", Base64.getEncoder().encodeToString(bytes),
                 "mimeType", mimeType
         );
+    }
+
+    private Map<String, Object> loadImageAsBase64FromHttpUrl(String imageUrl) {
+        ResponseEntity<byte[]> entity = webClient.get()
+                .uri(imageUrl)
+                .accept(MediaType.IMAGE_JPEG, MediaType.IMAGE_PNG, MediaType.IMAGE_GIF, MediaType.valueOf("image/webp"), MediaType.ALL)
+                .retrieve()
+                .toEntity(byte[].class)
+                .block();
+
+        if (entity == null || entity.getBody() == null || entity.getBody().length == 0) {
+            throw new IllegalArgumentException("URL 이미지 데이터를 읽을 수 없습니다: " + imageUrl);
+        }
+
+        MediaType contentType = entity.getHeaders().getContentType();
+        String mimeType = (contentType != null) ? contentType.toString() : guessMimeTypeFromUrl(imageUrl);
+
+        return Map.of(
+                "bytesBase64Encoded", Base64.getEncoder().encodeToString(entity.getBody()),
+                "mimeType", mimeType
+        );
+    }
+
+    private String guessMimeTypeFromUrl(String imageUrl) {
+        if (imageUrl == null) return "image/png";
+        String lower = imageUrl.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".png")) return "image/png";
+        return "image/png";
     }
 
     private String detectMimeType(Path path) throws IOException {

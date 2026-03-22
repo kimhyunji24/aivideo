@@ -28,13 +28,17 @@ interface ImageGenerationProps {
   setProject: Dispatch<SetStateAction<ProjectState>>
   onNext: () => void
   onBack: () => void
+  sessionId?: string | null
 }
 
-export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGenerationProps) {
+export function ImageGeneration({ project, setProject, onNext, onBack, sessionId }: ImageGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [keepStyle, setKeepStyle] = useState<string | null>(null)
   const [keepCharacter, setKeepCharacter] = useState<string | null>(null)
+  const apiBase = sessionId
+    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    : null
 
   const completedCount = project.scenes.filter((s) => s.status === "done").length
   const errorCount = project.scenes.filter((s) => s.status === "error").length
@@ -42,10 +46,11 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
   const allDone = completedCount === project.scenes.length
 
   const pollSceneStatus = (sceneId: string | number): Promise<void> => {
+    if (!apiBase) return Promise.resolve()
     return new Promise((resolve) => {
       const interval = setInterval(async () => {
         try {
-          const res = await fetch(`/api/status/${sceneId}`)
+          const res = await fetch(`${apiBase}/images/${encodeURIComponent(String(sceneId))}/status`)
           if (!res.ok) throw new Error("Status check failed")
           const updatedScene = await res.json()
           setProject((prev: ProjectState) => ({
@@ -71,6 +76,11 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
   }
 
   const generateImages = async () => {
+    if (!apiBase) {
+      alert("세션이 준비되지 않아 이미지 생성을 시작할 수 없습니다.")
+      return
+    }
+
     setIsGenerating(true)
     setIsPaused(false)
 
@@ -87,7 +97,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
       }))
 
       try {
-        const res = await fetch(`/api/generate-image?id=${scene.id}`, { method: "POST" })
+        const res = await fetch(`${apiBase}/images/${encodeURIComponent(String(scene.id))}`, { method: "POST" })
         if (res.ok) {
           await pollSceneStatus(scene.id)
         } else {
@@ -112,6 +122,11 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
   }
 
   const regenerateScene = async (sceneId: string) => {
+    if (!apiBase) {
+      alert("세션이 준비되지 않아 이미지를 재생성할 수 없습니다.")
+      return
+    }
+
     setProject((prev: ProjectState) => ({
       ...prev,
       scenes: prev.scenes.map((s) =>
@@ -120,7 +135,7 @@ export function ImageGeneration({ project, setProject, onNext, onBack }: ImageGe
     }))
 
     try {
-      const res = await fetch(`/api/generate-image?id=${sceneId}`, { method: "POST" })
+      const res = await fetch(`${apiBase}/images/${encodeURIComponent(String(sceneId))}`, { method: "POST" })
       if (res.ok) {
         await pollSceneStatus(sceneId)
       } else {

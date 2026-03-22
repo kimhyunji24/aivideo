@@ -47,8 +47,17 @@ export function Storyboard({
   project, setProject, onNext, onBack, selectedSceneIndex, onSceneSelect, sessionId,
 }: StoryboardProps) {
   const router = useRouter()
+  const apiBase = sessionId
+    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    : null
 
   const selectedScene = project.scenes[selectedSceneIndex]
+
+  const resolvePlayableVideoUrl = (sceneId: string | number, videoUrl?: string): string | undefined => {
+    if (!videoUrl || !videoUrl.trim()) return undefined
+    if (!apiBase) return videoUrl.trim()
+    return `${apiBase}/videos/${encodeURIComponent(String(sceneId))}/preview`
+  }
 
   // ── 씬 선택 및 스크롤 포커싱 ──
   const handleRemoveAsset = async (sceneId: string | number, assetId: string, e: React.MouseEvent) => {
@@ -165,7 +174,8 @@ export function Storyboard({
         {/* ── 개별 씬 인디케이터 (1, 2, 3...) ── */}
         <div className="storyboard-indicators mb-6">
           {project.scenes.map((scene, i) => {
-            const isCompleted = !!scene.imageUrl;
+            const sceneThumbnail = scene.frames?.[0]?.imageUrl || scene.imageUrl;
+            const isCompleted = !!sceneThumbnail;
             return (
               <button
                 key={i}
@@ -187,6 +197,7 @@ export function Storyboard({
         <div className="storyboard-scroll">
           <div className="storyboard-cards-row">
             {project.scenes.map((scene, index) => {
+              const sceneThumbnail = scene.frames?.[0]?.imageUrl || scene.imageUrl
               return (
                 <div
                   key={scene.id}
@@ -256,9 +267,16 @@ export function Storyboard({
                           <span>비디오 생성 중...</span>
                         </div>
                       ) : scene.videoUrl ? (
-                        <video src={scene.videoUrl} autoPlay loop muted playsInline className="scene-image" />
-                      ) : scene.imageUrl ? (
-                        <img src={scene.imageUrl} alt={scene.title} className="scene-image" />
+                        <video
+                          src={resolvePlayableVideoUrl(scene.id, scene.videoUrl)}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className="scene-image"
+                        />
+                      ) : sceneThumbnail ? (
+                        <img src={sceneThumbnail} alt={scene.title} className="scene-image" />
                       ) : (
                         <div className="scene-image-placeholder">
                           <span>이미지 미생성</span>

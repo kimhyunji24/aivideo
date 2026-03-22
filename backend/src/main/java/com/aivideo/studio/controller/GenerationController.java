@@ -6,6 +6,8 @@ import com.aivideo.studio.dto.FrameGenerateRequest;
 import com.aivideo.studio.service.GenerationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -139,5 +141,21 @@ public class GenerationController {
                 "message", "Video generation started",
                 "sceneId", sceneId
         ));
+    }
+
+    @GetMapping("/videos/{sceneId}/preview")
+    public ResponseEntity<byte[]> previewVideo(
+            @PathVariable String sessionId,
+            @PathVariable String sceneId) {
+
+        ResponseEntity<byte[]> upstream = generationService.getVideoPreview(sessionId, sceneId);
+        MediaType contentType = upstream.getHeaders().getContentType() != null
+                ? upstream.getHeaders().getContentType()
+                : MediaType.parseMediaType("video/mp4");
+
+        return ResponseEntity.ok()
+                .contentType(contentType)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(upstream.getBody());
     }
 }
