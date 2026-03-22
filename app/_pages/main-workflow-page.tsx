@@ -292,31 +292,6 @@ export default function MainWorkflowPage() {
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
 
 
-            {/* Mode toggle: sm 이상에서만 풀 레이블, 작은 화면에서도 터치 가능 */}
-            <div className="flex items-center rounded-lg p-1 bg-gray-100 border border-gray-200">
-              {(["beginner", "advanced"] as const).map((m) => (
-                <Tooltip key={m}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={`h-7 rounded-md text-xs font-medium px-2 sm:px-3 transition-colors ${project.mode === m
-                          ? "bg-white text-gray-900 shadow-sm border border-gray-200"
-                          : "text-gray-600 hover:text-gray-900"
-                        }`}
-                      onClick={() => setProject({ ...project, mode: m })}
-                    >
-                      {m === "beginner" ? "초보자" : "전문가"}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {m === "beginner"
-                      ? "가이드 중심 · Double Prompting"
-                      : "10대 요소 직접 편집 · 파라미터 제어"}
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-            </div>
           </div>
         </div>
       </header>
