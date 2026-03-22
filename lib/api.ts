@@ -67,6 +67,39 @@ export async function regenerateCharacter(sessionId: string, charId: string): Pr
     return res.json()
 }
 
+export async function analyzeCharacterImage(
+    sessionId: string,
+    charId: string,
+    imageDataUrl: string
+): Promise<ProjectState> {
+    const res = await fetch(`${API_BASE}/${sessionId}/planning/characters/${charId}/analyze-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrl }),
+    })
+    if (!res.ok) {
+        const errBody = await res.text().catch(() => "")
+        throw new Error("Failed to analyze character image: " + res.status + " " + errBody)
+    }
+    return res.json()
+}
+
+export async function analyzeBackgroundReferenceImage(
+    sessionId: string,
+    imageDataUrl: string
+): Promise<ProjectState> {
+    const res = await fetch(`${API_BASE}/${sessionId}/planning/background-reference/analyze-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrl }),
+    })
+    if (!res.ok) {
+        const errBody = await res.text().catch(() => "")
+        throw new Error("Failed to analyze background reference image: " + res.status + " " + errBody)
+    }
+    return res.json()
+}
+
 export async function generatePlot(sessionId: string, stageCount: number, userPrompt?: string): Promise<ProjectState> {
     const res = await fetch(`${API_BASE}/${sessionId}/planning/plot`, {
         method: "POST",

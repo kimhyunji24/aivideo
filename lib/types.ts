@@ -37,11 +37,6 @@ export interface Scene {
     elements: SceneElements;
     params?: SceneParams;
     styleChip?: string;
-    lastErrorCode?: string;
-    lastErrorMessage?: string;
-    lastErrorRetryable?: boolean;
-    lastErrorRequestId?: string;
-    pinnedAssets?: string[];
     /** Up to 4 frames for the scene's flow */
     frames?: Frame[];
 }
@@ -99,7 +94,8 @@ export interface ProjectState {
     selectedPlot: Plot | null;
     scenes: Scene[];
     mode?: "beginner" | "advanced";
-    customAssets?: Record<string, { description?: string; imageUrl?: string }>;
+    backgroundReferenceImageUrl?: string;
+    backgroundReferenceDescription?: string;
 }
 
 export interface PlanningSeedRequest {

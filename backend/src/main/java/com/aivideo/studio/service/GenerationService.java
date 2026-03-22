@@ -3,11 +3,7 @@ package com.aivideo.studio.service;
 import com.aivideo.studio.dto.ProjectState;
 import com.aivideo.studio.dto.Scene;
 import com.aivideo.studio.dto.Frame;
-import com.aivideo.studio.dto.CustomAssetData;
-import com.aivideo.studio.dto.PlotStage;
-import com.aivideo.studio.dto.SceneElements;
-import com.aivideo.studio.exception.ApiErrorInfo;
-import com.aivideo.studio.exception.ErrorClassifier;
+import com.aivideo.studio.dto.Character;
 import com.aivideo.studio.dto.PlotStage;
 import com.aivideo.studio.dto.SceneElements;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +13,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -54,23 +48,21 @@ public class GenerationService {
 
         // 상태를 generating으로 변경 후 저장
         target.setStatus("generating");
-        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
             // 영어 프롬프트 준비 (없으면 Gemini로 자동 생성)
             String englishPrompt = buildEnglishPrompt(target, state);
-            List<String> referenceImageUrls = collectPinnedAssetImageUrls(target, state);
+            List<String> referenceImageUrls = collectReferenceImageUrls(state);
             log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
 
-            // Imagen 3 이미지 생성 - 캐릭터/스타일 일관성을 위해 Scene ID 기반의 고정 Seed 사용
-            Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
+            // 캐릭터 기준 전역 Seed로 씬 간 외형 일관성을 강화
+            Integer seed = resolveConsistencySeed(state, sceneId);
             String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed, referenceImageUrls);
 
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
             target.setStatus("done");
-            clearSceneError(target);
             sessionService.updateSession(sessionId, state);
 
             log.info("[GenerationService] 씬 {} 이미지 생성 완료 — imageUrl: {}", sceneId, imageUrl);
@@ -79,7 +71,6 @@ public class GenerationService {
         } catch (Exception e) {
             log.error("[GenerationService] 씬 {} 이미지 생성 실패", sceneId, e);
             target.setStatus("error");
-            applySceneError(target, e);
             sessionService.updateSession(sessionId, state);
             if (e instanceof IllegalArgumentException iae) {
                 throw iae;
@@ -206,9 +197,9 @@ public class GenerationService {
         String englishPrompt = buildEnglishFramePrompt(prompt, startFrame, targetFrame, state, stageElements);
         log.info("[GenerationService] 씬 {}, 프레임 {} 이미지 생성 — 원본: {}, 번역: {}", sceneId, targetFrame.getId(), prompt, englishPrompt);
 
-        // 일관성(캐릭터/의상 유지)을 위해 해당 Scene ID를 기반으로 고정된 Seed 추출
-        Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
-        List<String> referenceImageUrls = collectPinnedAssetImageUrls(target, state);
+        // 캐릭터 기준 전역 Seed로 프레임/씬 간 외형 일관성을 강화
+        Integer seed = resolveConsistencySeed(state, sceneId);
+        List<String> referenceImageUrls = collectReferenceImageUrls(state);
         String imageUrl = imagenAdapter.generateImage(
                 englishPrompt,
                 buildFrameSceneKey(sceneId, targetFrame.getId()),
@@ -271,11 +262,12 @@ public class GenerationService {
      * 이미 영어 prompt가 있으면 사용하고, 없으면 씬 정보를 바탕으로 Gemini가 생성합니다.
      */
     private String buildEnglishPrompt(Scene scene, ProjectState state) {
-        String assetHint = buildPinnedAssetHint(scene, state);
+        String characterHint = buildCharacterAppearanceHint(state);
+        String backgroundHint = buildBackgroundReferenceHint(state);
 
         // 이미 영어 prompt가 있으면 그대로 사용
         if (scene.getPrompt() != null && !scene.getPrompt().isBlank()) {
-            return appendAssetHintToEnglishPrompt(scene.getPrompt(), assetHint);
+            return appendPromptHints(scene.getPrompt(), characterHint, backgroundHint);
         }
 
         // 씬 정보를 조합해 Gemini에게 영어 프롬프트 생성 요청
@@ -284,7 +276,7 @@ public class GenerationService {
                 "프롬프트만 출력하고 다른 설명은 하지 마. 영문으로만 작성해.\n\n씬 정보:\n" + koreanInfo;
 
         String generated = geminiAdapter.generateText(geminiPrompt).trim();
-        return appendAssetHintToEnglishPrompt(generated, assetHint);
+        return appendPromptHints(generated, characterHint, backgroundHint);
     }
 
     private String buildKoreanSceneDescription(Scene scene, ProjectState state) {
@@ -304,68 +296,98 @@ public class GenerationService {
         appendIfNotEmpty(sb, "분위기", elements.get("mood"));
         appendIfNotEmpty(sb, "스토리", elements.get("story"));
 
-        String assetHint = buildPinnedAssetHint(scene, state);
-        if (!assetHint.isBlank()) {
-            sb.append("고정 에셋: ").append(assetHint).append("\n");
+        String characterHint = buildCharacterAppearanceHint(state);
+        if (!characterHint.isBlank()) {
+            sb.append("캐릭터 외형 고정: ").append(characterHint).append("\n");
         }
+        String backgroundHint = buildBackgroundReferenceHint(state);
+        if (!backgroundHint.isBlank()) {
+            sb.append("배경 연출 고정: ").append(backgroundHint).append("\n");
+        }
+
         return sb.toString();
     }
 
-    private String appendAssetHintToEnglishPrompt(String prompt, String assetHint) {
+    private String appendPromptHints(String prompt, String characterHint, String backgroundHint) {
         if (prompt == null || prompt.isBlank()) {
             return prompt;
         }
-        if (assetHint == null || assetHint.isBlank()) {
+
+        StringBuilder suffix = new StringBuilder();
+        if (characterHint != null && !characterHint.isBlank()) {
+            suffix.append("Character consistency requirements: ").append(characterHint).append("\n");
+        }
+        if (backgroundHint != null && !backgroundHint.isBlank()) {
+            suffix.append("Background consistency requirements: ").append(backgroundHint).append("\n");
+        }
+        if (suffix.length() == 0) {
             return prompt;
         }
-        return prompt.trim() + "\n\nPinned asset requirements: " + assetHint;
+        return prompt.trim() + "\n\n" + suffix.toString().trim();
     }
 
-    private String buildPinnedAssetHint(Scene scene, ProjectState state) {
-        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
+    private String buildCharacterAppearanceHint(ProjectState state) {
+        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
             return "";
         }
 
-        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
-        if (customAssets == null || customAssets.isEmpty()) {
-            return "";
-        }
-
-        LinkedHashSet<String> descriptions = new LinkedHashSet<>();
-        for (String assetId : scene.getPinnedAssets()) {
-            if (assetId == null || assetId.isBlank()) continue;
-            CustomAssetData assetData = customAssets.get(assetId);
-            if (assetData == null) continue;
-            String description = assetData.getDescription();
-            if (description != null && !description.isBlank()) {
-                descriptions.add(description.trim());
-            }
-        }
-        if (descriptions.isEmpty()) {
-            return "";
-        }
-        return String.join("; ", descriptions);
-    }
-
-    private List<String> collectPinnedAssetImageUrls(Scene scene, ProjectState state) {
-        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
-        if (customAssets == null || customAssets.isEmpty()) {
-            return List.of();
-        }
-
-        return scene.getPinnedAssets().stream()
-                .map(customAssets::get)
+        return state.getCharacters().stream()
                 .filter(Objects::nonNull)
-                .map(CustomAssetData::getImageUrl)
+                .map(c -> {
+                    String name = c.getName() != null && !c.getName().isBlank() ? c.getName().trim() : "캐릭터";
+                    String appearance = c.getAppearance() != null ? c.getAppearance().trim() : "";
+                    if (appearance.isBlank()) return null;
+                    return name + ": " + appearance;
+                })
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.joining("; "));
+    }
+
+    private String buildBackgroundReferenceHint(ProjectState state) {
+        if (state == null) return "";
+        String desc = state.getBackgroundReferenceDescription();
+        return desc == null ? "" : desc.trim();
+    }
+
+    private List<String> collectReferenceImageUrls(ProjectState state) {
+        List<String> refs = new ArrayList<>();
+        refs.addAll(collectCharacterReferenceImageUrls(state));
+
+        String backgroundRef = state != null ? firstNonBlank(state.getBackgroundReferenceImageUrl()) : null;
+        if (backgroundRef != null && isSupportedReferenceImageUrl(backgroundRef)) {
+            refs.add(backgroundRef.trim());
+        }
+
+        return refs.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .limit(2)
+                .collect(Collectors.toList());
+    }
+
+    private List<String> collectCharacterReferenceImageUrls(ProjectState state) {
+        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
+            return List.of();
+        }
+        return state.getCharacters().stream()
+                .filter(Objects::nonNull)
+                .map(Character::getImageUrl)
                 .filter(url -> url != null && !url.isBlank())
                 .map(String::trim)
+                .filter(this::isSupportedReferenceImageUrl)
                 .distinct()
-                .limit(3)
+                .limit(1)
                 .collect(Collectors.toList());
+    }
+
+    private boolean isSupportedReferenceImageUrl(String url) {
+        if (url == null || url.isBlank()) return false;
+        String normalized = url.trim();
+        return normalized.startsWith("data:image/")
+                || normalized.startsWith("/generated-images/")
+                || normalized.startsWith("http://")
+                || normalized.startsWith("https://");
     }
 
     private SceneElements findStageElementsBySceneId(ProjectState state, Scene targetScene) {
@@ -497,6 +519,42 @@ public class GenerationService {
                 && !frame.getImageUrl().isBlank();
     }
 
+    private Integer resolveConsistencySeed(ProjectState state, String fallbackKey) {
+        Integer sceneOneSeed = resolveSceneOneSeed(state);
+        if (sceneOneSeed != null && sceneOneSeed >= 0) {
+            return sceneOneSeed;
+        }
+
+        String base = null;
+        if (state != null && state.getCharacters() != null && !state.getCharacters().isEmpty()) {
+            base = state.getCharacters().stream()
+                    .filter(Objects::nonNull)
+                    .map(c -> firstNonBlank(c.getImageUrl(), c.getAppearance(), c.getName()))
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+        }
+        String seedSource = firstNonBlank(base, fallbackKey, "aivideo-consistency-seed");
+        return seedSource.hashCode() & 0x7FFFFFFF;
+    }
+
+    private Integer resolveSceneOneSeed(ProjectState state) {
+        if (state == null || state.getScenes() == null || state.getScenes().isEmpty()) {
+            return null;
+        }
+
+        Scene sceneOne = state.getScenes().stream()
+                .filter(Objects::nonNull)
+                .filter(s -> "scene-1".equals(String.valueOf(s.getId())))
+                .findFirst()
+                .orElse(state.getScenes().get(0));
+
+        if (sceneOne == null || sceneOne.getParams() == null) {
+            return null;
+        }
+        return sceneOne.getParams().getSeed();
+    }
+
     /**
      * Phase 3: 이미지가 생성된 씬(의 imageUrl)을 바탕으로 Veo 3.1 모델을 호출하여 영상을 생성
      */
@@ -536,7 +594,6 @@ public class GenerationService {
 
         // 상태를 생성 중으로 업데이트
         target.setStatus("generating_video");
-        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
@@ -549,7 +606,7 @@ public class GenerationService {
                 "Only provide the translated prompt without any conversational text:\n" + koreanPrompt
             ) + " Cinematic, realistic motion, highly detailed.";
 
-            List<String> referenceImageUrls = collectReferenceImageUrls(target, state);
+            List<String> referenceImageUrls = collectReferenceImageUrls(state);
             String firstFrameUrl = firstNonBlank(findFirstFrameImageUrl(target), target.getImageUrl());
             String lastFrameUrl = findLastFrameImageUrl(target);
 
@@ -564,58 +621,14 @@ public class GenerationService {
             // 생성 완료 시 상태 갱신
             target.setVideoUrl(videoUrl);
             target.setStatus("completed");
-            clearSceneError(target);
             log.info("Finished video generation for scene: {}. URL: {}", sceneId, videoUrl);
         } catch (Exception e) {
             log.error("Failed to generate video for scene: {}", sceneId, e);
             target.setStatus("error");
-            applySceneError(target, e);
             throw new RuntimeException("비디오 생성 실패: " + e.getMessage(), e);
         } finally {
             sessionService.updateSession(sessionId, state);
         }
-    }
-
-    private void clearSceneError(Scene scene) {
-        if (scene == null) {
-            return;
-        }
-        scene.setLastErrorCode(null);
-        scene.setLastErrorMessage(null);
-        scene.setLastErrorRetryable(null);
-        scene.setLastErrorRequestId(null);
-    }
-
-    private void applySceneError(Scene scene, Throwable throwable) {
-        if (scene == null) {
-            return;
-        }
-        ApiErrorInfo info = ErrorClassifier.classify(throwable);
-        scene.setLastErrorCode(info.code());
-        scene.setLastErrorMessage(info.userMessage());
-        scene.setLastErrorRetryable(info.retryable());
-        scene.setLastErrorRequestId(UUID.randomUUID().toString());
-    }
-
-    private List<String> collectReferenceImageUrls(Scene scene, ProjectState state) {
-        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
-        if (customAssets == null || customAssets.isEmpty()) {
-            return List.of();
-        }
-
-        return scene.getPinnedAssets().stream()
-                .map(customAssets::get)
-                .filter(Objects::nonNull)
-                .map(CustomAssetData::getImageUrl)
-                .filter(url -> url != null && !url.isBlank())
-                .map(String::trim)
-                .distinct()
-                .limit(3)
-                .collect(Collectors.toList());
     }
 
     private String findFirstFrameImageUrl(Scene scene) {

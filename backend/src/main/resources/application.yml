@@ -28,7 +28,8 @@ vertex:
   location: ${VERTEX_LOCATION:us-central1}
 
 imagen:
-  model: ${IMAGEN_MODEL:imagen-3.0-generate-002}
+  model: ${IMAGEN_MODEL:imagen-3.0-capability-001}
+  fallback-model: ${IMAGEN_FALLBACK_MODEL:imagen-3.0-generate-002}
   output-dir: ${IMAGEN_OUTPUT_DIR:${user.home}/aivideo-generated/images}
 
 veo:

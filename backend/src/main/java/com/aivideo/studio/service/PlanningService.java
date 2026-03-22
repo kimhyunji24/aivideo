@@ -66,7 +66,7 @@ public class PlanningService {
             "    \"id\": \"char-고유값\",\n" +
             "    \"name\": \"캐릭터의 자연스러운 이름 (로그라인에 이름이 있다면 그대로 사용)\",\n" +
             "    \"gender\": \"male 또는 female\",\n" +
-            "    \"appearance\": \"외모 묘사 (100자 이내)\",\n" +
+            "    \"appearance\": \"외형 묘사 (180~250자, 형식: 헤어: ...; 얼굴/인상: ...; 체형/비율: ...; 의상/소품: ...; 색상/무드: ...)\",\n" +
             "    \"personality\": \"성격 묘사 (100자 이내)\",\n" +
             "    \"values\": \"가치관 (100자 이내)\",\n" +
             "    \"trauma\": \"캐릭터 특징 및 관계성 (100자 이내)\"\n" +
@@ -105,6 +105,18 @@ public class PlanningService {
             .orElse(null);
 
         String oldCharName = (oldChar != null && oldChar.getName() != null) ? oldChar.getName() : "이전 캐릭터";
+        String imageBasedAppearance = null;
+        if (oldChar != null && oldChar.getImageUrl() != null && oldChar.getImageUrl().startsWith("data:image/")) {
+            try {
+                imageBasedAppearance = geminiAdapter.generateCharacterAppearanceFromImage(oldChar.getImageUrl(), oldCharName);
+            } catch (Exception e) {
+                log.warn("이미지 기반 외형 분석 실패 - charId={}: {}", charId, e.getMessage());
+            }
+        }
+        String existingAppearance = (oldChar != null && oldChar.getAppearance() != null) ? oldChar.getAppearance().trim() : "";
+        String lockedAppearance = (imageBasedAppearance != null && !imageBasedAppearance.isBlank())
+                ? imageBasedAppearance.trim()
+                : existingAppearance;
 
         // 중복 회피를 위해 변경 불변 확정 캐릭터(다른 캐릭터들) 목록 구성
         String existingProfiles = characters.stream()
@@ -114,11 +126,14 @@ public class PlanningService {
 
         String excludeInstruction = existingProfiles.isBlank() ? "" :
                 "현재 스토리에 다음 캐릭터들은 이미 확정되어 있으니 다른 인물을 생성해 (단, 로그라인에 명시된 핵심 인물이어야 해):\n" + existingProfiles + "\n\n";
+        String imageConstraintInstruction = (lockedAppearance == null || lockedAppearance.isBlank()) ? "" :
+                "중요: 이 캐릭터의 외형은 반드시 다음 묘사를 유지/반영해야 해: " + lockedAppearance + "\n";
 
         String prompt = String.format(
             "다음 로그라인을 바탕으로, 확정된 캐릭터를 제외하고 스토리에 '반드시 등장해야 하는 핵심 인물' 1명을 새롭게 묘사해줘.\n" +
             "만약 로그라인에 뽀로로와 크롱이 등장하는데 확정 캐릭터에 크롱만 있다면, 새로 재생성해야 할 인물은 당연히 '뽀로로'야. 로그라인과 무관한 새로운 제3의 인물(예: 아크, 드론 등)을 절대 창조하지 마.\n" +
             "로그라인: %s\n장르: %s\n세계관: %s\n\n" +
+            "%s" +
             "%s" +
             "이전에는 '%s'라는 인물이 이 자리에 있었지만 사용자가 더 나은 묘사를 원해 새로고침을 요청했어. 만약 이 인물이 로그라인상 '꼭 필요한 핵심 인물'이라면 다른 인물로 바꾸지 말고, 이름과 역할을 유지하되 외모, 성격, 관련 설정 등 묘사를 훨씬 더 매력적이고 자연스럽게 발전시켜줘.\n\n" +
             "중요: 단 1명의 캐릭터만 포함된 JSON 배열을 반환해. 각 항목의 값은 따옴표가 닫히기 전에 절대 큰따옴표(\")를 사용하지 마.\n\n" +
@@ -127,7 +142,7 @@ public class PlanningService {
             "    \"id\": \"%s\",\n" +
             "    \"name\": \"캐릭터의 이름 (로그라인의 핵심 인물 이름 유지)\",\n" +
             "    \"gender\": \"male 또는 female\",\n" +
-            "    \"appearance\": \"외모 묘사 (100자 이내)\",\n" +
+            "    \"appearance\": \"외형 묘사 (180~250자, 형식: 헤어: ...; 얼굴/인상: ...; 체형/비율: ...; 의상/소품: ...; 색상/무드: ...)\",\n" +
             "    \"personality\": \"성격 묘사 (100자 이내)\",\n" +
             "    \"values\": \"가치관 (100자 이내)\",\n" +
             "    \"trauma\": \"캐릭터 특징 및 기타 관계성 (100자 이내)\"\n" +
@@ -137,6 +152,7 @@ public class PlanningService {
             state.getSelectedGenres() != null ? String.join(", ", state.getSelectedGenres()) : "지정 안됨",
             state.getSelectedWorldviews() != null ? String.join(", ", state.getSelectedWorldviews()) : "지정 안됨",
             excludeInstruction,
+            imageConstraintInstruction,
             oldCharName,
             charId
         );
@@ -150,6 +166,12 @@ public class PlanningService {
             if (newChars != null && !newChars.isEmpty()) {
                 Character newChar = newChars.get(0);
                 newChar.setId(charId); // 기존 ID 유지
+                if (oldChar != null && oldChar.getImageUrl() != null && !oldChar.getImageUrl().isBlank()) {
+                    newChar.setImageUrl(oldChar.getImageUrl());
+                }
+                if (lockedAppearance != null && !lockedAppearance.isBlank()) {
+                    newChar.setAppearance(lockedAppearance);
+                }
                 
                 // 기존 캐릭터 목록에서 교체
                 for (int i = 0; i < characters.size(); i++) {
@@ -167,6 +189,51 @@ public class PlanningService {
             log.error("Failed to parse regenerated character JSON: {}", cleaned, e);
             throw new RuntimeException("Failed to parse regenerated character JSON: " + cleaned, e);
         }
+    }
+
+    public ProjectState updateCharacterAppearanceFromImage(String sessionId, String charId, String imageDataUrl) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new SessionNotFoundException(sessionId);
+
+        List<Character> characters = state.getCharacters();
+        if (characters == null || characters.isEmpty()) {
+            throw new IllegalArgumentException("No characters exist to update.");
+        }
+
+        Character target = characters.stream()
+                .filter(c -> c != null && charId.equals(c.getId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("캐릭터를 찾을 수 없습니다: " + charId));
+
+        String analyzedAppearance = geminiAdapter.generateCharacterAppearanceFromImage(
+                imageDataUrl,
+                target.getName()
+        );
+
+        if (analyzedAppearance == null || analyzedAppearance.isBlank()) {
+            throw new IllegalArgumentException("이미지 분석 결과가 비어 있습니다.");
+        }
+
+        target.setImageUrl(imageDataUrl);
+        target.setAppearance(analyzedAppearance.trim());
+        state.setCharacters(characters);
+        sessionService.updateSession(sessionId, state);
+        return state;
+    }
+
+    public ProjectState updateBackgroundReferenceFromImage(String sessionId, String imageDataUrl) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new SessionNotFoundException(sessionId);
+
+        String analyzedBackground = geminiAdapter.generateBackgroundDescriptionFromImage(imageDataUrl);
+        if (analyzedBackground == null || analyzedBackground.isBlank()) {
+            throw new IllegalArgumentException("배경 이미지 분석 결과가 비어 있습니다.");
+        }
+
+        state.setBackgroundReferenceImageUrl(imageDataUrl);
+        state.setBackgroundReferenceDescription(analyzedBackground.trim());
+        sessionService.updateSession(sessionId, state);
+        return state;
     }
 
     public ProjectState generatePlot(String sessionId, int stageCount, String userPrompt) {

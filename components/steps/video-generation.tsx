@@ -61,12 +61,6 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
     const startFrameImage = scene.frames?.[0]?.imageUrl
     if (startFrameImage && startFrameImage.trim()) return startFrameImage.trim()
     if (scene.imageUrl && scene.imageUrl.trim()) return scene.imageUrl.trim()
-    const pinned = scene.pinnedAssets ?? []
-    if (!pinned.length) return undefined
-    for (const assetId of pinned) {
-      const imageUrl = project.customAssets?.[assetId]?.imageUrl
-      if (imageUrl && imageUrl.trim()) return imageUrl.trim()
-    }
     return undefined
   }
 
@@ -125,7 +119,6 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
 
     setIsGenerating(true)
 
-    // scene.imageUrl이 비어 있어도 pinned custom asset 이미지로 보정
     const hydratedProject: ProjectState = {
       ...project,
       scenes: project.scenes.map((s) => {
@@ -286,7 +279,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
                 </p>
                 {scenesWithImages.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    생성 가능한 기준 이미지가 없습니다. 씬 이미지 생성 또는 에셋 핀 고정(이미지 포함) 후 다시 시도하세요.
+                    생성 가능한 기준 이미지가 없습니다. 씬 또는 시작 프레임 이미지를 먼저 생성한 뒤 다시 시도하세요.
                   </p>
                 )}
               </div>

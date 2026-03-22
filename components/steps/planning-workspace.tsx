@@ -10,7 +10,7 @@ import type {
   PlanningSeedRequest,
   PlanningSeedResponse,
 } from "@/lib/types"
-import { generateCharacters, regenerateCharacter, generatePlot, updateSession } from "@/lib/api"
+import { analyzeBackgroundReferenceImage, analyzeCharacterImage, generateCharacters, regenerateCharacter, generatePlot, updateSession } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -234,6 +234,7 @@ function CharactersSection({
   onEditClick,
   onRegenerate,
   regeneratingId,
+  analyzingId,
 }: {
   characters: Character[]
   isConfirmed: boolean
@@ -247,6 +248,7 @@ function CharactersSection({
   onEditClick: (id: string) => void
   onRegenerate: (id: string) => void
   regeneratingId: string | null
+  analyzingId: string | null
 }) {
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
@@ -311,7 +313,7 @@ function CharactersSection({
                     type="button" 
                     className={`icon-btn p-1 ${regeneratingId === char.id ? 'animate-spin opacity-50 cursor-not-allowed' : ''}`}
                     onClick={(e) => { e.stopPropagation(); onRegenerate(char.id); }}
-                    disabled={isConfirmed || isGenerating || regeneratingId !== null}
+                    disabled={isConfirmed || isGenerating || regeneratingId !== null || analyzingId !== null}
                   >
                     <RefreshCcw className="w-4 h-4" />
                   </button>
@@ -359,6 +361,9 @@ function CharactersSection({
                   <p className="text-xs text-gray-600 leading-relaxed min-h-[4rem] whitespace-pre-wrap mb-4">
                     {char.appearance || char.personality || "통통한 체구...\n요리 기술을 전투 기술로 승화."}
                   </p>
+                  {analyzingId === char.id && (
+                    <p className="text-[11px] text-gray-500 mb-3">이미지 분석 중... 외형 설명을 자동 갱신하고 있습니다.</p>
+                  )}
                 </div>
 
                 <Button
@@ -837,14 +842,17 @@ interface PlanningWorkspaceProps {
 export function PlanningWorkspace({ project, setProject, onNext, onBack, sessionId }: PlanningWorkspaceProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [regeneratingCharId, setRegeneratingCharId] = useState<string | null>(null)
+  const [analyzingCharId, setAnalyzingCharId] = useState<string | null>(null)
+  const [analyzingBackgroundRef, setAnalyzingBackgroundRef] = useState(false)
   const [characterModalId, setCharacterModalId] = useState<string | null>(null)
   const [plotModalStageId, setPlotModalStageId] = useState<string | null>(null)
+  const [plotUserPrompt, setPlotUserPrompt] = useState("")
   const hasAutoSeededRef = useRef(false)
+  const backgroundRefInputRef = useRef<HTMLInputElement | null>(null)
 
   const logline = project.logline?.trim() || project.idea || ""
   const selectedGenres = project.selectedGenres ?? []
   const selectedWorldviews = project.selectedWorldviews ?? []
-  const planningPrompt = project.planningPrompt ?? ""
   const charactersConfirmed = project.charactersConfirmed ?? false
   const characters: Character[] = project.characters ?? []
   const plotPlan: PlotPlan | null = project.plotPlan ?? null
@@ -875,9 +883,48 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
 
   const removeCharacter = (id: string) => setCharacters(characters.filter((c) => c.id !== id))
 
-  const handleImageUpload = (charId: string, file: File) => {
-    const url = URL.createObjectURL(file)
-    updateCharacter(charId, "imageUrl", url)
+  const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const value = typeof reader.result === "string" ? reader.result : ""
+        if (!value) {
+          reject(new Error("Failed to read file as data URL"))
+          return
+        }
+        resolve(value)
+      }
+      reader.onerror = () => reject(new Error("Failed to read file"))
+      reader.readAsDataURL(file)
+    })
+
+  const handleImageUpload = async (charId: string, file: File) => {
+    try {
+      const imageDataUrl = await readFileAsDataUrl(file)
+      const nextCharacters = characters.map((c) => (c.id === charId ? { ...c, imageUrl: imageDataUrl } : c))
+      const nextProject = { ...project, characters: nextCharacters, charactersConfirmed: false }
+      setProject(nextProject)
+
+      if (!sessionId || isGenerating || regeneratingCharId) return
+
+      setAnalyzingCharId(charId)
+      try {
+        await updateSession(sessionId, nextProject)
+      } catch (syncError) {
+        console.warn("업로드 직후 세션 동기화 실패, 분석 API는 계속 시도합니다.", syncError)
+      }
+      const nextState = await analyzeCharacterImage(sessionId, charId, imageDataUrl)
+      setProject({
+        ...nextProject,
+        ...nextState,
+        scenes: nextState.scenes ?? nextProject.scenes ?? [],
+      })
+    } catch (e) {
+      console.error(e)
+      alert("캐릭터 이미지 분석 실패: " + e)
+    } finally {
+      setAnalyzingCharId(null)
+    }
   }
 
   const handleRegenerateCharacter = async (charId: string) => {
@@ -892,6 +939,38 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       alert("Failed to regenerate character: " + e)
     } finally {
       setRegeneratingCharId(null)
+    }
+  }
+
+  const handleBackgroundReferenceUpload = async (file: File) => {
+    try {
+      const imageDataUrl = await readFileAsDataUrl(file)
+      const draftProject: ProjectState = {
+        ...project,
+        backgroundReferenceImageUrl: imageDataUrl,
+      }
+      setProject(draftProject)
+
+      if (!sessionId) return
+
+      setAnalyzingBackgroundRef(true)
+      try {
+        await updateSession(sessionId, draftProject)
+      } catch (syncError) {
+        console.warn("배경 레퍼런스 업로드 직후 동기화 실패, 분석 API는 계속 시도합니다.", syncError)
+      }
+
+      const nextState = await analyzeBackgroundReferenceImage(sessionId, imageDataUrl)
+      setProject({
+        ...draftProject,
+        ...nextState,
+        scenes: nextState.scenes ?? draftProject.scenes ?? [],
+      })
+    } catch (e) {
+      console.error(e)
+      alert("배경 레퍼런스 이미지 분석 실패: " + e)
+    } finally {
+      setAnalyzingBackgroundRef(false)
     }
   }
 
@@ -943,7 +1022,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
     setIsGenerating(true)
     try {
       await updateSession(sessionId, project)
-      const nextState = await generatePlot(sessionId, targetStageCount, planningPrompt)
+      const nextState = await generatePlot(sessionId, targetStageCount, plotUserPrompt)
       setProject(nextState)
     } catch (e) {
       console.error(e);
@@ -1031,12 +1110,56 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
             onEditClick={setCharacterModalId}
             onRegenerate={handleRegenerateCharacter}
             regeneratingId={regeneratingCharId}
+            analyzingId={analyzingCharId}
           />
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-[#E0E0E0] bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">배경 레퍼런스</h3>
+                  <p className="text-xs text-gray-500 mt-1">배경 이미지를 넣으면 장면의 공간/톤을 고정합니다.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg border-[#E0E0E0] text-gray-800"
+                  onClick={() => backgroundRefInputRef.current?.click()}
+                  disabled={analyzingBackgroundRef}
+                >
+                  {analyzingBackgroundRef ? "분석 중..." : "배경 이미지 업로드"}
+                </Button>
+                <input
+                  ref={backgroundRefInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void handleBackgroundReferenceUpload(file)
+                    e.currentTarget.value = ""
+                  }}
+                />
+              </div>
+              {(project.backgroundReferenceImageUrl || project.backgroundReferenceDescription) && (
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[120px_minmax(0,1fr)] items-start">
+                  <div className="w-[120px] h-[88px] rounded-lg overflow-hidden border border-[#E0E0E0] bg-gray-50">
+                    {project.backgroundReferenceImageUrl ? (
+                      <img src={project.backgroundReferenceImageUrl} alt="background-reference" className="w-full h-full object-cover" />
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {project.backgroundReferenceDescription || "배경 묘사 분석 결과가 여기에 표시됩니다."}
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
           {charactersConfirmed ? (
             <PlotSection
               plotPlan={plot}
-              userPrompt={planningPrompt}
-              onUserPromptChange={(value) => setProject({ ...project, planningPrompt: value })}
+              userPrompt={plotUserPrompt}
+              onUserPromptChange={setPlotUserPrompt}
               onStageCountChange={setStageCount}
               onStageUpdate={updateStage}
               onAutoGenerate={handleAutoGenerate}

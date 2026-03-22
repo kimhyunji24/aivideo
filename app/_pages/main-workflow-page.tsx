@@ -7,11 +7,10 @@ import { Storyboard } from "@/components/steps/storyboard"
 import { VideoGeneration } from "@/components/steps/video-generation"
 import { FinalMerge } from "@/components/steps/final-merge"
 import { WorkflowProgress } from "@/components/workflow-progress"
-import { AssetLibrary } from "@/components/asset-library"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Clapperboard, PanelLeftOpen } from "lucide-react"
+import { Clapperboard } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
 import type { ProjectState, Scene } from "@/lib/types"
@@ -79,7 +78,6 @@ export default function MainWorkflowPage() {
   const [currentStep, setCurrentStep] = useState(initialStep)
   const [readyToMerge, setReadyToMerge] = useState(false)
   const [selectedSceneIndex, setSelectedSceneIndex] = useState(0)
-  const [assetPanelOpen, setAssetPanelOpen] = useState(true)
   const [sessionId, setSessionId] = useState<string | null>(null)
 
 
@@ -138,32 +136,6 @@ export default function MainWorkflowPage() {
       sessionStorage.removeItem("aivideo:return-state")
     }
   }, [shouldRestore])
-
-
-  const pinnedAssets = (project.scenes ?? []).reduce<Record<string | number, string[]>>((acc, s) => {
-    if (s.pinnedAssets && s.pinnedAssets.length > 0) acc[s.id] = s.pinnedAssets
-
-    return acc
-  }, {})
-
-  const handleAssetDrop = async (assetId: string, sceneId: string | number) => {
-    const updatedScenes = (project.scenes ?? []).map((s) => {
-      if (s.id !== sceneId) return s
-      const currentPins = s.pinnedAssets || []
-      if (currentPins.includes(assetId)) return s
-      return { ...s, pinnedAssets: [...currentPins, assetId] }
-    })
-    const updatedProject = { ...project, scenes: updatedScenes }
-    setProject(updatedProject)
-    // 에셋 핀 고정 정보를 Redis에 즉시 저장
-    if (sessionId) {
-      try {
-        await updateSession(sessionId, updatedProject)
-      } catch (e) {
-        console.error("에셋 핀 동기화 실패", e)
-      }
-    }
-  }
 
   const goToStep = (step: number) => {
     if (step >= 1 && step <= 3) setCurrentStep(step)
@@ -311,34 +283,9 @@ export default function MainWorkflowPage() {
       ) : (
         <div className="flex flex-1 min-h-0 overflow-y-auto bg-white justify-center">
           <div className="flex flex-1 min-h-0 max-w-[1440px] w-full flex-col lg:flex-row">
-            {showPanels && assetPanelOpen && (
-              <div className="hidden lg:flex w-52 flex-shrink-0 border-r border-[#E5E7EB] overflow-hidden bg-white">
-                <AssetLibrary onDrop={handleAssetDrop} pinnedAssets={pinnedAssets} project={project} setProject={setProject} onClose={() => setAssetPanelOpen(false)} sessionId={sessionId} />
-              </div>
-            )}
-            {showPanels && !assetPanelOpen && (
-              <div className="hidden lg:flex flex-col items-center pt-4 w-10 flex-shrink-0 border-r border-[#E5E7EB] bg-white">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => setAssetPanelOpen(true)}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
-                      aria-label="에셋 패널 열기"
-                    >
-                      <PanelLeftOpen className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">에셋 패널 열기</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
-
             <div className="flex-1 overflow-y-auto min-w-0">
               {renderContent()}
             </div>
-
-
           </div>
         </div>
       )}
