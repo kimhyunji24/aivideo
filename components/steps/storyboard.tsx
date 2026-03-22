@@ -53,6 +53,28 @@ export function Storyboard({
 
   const selectedScene = project.scenes[selectedSceneIndex]
 
+  const readErrorMessage = async (response: Response): Promise<string> => {
+    try {
+      const json = await response.json()
+      if (json && typeof json === "object") {
+        const message =
+          typeof json.userMessage === "string" && json.userMessage.trim()
+            ? json.userMessage.trim()
+            : (typeof json.message === "string" && json.message.trim() ? json.message.trim() : "")
+        const requestId = typeof json.requestId === "string" ? json.requestId.trim() : ""
+        if (message) {
+          return requestId ? `${message}\n(오류 ID: ${requestId})` : message
+        }
+      }
+    } catch {
+      // ignore json parse failure
+    }
+
+    const text = await response.text().catch(() => "")
+    if (text && text.trim()) return text.trim()
+    return `이미지 생성 요청에 실패했습니다. (HTTP ${response.status})`
+  }
+
   const resolvePlayableVideoUrl = (sceneId: string | number, videoUrl?: string): string | undefined => {
     if (!videoUrl || !videoUrl.trim()) return undefined
     if (!apiBase) return videoUrl.trim()
@@ -135,10 +157,16 @@ export function Storyboard({
           return updatedProject
         })
       } else {
+        const message = await readErrorMessage(res)
         setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
+        alert(message)
       }
-    } catch {
+    } catch (error) {
       setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
+      const message = error instanceof Error && error.message?.trim()
+        ? error.message.trim()
+        : "이미지 생성에 실패했습니다. 잠시 후 다시 시도해주세요."
+      alert(message)
     }
   }
 

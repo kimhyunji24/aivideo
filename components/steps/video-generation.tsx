@@ -40,8 +40,14 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
   const readErrorMessage = async (response: Response) => {
     try {
       const json = await response.json()
-      if (json && typeof json.message === "string" && json.message.trim()) {
-        return json.message.trim()
+      if (json && typeof json === "object") {
+        const message = typeof json.userMessage === "string" && json.userMessage.trim()
+          ? json.userMessage.trim()
+          : (typeof json.message === "string" && json.message.trim() ? json.message.trim() : "")
+        const requestId = typeof json.requestId === "string" ? json.requestId.trim() : ""
+        if (message) {
+          return requestId ? `${message} (오류 ID: ${requestId})` : message
+        }
       }
     } catch {
       // ignore json parse failure
@@ -90,6 +96,14 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
             }))
 
             if (updatedScene.status === "completed" || updatedScene.status === "done" || updatedScene.status === "error") {
+              if (updatedScene.status === "error") {
+                const message = updatedScene.lastErrorMessage
+                  ? (updatedScene.lastErrorRequestId
+                    ? `${updatedScene.lastErrorMessage} (오류 ID: ${updatedScene.lastErrorRequestId})`
+                    : updatedScene.lastErrorMessage)
+                  : "영상 생성에 실패했습니다."
+                setSceneErrors((prev) => ({ ...prev, [String(sceneId)]: message }))
+              }
               clearInterval(pollInterval)
               resolve()
             }
@@ -136,7 +150,9 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
         setProject((prev) => ({
           ...prev,
           scenes: prev.scenes.map((s) =>
-            s.id === scene.id ? { ...s, status: "generating_video" as const } : s
+            s.id === scene.id
+              ? { ...s, status: "generating_video" as const, lastErrorCode: undefined, lastErrorMessage: undefined, lastErrorRetryable: undefined, lastErrorRequestId: undefined }
+              : s
           ),
         }))
 
@@ -186,7 +202,9 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
       setProject((prev) => ({
         ...prev,
         scenes: prev.scenes.map((s) =>
-          s.id === sceneId ? { ...s, status: "generating_video" as const } : s
+          s.id === sceneId
+            ? { ...s, status: "generating_video" as const, lastErrorCode: undefined, lastErrorMessage: undefined, lastErrorRetryable: undefined, lastErrorRequestId: undefined }
+            : s
         ),
       }))
 
