@@ -8,6 +8,8 @@ import com.aivideo.studio.dto.PlotStage;
 import com.aivideo.studio.dto.SceneElements;
 import com.aivideo.studio.exception.ApiErrorInfo;
 import com.aivideo.studio.exception.ErrorClassifier;
+import com.aivideo.studio.dto.PlotStage;
+import com.aivideo.studio.dto.SceneElements;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
