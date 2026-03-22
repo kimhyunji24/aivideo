@@ -405,9 +405,38 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
                   <span className="text-[10px] text-muted-foreground">{scene.duration}초</span>
                 </div>
                 {scene.status === "error" && sceneErrors[String(scene.id)] && (
-                  <p className="mt-1 text-[11px] text-destructive line-clamp-2">
-                    {sceneErrors[String(scene.id)]}
-                  </p>
+                  <div className="mt-2 text-[11px] text-destructive flex flex-col gap-2">
+                    <p className="line-clamp-2">{sceneErrors[String(scene.id)]}</p>
+                    <div className="flex flex-col gap-2 mt-1">
+                      <textarea
+                        className="w-full text-xs p-2 border border-destructive/30 rounded bg-white text-black"
+                        rows={3}
+                        value={scene.description || ""}
+                        onChange={(e) => {
+                          setProject(prev => ({
+                            ...prev,
+                            scenes: prev.scenes.map(s => s.id === scene.id ? { ...s, description: e.target.value } : s)
+                          }))
+                        }}
+                        placeholder="수정할 씬 대본을 입력하세요..."
+                      />
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-7 text-xs border-destructive/50 hover:bg-destructive/10 text-destructive w-full"
+                        onClick={() => {
+                          if (sessionId) {
+                              updateSession(sessionId, project).then(() => regenerateVideo(scene.id));
+                          } else {
+                              regenerateVideo(scene.id);
+                          }
+                        }}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1.5" />
+                        수정 대본으로 재시도
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

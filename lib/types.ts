@@ -85,8 +85,10 @@ export interface ProjectState {
     logline?: string;
     /** 로그라인 보정을 위한 누적 사용자 문맥 */
     loglineContext?: string;
-    /** 선택된 장르·스타일 태그 (예: SF, 코미디) */
+    /** 선택된 장르 태그 (예: SF, 코미디) */
     selectedGenres?: string[];
+    /** 선택된 렌더링 스타일 태그 (예: 3D, 수채화풍) */
+    selectedStyles?: string[];
     /** 선택된 세계관·배경 태그 (예: 근미래, 일상) */
     selectedWorldviews?: string[];
     /** 플롯 재생성 시 반영할 사용자 지시사항 */
@@ -107,6 +109,7 @@ export interface PlanningSeedRequest {
     idea?: string;
     logline?: string;
     selectedGenres?: string[];
+    selectedStyles?: string[];
     selectedWorldviews?: string[];
     userPrompt?: string;
     stageCount?: 3 | 4 | 5;
@@ -140,7 +143,9 @@ export interface PlanningSeedResponse {
 
 export interface PlanningTagsResponse {
     genreOptions: string[];
+    styleOptions: string[];
     worldviewOptions: string[];
     selectedGenres: string[];
+    selectedStyles: string[];
     selectedWorldviews: string[];
 }

@@ -46,21 +46,6 @@ public class PlanningController {
         return ResponseEntity.ok(updatedState);
     }
 
-    @PostMapping("/characters/{charId}/analyze-image")
-    public ResponseEntity<ProjectState> analyzeCharacterImage(
-            @PathVariable String sessionId,
-            @PathVariable String charId,
-            @RequestBody CharacterImageAnalyzeRequest request) {
-        if (request == null || request.getImageDataUrl() == null || request.getImageDataUrl().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "imageDataUrl must not be blank");
-        }
-        ProjectState updatedState = planningService.updateCharacterAppearanceFromImage(
-                sessionId,
-                charId,
-                request.getImageDataUrl()
-        );
-        return ResponseEntity.ok(updatedState);
-    }
 
     @PostMapping("/background-reference/analyze-image")
     public ResponseEntity<ProjectState> analyzeBackgroundReferenceImage(

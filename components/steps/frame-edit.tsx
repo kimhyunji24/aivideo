@@ -53,9 +53,10 @@ export function FrameEdit({
   }, [selectedFrameIndexProp])
 
   useEffect(() => {
-    if (frames.length === 0) {
+    if (frames.length !== 1) {
+      const existingFrame = frames.length > 0 ? frames[0] : null
       const defaultFrames: Frame[] = [
-        { id: `f-${Date.now()}`, script: scene.description || "", imageUrl: scene.imageUrl },
+        existingFrame ? existingFrame : { id: `f-${Date.now()}`, script: scene.description || "", imageUrl: scene.imageUrl }
       ]
       setProject((prev) => ({
         ...prev,
@@ -321,12 +322,6 @@ export function FrameEdit({
   }
 
   const handleComplete = () => {
-    if (frames.length === 1) {
-      const confirmProceed = window.confirm(
-        "시작(start)과 끝(end) 프레임 없이 1개의 프레임만으로 영상 제작 시, 원하는 결과가 나오지 않을 수 있습니다.\n\n그래도 완료하시겠습니까?"
-      )
-      if (!confirmProceed) return
-    }
     onComplete()
   }
 
@@ -413,8 +408,8 @@ export function FrameEdit({
 
           <div className="p-4 bg-white border-t">
             <div className="flex items-center gap-2 mb-3">
-              <input type="checkbox" id="frame-flow" className="rounded border-gray-300 text-black h-3 w-3 focus:ring-black" defaultChecked />
-              <label htmlFor="frame-flow" className="text-xs font-semibold text-gray-700 tracking-wide">프레임 흐름 (최대 4개)</label>
+              <input type="checkbox" id="frame-flow" className="rounded border-gray-300 text-black h-3 w-3 focus:ring-black" defaultChecked disabled />
+              <label htmlFor="frame-flow" className="text-xs font-semibold text-gray-700 tracking-wide">프레임 이미지 (4컷 통합)</label>
             </div>
 
             <div className="flex items-center gap-4">
@@ -447,52 +442,11 @@ export function FrameEdit({
                       </div>
                     )}
                   </button>
-                  {frames.length > 1 && safeSelectedFrameIndex === idx && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleRemoveFrame(idx)
-                      }}
-                      className="absolute -top-2 -right-2 bg-red-500/90 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-600 shadow-sm"
-                      title="프레임 삭제"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
+                  {/* 삭제 버튼 제거됨 */}
                   {(idx < frames.length - 1 || frames.length < 4) && <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />}
                 </div>
               ))}
-              {frames.length < 4 && (
-                <div className="flex items-center gap-4 flex-1">
-                  <button
-                    onClick={handleAddFrame}
-                    className="relative aspect-video w-full rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 hover:border-gray-400 transition-all focus:outline-none"
-                    title="프레임 추가"
-                  >
-                    <Plus className="w-6 h-6" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-4 mt-2">
-              {frames.map((_, idx) => (
-                <div key={idx} className="flex items-center gap-4 flex-1">
-                  <div className="w-full text-center">
-                    <span className={cn("text-[11px] font-bold tracking-wider", safeSelectedFrameIndex === idx ? "text-black" : "text-gray-400")}>
-                      F{idx + 1}
-                    </span>
-                  </div>
-                  {(idx < frames.length - 1 || frames.length < 4) && <div className="w-4 flex-shrink-0" />}
-                </div>
-              ))}
-              {frames.length < 4 && (
-                <div className="flex items-center gap-4 flex-1">
-                  <div className="w-full text-center">
-                    <span className="text-[11px] font-medium text-gray-400">프레임 추가</span>
-                  </div>
-                </div>
-              )}
+              {/* 추가 버튼 영역 제거됨 */}
             </div>
           </div>
         </Card>

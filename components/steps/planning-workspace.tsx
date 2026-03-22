@@ -306,7 +306,7 @@ function CharactersSection({
             return (
               <Card
                 key={char.id}
-                className="border border-[#E0E0E0] shadow-none bg-white rounded-2xl overflow-hidden p-5 relative flex flex-col justify-between hover-lift animate-fade-up"
+                className="border border-[#E0E0E0] shadow-none bg-white rounded-2xl overflow-hidden p-5 relative flex flex-col justify-between hover-lift animate-fade-up min-h-[240px]"
               >
                 <div className="absolute top-4 right-4 z-10">
                   <button 
@@ -319,10 +319,10 @@ function CharactersSection({
                   </button>
                 </div>
                 
-                <div className={regeneratingId === char.id ? 'opacity-30 pointer-events-none transition-opacity' : 'transition-opacity'}>
+                <div className={`flex-1 flex flex-col ${regeneratingId === char.id ? 'opacity-30 pointer-events-none transition-opacity' : 'transition-opacity'}`}>
                   <div className="flex items-start gap-4 mb-4">
                     <div
-                      className="w-24 h-24 rounded-full bg-[#F5F5F5] border border-[#E0E0E0] overflow-hidden flex-shrink-0 cursor-pointer flex items-center justify-center relative"
+                      className="w-20 h-20 rounded-full bg-[#F5F5F5] border border-[#E0E0E0] overflow-hidden flex-shrink-0 cursor-pointer flex items-center justify-center relative"
                       onClick={() => fileRefs.current[char.id]?.click()}
                     >
                       {char.imageUrl ? (
@@ -341,9 +341,9 @@ function CharactersSection({
                       />
                     </div>
                     
-                    <div className="flex flex-col flex-1 pt-2">
+                    <div className="flex flex-col flex-1 pt-2 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                        <span className="font-bold text-gray-900 text-base">{displayName}</span>
+                        <span className="font-bold text-gray-900 text-base truncate">{displayName}</span>
                         {char.gender && (
                           <span className="text-sm font-semibold text-gray-800">
                             ({GENDER_LABEL[char.gender]})
@@ -358,7 +358,7 @@ function CharactersSection({
                     </div>
                   </div>
 
-                  <p className="text-xs text-gray-600 leading-relaxed min-h-[4rem] whitespace-pre-wrap mb-4">
+                  <p className="text-xs text-gray-600 leading-relaxed min-h-[4rem] max-h-[6rem] overflow-hidden whitespace-pre-wrap mb-4">
                     {char.appearance || char.personality || "통통한 체구...\n요리 기술을 전투 기술로 승화."}
                   </p>
                   {analyzingId === char.id && (
@@ -376,6 +376,7 @@ function CharactersSection({
               </Card>
             );
           })}
+
         </div>
       )}
     </section>
@@ -515,14 +516,17 @@ function CharacterEditModal({
   onOpenChange,
   onSave,
   onRemove,
+  sessionId,
 }: {
   character: Character | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave: (char: Character) => void
   onRemove: (id: string) => void
+  sessionId?: string | null
 }) {
   const [draft, setDraft] = useState<Character | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -557,9 +561,10 @@ function CharacterEditModal({
               onChange={(e) =>
                 setDraft((prev) => (prev ? { ...prev, appearance: e.target.value } : null))
               }
-              placeholder="캐릭터를 한 문장으로 설명해 주세요"
+              placeholder={isAnalyzing ? "이미지를 분석 중입니다..." : "캐릭터를 한 문장으로 설명해 주세요"}
+              disabled={isAnalyzing}
               rows={5}
-              className="resize-none rounded-xl border border-[#BABABA] bg-white text-sm focus-visible:ring-2 focus-visible:ring-offset-0"
+              className={`resize-none rounded-xl border border-[#BABABA] bg-white text-sm focus-visible:ring-2 focus-visible:ring-offset-0 ${isAnalyzing ? 'opacity-50' : ''}`}
             />
 
             <div className="mt-4 space-y-2">
@@ -585,15 +590,22 @@ function CharacterEditModal({
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
-                className="w-full h-44 rounded-xl border border-[#BABABA] bg-[#F5F5F5] overflow-hidden flex items-center justify-center"
+                disabled={isAnalyzing}
+                className={`relative w-full h-44 rounded-xl border border-[#BABABA] bg-[#F5F5F5] overflow-hidden flex items-center justify-center ${isAnalyzing ? 'opacity-75 cursor-not-allowed' : ''}`}
               >
                 {draft.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={draft.imageUrl} alt={`${draft.name || "캐릭터"} 이미지`} className="w-full h-full object-cover" />
+                  <>
+                    <img src={draft.imageUrl} alt={`${draft.name || "캐릭터"} 이미지`} className="w-full h-full object-cover" />
+                    {isAnalyzing && (
+                      <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
+                        <span className="text-sm font-semibold animate-pulse">분석 중...</span>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="text-center text-gray-500">
                     <Upload className="h-6 w-6 mx-auto mb-1" />
-                    <span className="text-xs">사진을 추가해 주세요</span>
+                    <span className="text-xs">{isAnalyzing ? "분석 중..." : "사진을 추가해 주세요"}</span>
                   </div>
                 )}
               </button>
@@ -603,13 +615,22 @@ function CharacterEditModal({
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
-                  const url = URL.createObjectURL(file)
-                  setDraft((prev) => (prev ? { ...prev, imageUrl: url } : null))
+
+                  const reader = new FileReader()
+                  const dataUrl = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string)
+                    reader.onerror = reject
+                    reader.readAsDataURL(file)
+                  })
+
+                  // 이미지 레퍼런스만 저장 — 외형 분석 없이
+                  setDraft((prev) => (prev ? { ...prev, imageUrl: dataUrl } : null))
                 }}
               />
+
             </div>
           </div>
 
@@ -905,25 +926,17 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       const nextProject = { ...project, characters: nextCharacters, charactersConfirmed: false }
       setProject(nextProject)
 
-      if (!sessionId || isGenerating || regeneratingCharId) return
-
-      setAnalyzingCharId(charId)
-      try {
-        await updateSession(sessionId, nextProject)
-      } catch (syncError) {
-        console.warn("업로드 직후 세션 동기화 실패, 분석 API는 계속 시도합니다.", syncError)
+      // 이미지 레퍼런스만 저장 (외형 분석 없이)
+      if (sessionId && !isGenerating && !regeneratingCharId) {
+        try {
+          await updateSession(sessionId, nextProject)
+        } catch (syncError) {
+          console.warn("이미지 저장 중 세션 동기화 실패:", syncError)
+        }
       }
-      const nextState = await analyzeCharacterImage(sessionId, charId, imageDataUrl)
-      setProject({
-        ...nextProject,
-        ...nextState,
-        scenes: nextState.scenes ?? nextProject.scenes ?? [],
-      })
     } catch (e) {
       console.error(e)
-      alert("캐릭터 이미지 분석 실패: " + e)
-    } finally {
-      setAnalyzingCharId(null)
+      alert("이미지 업로드 실패: " + e)
     }
   }
 
@@ -1210,6 +1223,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
 
       {/* 캐릭터 수정 모달 (plan -2 cha modal) */}
       <CharacterEditModal
+        sessionId={sessionId}
         character={characterModalId ? characters.find((c) => c.id === characterModalId) ?? null : null}
         open={!!characterModalId}
         onOpenChange={(open) => !open && setCharacterModalId(null)}

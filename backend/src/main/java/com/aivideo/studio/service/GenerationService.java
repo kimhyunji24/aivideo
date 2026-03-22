@@ -71,6 +71,8 @@ public class GenerationService {
         } catch (Exception e) {
             log.error("[GenerationService] 씬 {} 이미지 생성 실패", sceneId, e);
             target.setStatus("error");
+            target.setLastErrorMessage(e.getMessage() != null ? e.getMessage() : "알 수 없는 오류");
+            target.setLastErrorRetryable(true);
             sessionService.updateSession(sessionId, state);
             if (e instanceof IllegalArgumentException iae) {
                 throw iae;
@@ -219,7 +221,7 @@ public class GenerationService {
      */
     private String buildEnglishFramePrompt(String koreanScript, Frame startFrame, Frame currentFrame, ProjectState state, SceneElements stageElements) {
         StringBuilder geminiPrompt = new StringBuilder();
-        geminiPrompt.append("You are an expert prompt engineer for AI image generators. We are creating sequential frames for a single scene. Consistency of characters, clothing, and background is CRITICAL.\n\n");
+        geminiPrompt.append("You are an experienced video scriptwriter and expert prompt engineer. We are creating sequential frames for a single scene with a clear narrative structure (Intro, Body, Outro). Consistency of characters, clothing, and background is CRITICAL.\n\n");
         
         boolean isNotStartFrame = startFrame != null && !startFrame.getId().equals(currentFrame.getId());
         
@@ -244,6 +246,10 @@ public class GenerationService {
              geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt incorporating the Character Appearance provided above.\n\n");
         }
         
+        geminiPrompt.append("Hyper-Detailed Requirement: Describe every element with extreme granularity. Specifically describe intricate textures, complex lighting (e.g., cinematic lighting, god rays, rim lighting), rich color grading, ultra-detailed backgrounds, and atmospheric effects (e.g., mist, dust particles, volumetric fog) to make the image breathtakingly detailed.\n\n");
+        geminiPrompt.append("CRITICAL FORMAT REQUIREMENT: The resulting image MUST be a single picture composed of a 4-cut photo collage (e.g., a 2x2 grid or a 4-panel comic layout). You MUST append keywords like 'A 4-panel comic strip layout', 'four-cut photography collage', '2x2 grid' directly into the English prompt.\n\n");
+
+        
         geminiPrompt.append("[Current Frame Script]\n").append(koreanScript).append("\n\n");
         geminiPrompt.append("Output ONLY the translated, highly detailed English prompt, without any conversational text or markdown formatting. The prompt should flow logically as a single descriptive paragraph.");
 
@@ -267,8 +273,8 @@ public class GenerationService {
 
         // Gemini 프롬프트 고도화: 2x2 레이아웃 및 4컷 스토리 진행 강제
         StringBuilder geminiPrompt = new StringBuilder();
-        geminiPrompt.append("You are an expert cinematic prompt engineer for Imagen 3.\n");
-        geminiPrompt.append("Your task is to take the following scene elements and write a highly detailed English prompt that generates a SINGLE image containing a 2x2 grid layout (4 panels) illustrating a sequential story.\n\n");
+        geminiPrompt.append("You are an experienced video scriptwriter, storyboard artist, and expert cinematic prompt engineer for Imagen 3.\n");
+        geminiPrompt.append("Your task is to take the following scene elements and write a highly detailed English prompt that generates a SINGLE image containing a 2x2 grid layout (4 panels) illustrating a sequential story with a clear Intro, Body, and Outro structure.\n\n");
         
         geminiPrompt.append("CRITICAL RULES:\n");
         geminiPrompt.append("1. Layout Requirement: You MUST explicitly start the prompt with phrases like \"A 2x2 grid layout storyboard...\" or \"A 4-panel comic style...\"\n");
@@ -281,8 +287,10 @@ public class GenerationService {
             geminiPrompt.append(ruleIndex++).append(". Background Consistency: The environment MUST be described incorporating these exact elements: [").append(backgroundHint).append("].\n");
         }
         
-        geminiPrompt.append(ruleIndex++).append(". Story Progression: Briefly describe what happens in each of the 4 panels (Panel 1: Top-left, Panel 2: Top-right, Panel 3: Bottom-left, Panel 4: Bottom-right) to show a flowing narrative based on the provided [Scene Elements].\n");
-        geminiPrompt.append(ruleIndex++).append(". Visual Style: Ensure the overall description includes the required [Lighting, Composition, Mood].\n");
+        geminiPrompt.append(ruleIndex++).append(". Story Structure: Ensure the 4 panels represent a clear 'Hook/Intro', 'Body (logical progression)', and 'Outro (conclusion)' based on the [Scene Elements].\n");
+        geminiPrompt.append(ruleIndex++).append(". Visual Actions & Camera: Explicitly convert the script into specific visual actions and camera work.\n");
+        geminiPrompt.append(ruleIndex++).append(". Visual Style: Do NOT force a generic cinematic style. Allow the visual style to naturally adapt to the given [Lighting, Composition, Mood] of the scene elements.\n");
+        geminiPrompt.append(ruleIndex++).append(". Hyper-Detailed Descriptions: Provide extreme granularity. Specifically describe intricate textures, complex lighting (e.g., ray tracing, god rays, rim lighting), rich color grading, ultra-detailed backgrounds, and atmospheric effects (e.g., mist, dust particles, volumetric fog) to make the image breathtakingly detailed.\n");
         geminiPrompt.append(ruleIndex).append(". Output ONLY the English prompt string. No conversational text, no explanations, and no markdown blocks.\n\n");
         
         geminiPrompt.append("[Scene Elements]:\n").append(koreanInfo);
@@ -365,7 +373,7 @@ public class GenerationService {
                 .map(String::trim)
                 .filter(this::isSupportedReferenceImageUrl)
                 .distinct()
-                .limit(1)
+                .limit(4) // Imagen 3 supports multiple subject references (up to 4+)
                 .collect(Collectors.toList());
     }
 
@@ -592,17 +600,24 @@ public class GenerationService {
             // 카메라와 모션 워크를 명시하도록 Veo 특화 프롬프트 작성
             String koreanPrompt = buildVideoKoreanPrompt(target, state);
             
-            String geminiVideoPrompt = "You are a master AI video prompt engineer for Veo 3.1.\n" +
-                "Convert the following scene description into a highly detailed video generation prompt.\n" +
+            String geminiVideoPrompt = "You are an experienced video scriptwriter and master AI video prompt engineer for Veo 3.1.\n" +
+                "Convert the following scene description into a professional video generation prompt. You MUST structure the prompt by incorporating these specific elements:\n\n" +
+                "1. Theme: Describe the objects, people, animals, or landscapes (e.g., cityscapes, nature, vehicles, dogs).\n" +
+                "2. Action: Describe exactly what the subject is doing (e.g., walking, running, turning head).\n" +
+                "3. Style: Use specific cinematic style keywords to set creative direction (e.g., Sci-fi, Horror, Film Noir, Anime, Cartoon, etc.).\n" +
+                "4. Camera: Describe the camera position and motion (e.g., Aerial shot, Eye-level, Top-down, Dolly shot, Tracking, Low angle, etc.).\n" +
+                "5. Composition: Describe the framing (e.g., Wide shot, Close-up, Single shot, Two-shot, etc.).\n" +
+                "6. Focus & Lens: Describe specific visual effects (e.g., Shallow focus, Deep focus, Soft focus, Macro lens, Wide-angle lens, etc.).\n" +
+                "7. Mood: Describe how color and lighting contribute to the scene (e.g., Blue tones, Night-time, Warm hues, Dramatic lighting, etc.).\n\n" +
                 "CRITICAL REQUIREMENTS:\n" +
-                "1. Start by describing the exact visual state of the [Start Frame].\n" +
-                "2. Explicitly describe the CAMERA MOVEMENT (e.g., slow zoom in, tracking shot, static wide shot).\n" +
-                "3. Explicitly describe the SUBJECT'S MOTION and temporal changes over time.\n" +
-                "4. Ensure wording is policy-safe (avoid explicit violence/sexual terms) while maintaining the cinematic tension.\n" +
-                "5. Output ONLY the English prompt string, without any conversational text.\n\n" +
+                "1. Descriptive Language: Use vivid adjectives and adverbs to paint a clear picture for Veo.\n" +
+                "2. Face Detail Enhancement: If there are people, mention 'Portrait' to focus on facial details.\n" +
+                "3. Copyright/Safety Bypass: DO NOT use real person names, trademarked characters (e.g., Pororo), or sensitive IP. Genericize them by appearance (e.g., 'a young animated penguin').\n" +
+                "4. Narrative Hook: Start by describing the [Start Frame] visual state and ensure the action perfectly concludes within 5 seconds.\n" +
+                "5. Formatting: Output ONLY the English prompt string. No conversational text.\n\n" +
                 "[Scene Description]:\n" + koreanPrompt;
 
-            String englishPrompt = geminiAdapter.generateText(geminiVideoPrompt).trim() + ", cinematic lighting, photorealistic motion, highly detailed.";
+            String englishPrompt = geminiAdapter.generateText(geminiVideoPrompt).trim();
 
             List<String> referenceImageUrls = collectReferenceImageUrls(state);
             String firstFrameUrl = firstNonBlank(findFirstFrameImageUrl(target), target.getImageUrl());
@@ -623,6 +638,12 @@ public class GenerationService {
         } catch (Exception e) {
             log.error("Failed to generate video for scene: {}", sceneId, e);
             target.setStatus("error");
+            if (e.getMessage() != null && e.getMessage().contains("구글 안전 필터 차단")) {
+                target.setLastErrorMessage("구글 안전 정책(폭력, 선정성 등)에 의해 영상 생성이 차단되었습니다. 아래에서 표현을 순화해주시면 다시 시도할 수 있습니다.");
+                target.setLastErrorRetryable(true);
+            } else {
+                target.setLastErrorMessage(e.getMessage() != null ? e.getMessage() : "알 수 없는 오류");
+            }
             throw new RuntimeException("비디오 생성 실패: " + e.getMessage(), e);
         } finally {
             sessionService.updateSession(sessionId, state);
@@ -699,16 +720,16 @@ public class GenerationService {
 
     private static Map<String, String> buildDefaultSceneElements() {
         Map<String, String> defaults = new LinkedHashMap<>();
-        defaults.put("mainCharacter", "주인공");
-        defaults.put("subCharacter", "조력자 1인");
-        defaults.put("action", "주변을 천천히 살피며 이동한다");
-        defaults.put("pose", "자연스럽고 안정적인 자세");
-        defaults.put("background", "현실적인 도심 배경");
-        defaults.put("time", "늦은 오후");
-        defaults.put("composition", "미디엄 샷 중심의 안정적 구도");
-        defaults.put("lighting", "부드러운 자연광");
-        defaults.put("mood", "차분하지만 기대감 있는 분위기");
-        defaults.put("story", "작은 단서를 통해 다음 장면으로 이어지는 흐름");
+        defaults.put("mainCharacter", "핵심 인물 (인물 사진Portrait 스타일의 세밀한 묘사)");
+        defaults.put("subCharacter", "주변 사물 또는 동물 (배경의 생동감 부여)");
+        defaults.put("action", "피사체의 자연스러운 움직임 (예: 천천히 걷기, 고개 돌리기, 상호작용)");
+        defaults.put("pose", "편안하고 특징적인 자세");
+        defaults.put("background", "상세한 질감이 살아있는 초고화질 배경");
+        defaults.put("time", "분위기를 극대화하는 시간대 (예: 골든 아워, 푸른 밤)");
+        defaults.put("composition", "와이드 샷 혹은 클로즈업 등 의도된 카메라 구도");
+        defaults.put("lighting", "입체감을 살리는 시네마틱 조명 (예: 림 라이팅, 풍부한 채도)");
+        defaults.put("mood", "장면의 정서를 반영하는 독특한 스타일과 분위기");
+        defaults.put("story", "사용자의 의도를 반영한 짧지만 강력한 시각적 서사");
         return defaults;
     }
 

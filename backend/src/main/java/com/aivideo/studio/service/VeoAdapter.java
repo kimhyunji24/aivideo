@@ -94,8 +94,15 @@ public class VeoAdapter {
             last = null;
         }
 
-        if (requiresVeo31Features(refs, first, last) && !isVeo31Model()) {
-            throw new IllegalArgumentException("참조 이미지/first-last frame 기능은 Veo 3.1 모델에서만 지원됩니다.");
+        if (!isVeo3Model()) {
+            if (!refs.isEmpty()) {
+                log.warn("[Veo] Older Veo model does not support referenceImages. Ignoring them.");
+                refs = List.of();
+            }
+            if (last != null) {
+                log.warn("[Veo] Older Veo model does not support lastFrame. Ignoring it.");
+                last = null;
+            }
         }
         validateStorageUri();
 
@@ -174,8 +181,9 @@ public class VeoAdapter {
 
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("aspectRatio", "16:9");
+        parameters.put("resolution", "720p"); // 해상도 720p 고정 (사용자 요청)
         parameters.put("sampleCount", 1);
-        parameters.put("durationSeconds", durationSeconds);
+        parameters.put("durationSeconds", 5); // 5초로 고정
         parameters.put("storageUri", veoStorageUri);
 
         Map<String, Object> requestBody = new LinkedHashMap<>();
@@ -208,12 +216,8 @@ public class VeoAdapter {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private boolean isVeo31Model() {
-        return modelName != null && modelName.startsWith("veo-3.1");
-    }
-
-    private boolean requiresVeo31Features(List<String> refs, String first, String last) {
-        return (refs != null && !refs.isEmpty()) || first != null || last != null;
+    private boolean isVeo3Model() {
+        return modelName != null && modelName.startsWith("veo-3");
     }
 
     private String requestVideoGeneration(
@@ -276,7 +280,11 @@ public class VeoAdapter {
             JsonNode root = objectMapper.readTree(responseBody);
             if (root.path("done").asBoolean(false)) {
                 if (root.has("error")) {
-                    throw new RuntimeException("Veo operation failed: " + root.path("error").toString());
+                    String errorMsg = root.path("error").toString();
+                    if (errorMsg.contains("sensitive words that violate Google's Responsible AI practices")) {
+                        throw new RuntimeException("구글 안전 필터 차단: 번역된 비디오 프롬프트에 구글 정책(폭력, 선정성 등)에 위배되는 민감한 단어가 포함되어 영상 생성이 차단되었습니다. 기획 대본이나 로그라인을 더 부드럽고 건전한 단어로 수정해 주세요.");
+                    }
+                    throw new RuntimeException("Veo operation failed: " + errorMsg);
                 }
                 return root;
             }
