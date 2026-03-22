@@ -2,14 +2,17 @@ package com.aivideo.studio.service;
 
 import com.aivideo.studio.dto.Character;
 import com.aivideo.studio.dto.PlotPlan;
+import com.aivideo.studio.dto.PlotStage;
 import com.aivideo.studio.dto.ProjectState;
 import com.aivideo.studio.dto.PlanningTagsResponse;
+import com.aivideo.studio.dto.SceneElements;
 import com.aivideo.studio.exception.SessionNotFoundException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import lombok.extern.slf4j.Slf4j;
@@ -177,7 +180,7 @@ public class PlanningService {
 
         String prompt = String.format(
             "다음 로그라인과 캐릭터 설정을 바탕으로, %d단계(발단-전개-위기-절정-결말 중)의 플롯을 JSON으로 생성해줘.\n" +
-            "각 단계의 'content'는 해당 씬의 비디오 생성을 위한 Start Frame과 End Frame의 시각적 묘사로 구성해야 해.\n" +
+            "각 단계는 반드시 'content'와 함께 구조화된 'elements' 10요소를 포함해야 해.\n" +
             "추가 사용자의 요구사항이 있다면 반드시 반영해줘.\n\n" +
             "로그라인: %s\n" +
             "캐릭터 정보: %s\n" +
@@ -189,7 +192,19 @@ public class PlanningService {
             "    {\n" +
             "      \"id\": \"stage-0\",\n" +
             "      \"label\": \"발단\",\n" +
-            "      \"content\": \"[Start Frame] 주인공이 방에 들어온다. [End Frame] 주인공이 의자에 앉아 편지를 읽는다. (총 150자 이내)\"\n" +
+            "      \"content\": \"[Start Frame] 주인공이 방에 들어온다. [End Frame] 주인공이 의자에 앉아 편지를 읽는다. (총 150자 이내)\",\n" +
+            "      \"elements\": {\n" +
+            "        \"mainCharacter\": \"메인 인물\",\n" +
+            "        \"subCharacter\": \"서브 인물\",\n" +
+            "        \"action\": \"핵심 행동\",\n" +
+            "        \"pose\": \"자세\",\n" +
+            "        \"background\": \"배경\",\n" +
+            "        \"time\": \"시간대\",\n" +
+            "        \"composition\": \"구도\",\n" +
+            "        \"lighting\": \"조명\",\n" +
+            "        \"mood\": \"분위기\",\n" +
+            "        \"story\": \"해당 단계 핵심 서사\"\n" +
+            "      }\n" +
             "    }\n" +
             "  ]\n" +
             "}\n" +
@@ -205,6 +220,7 @@ public class PlanningService {
         String cleaned = stripMarkdownCodeFence(jsonResponse);
         try {
             PlotPlan plotPlan = objectMapper.readValue(cleaned, PlotPlan.class);
+            plotPlan.setStages(ensureStageElements(plotPlan.getStages()));
             state.setPlotPlan(plotPlan);
             sessionService.updateSession(sessionId, state);
             return state;
@@ -338,5 +354,56 @@ public class PlanningService {
             if (v != null && !v.isBlank()) return v.trim();
         }
         return null;
+    }
+
+    private List<PlotStage> ensureStageElements(List<PlotStage> stages) {
+        if (stages == null) {
+            return List.of();
+        }
+
+        List<PlotStage> normalized = new ArrayList<>(stages.size());
+        for (PlotStage stage : stages) {
+            if (stage == null) continue;
+
+            SceneElements merged = defaultSceneElements();
+            SceneElements incoming = stage.getElements();
+            if (incoming != null) {
+                if (isNotBlank(incoming.getMainCharacter())) merged.setMainCharacter(incoming.getMainCharacter().trim());
+                if (isNotBlank(incoming.getSubCharacter())) merged.setSubCharacter(incoming.getSubCharacter().trim());
+                if (isNotBlank(incoming.getAction())) merged.setAction(incoming.getAction().trim());
+                if (isNotBlank(incoming.getPose())) merged.setPose(incoming.getPose().trim());
+                if (isNotBlank(incoming.getBackground())) merged.setBackground(incoming.getBackground().trim());
+                if (isNotBlank(incoming.getTime())) merged.setTime(incoming.getTime().trim());
+                if (isNotBlank(incoming.getComposition())) merged.setComposition(incoming.getComposition().trim());
+                if (isNotBlank(incoming.getLighting())) merged.setLighting(incoming.getLighting().trim());
+                if (isNotBlank(incoming.getMood())) merged.setMood(incoming.getMood().trim());
+                if (isNotBlank(incoming.getStory())) merged.setStory(incoming.getStory().trim());
+            }
+            if (isNotBlank(stage.getContent()) && !isNotBlank(merged.getStory())) {
+                merged.setStory(stage.getContent().trim());
+            }
+            stage.setElements(merged);
+            normalized.add(stage);
+        }
+        return normalized;
+    }
+
+    private SceneElements defaultSceneElements() {
+        return SceneElements.builder()
+                .mainCharacter("주인공")
+                .subCharacter("조력자 1인")
+                .action("주변을 천천히 살피며 이동한다")
+                .pose("자연스럽고 안정적인 자세")
+                .background("현실적인 도심 배경")
+                .time("늦은 오후")
+                .composition("미디엄 샷 중심의 안정적 구도")
+                .lighting("부드러운 자연광")
+                .mood("차분하지만 기대감 있는 분위기")
+                .story("작은 단서를 통해 다음 장면으로 이어지는 흐름")
+                .build();
+    }
+
+    private boolean isNotBlank(String value) {
+        return value != null && !value.isBlank();
     }
 }

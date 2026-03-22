@@ -1,6 +1,6 @@
 "use client"
 
-import type { ProjectState, Plot, Scene } from "@/lib/types"
+import type { ProjectState, Plot } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -20,66 +20,6 @@ const EXAMPLE_IDEAS = [
   "판타지 세계에서의 평화로운 일상 모먼트",
   "사랑받는 캐릭터를 위한 뮤직비디오 트리뷰트",
 ]
-
-function generateMockPlots(idea: string): Plot[] {
-  const createScenes = (plotId: string, sceneCount: number): Scene[] => {
-    const sceneTitles = [
-      ["오프닝", "첫 만남", "전개", "클라이맥스", "엔딩"],
-      ["시작", "긴장 고조", "대결", "반전", "결말", "에필로그"],
-      ["도입", "분위기 조성", "전환점", "마무리"],
-    ]
-    const titles = sceneTitles[Math.floor(Math.random() * sceneTitles.length)]
-
-    return Array.from({ length: sceneCount }, (_, i) => ({
-      id: `${plotId}-scene-${i + 1}`,
-      title: titles[i] || `씬 ${i + 1}`,
-      description: `"${idea}"를 기반으로 한 자동 생성된 씬 설명`,
-      prompt: `${idea}에 대한 씬 ${i + 1} 프롬프트`,
-      duration: 3,
-      status: "pending" as const,
-      // 10대 핵심 요소 초기화
-      elements: {
-        mainCharacter: "",
-        subCharacter: "",
-        action: "",
-        pose: "",
-        background: "",
-        time: "",
-        composition: "",
-        lighting: "",
-        mood: "",
-        story: "",
-      }
-    }))
-  }
-
-  return [
-    {
-      id: "plot-1",
-      title: "드라마틱 내러티브",
-      summary: `"${idea}"의 감정적인 해석으로, 캐릭터의 깊이와 시각적 스토리텔링에 초점을 맞춘 드라마틱한 전개`,
-      tone: "드라마틱 / 감성적",
-      sceneCount: 5,
-      scenes: createScenes("plot-1", 5),
-    },
-    {
-      id: "plot-2",
-      title: "액션 중심 버전",
-      summary: `"${idea}"의 역동적인 해석으로, 다이나믹한 카메라 워크와 흥미진진한 시각적 시퀀스 중심`,
-      tone: "에너지틱 / 역동적",
-      sceneCount: 6,
-      scenes: createScenes("plot-2", 6),
-    },
-    {
-      id: "plot-3",
-      title: "분위기 있는 시네마틱",
-      summary: `"${idea}"의 슬로우번 시네마틱 접근으로, 분위기와 예술적 비주얼을 강조`,
-      tone: "시네마틱 / 예술적",
-      sceneCount: 4,
-      scenes: createScenes("plot-3", 4),
-    },
-  ]
-}
 
 export function IdeaInput({ project, setProject, onNext }: IdeaInputProps) {
   const [isGenerating, setIsGenerating] = useState(false)

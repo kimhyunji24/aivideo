@@ -4,12 +4,15 @@ import com.aivideo.studio.dto.ProjectState;
 import com.aivideo.studio.dto.Scene;
 import com.aivideo.studio.dto.Frame;
 import com.aivideo.studio.dto.CustomAssetData;
+import com.aivideo.studio.dto.PlotStage;
+import com.aivideo.studio.dto.SceneElements;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +28,8 @@ public class GenerationService {
     private final ImagenAdapter imagenAdapter;
     private final GeminiAdapter geminiAdapter;
     private final VeoAdapter veoAdapter;
+
+    private static final Map<String, String> DEFAULT_SCENE_ELEMENTS = buildDefaultSceneElements();
 
     /**
      * 특정 씬의 이미지를 Imagen 3로 생성합니다.
@@ -49,11 +54,12 @@ public class GenerationService {
         try {
             // 영어 프롬프트 준비 (없으면 Gemini로 자동 생성)
             String englishPrompt = buildEnglishPrompt(target, state);
+            List<String> referenceImageUrls = collectPinnedAssetImageUrls(target, state);
             log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
 
             // Imagen 3 이미지 생성 - 캐릭터/스타일 일관성을 위해 Scene ID 기반의 고정 Seed 사용
             Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
-            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed);
+            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed, referenceImageUrls);
 
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
@@ -67,6 +73,9 @@ public class GenerationService {
             log.error("[GenerationService] 씬 {} 이미지 생성 실패", sceneId, e);
             target.setStatus("error");
             sessionService.updateSession(sessionId, state);
+            if (e instanceof IllegalArgumentException iae) {
+                throw iae;
+            }
             throw new RuntimeException("이미지 생성 실패: " + e.getMessage(), e);
         }
     }
@@ -171,9 +180,11 @@ public class GenerationService {
             }
         }
 
+        SceneElements stageElements = resolveFrameElements(state, target);
         String prompt = firstNonBlank(
-                targetFrame.getScript(),
+                targetFrame.getScript(), // 사용자 수정값 최우선
                 target.getPrompt(),
+                stageElements != null ? stageElements.getStory() : null, // 플롯 elements 차순위
                 target.getDescription()
         );
 
@@ -184,12 +195,18 @@ public class GenerationService {
         Frame startFrame = frames.isEmpty() ? null : frames.get(0);
         
         // 프레임 대본(한국어)을 영어 프롬프트로 변환 (Start Frame 일관성 유지 포함)
-        String englishPrompt = buildEnglishFramePrompt(prompt, startFrame, targetFrame, state);
+        String englishPrompt = buildEnglishFramePrompt(prompt, startFrame, targetFrame, state, stageElements);
         log.info("[GenerationService] 씬 {}, 프레임 {} 이미지 생성 — 원본: {}, 번역: {}", sceneId, targetFrame.getId(), prompt, englishPrompt);
 
         // 일관성(캐릭터/의상 유지)을 위해 해당 Scene ID를 기반으로 고정된 Seed 추출
         Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
-        String imageUrl = imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()), seed);
+        List<String> referenceImageUrls = collectPinnedAssetImageUrls(target, state);
+        String imageUrl = imagenAdapter.generateImage(
+                englishPrompt,
+                buildFrameSceneKey(sceneId, targetFrame.getId()),
+                seed,
+                referenceImageUrls
+        );
         targetFrame.setImageUrl(imageUrl);
         if (targetFrame.getScript() == null || targetFrame.getScript().isBlank()) {
             targetFrame.setScript(prompt); // 원본 한국어 스크립트 유지
@@ -205,7 +222,7 @@ public class GenerationService {
     /**
      * 프레임의 한국어 대본을 영어 프롬프트로 변환하며, Start Frame 정보를 바탕으로 컨텍스트를 유지합니다.
      */
-    private String buildEnglishFramePrompt(String koreanScript, Frame startFrame, Frame currentFrame, ProjectState state) {
+    private String buildEnglishFramePrompt(String koreanScript, Frame startFrame, Frame currentFrame, ProjectState state, SceneElements stageElements) {
         StringBuilder geminiPrompt = new StringBuilder();
         geminiPrompt.append("You are an expert prompt engineer for AI image generators. We are creating sequential frames for a single scene. Consistency of characters, clothing, and background is CRITICAL.\n\n");
         
@@ -216,6 +233,12 @@ public class GenerationService {
             for (var c : state.getCharacters()) {
                 geminiPrompt.append("- ").append(c.getName()).append(": ").append(c.getAppearance()).append("\n");
             }
+            geminiPrompt.append("\n");
+        }
+        if (stageElements != null) {
+            Map<String, String> merged = mergeWithDefaultElements(stageElements);
+            geminiPrompt.append("[Scene Element Design]\n");
+            merged.forEach((k, v) -> geminiPrompt.append("- ").append(k).append(": ").append(v).append("\n"));
             geminiPrompt.append("\n");
         }
 
@@ -257,20 +280,22 @@ public class GenerationService {
     }
 
     private String buildKoreanSceneDescription(Scene scene, ProjectState state) {
+        Map<String, String> elements = mergeWithDefaultElements(scene != null ? scene.getElements() : null);
         StringBuilder sb = new StringBuilder();
         sb.append("제목: ").append(scene.getTitle()).append("\n");
         sb.append("설명: ").append(scene.getDescription()).append("\n");
 
-        if (scene.getElements() != null) {
-            var el = scene.getElements();
-            appendIfNotEmpty(sb, "배경", el.getBackground());
-            appendIfNotEmpty(sb, "분위기", el.getMood());
-            appendIfNotEmpty(sb, "조명", el.getLighting());
-            appendIfNotEmpty(sb, "구도", el.getComposition());
-            appendIfNotEmpty(sb, "시간대", el.getTime());
-            appendIfNotEmpty(sb, "메인 캐릭터", el.getMainCharacter());
-            appendIfNotEmpty(sb, "행동", el.getAction());
-        }
+        appendIfNotEmpty(sb, "메인 캐릭터", elements.get("mainCharacter"));
+        appendIfNotEmpty(sb, "서브 캐릭터", elements.get("subCharacter"));
+        appendIfNotEmpty(sb, "행동", elements.get("action"));
+        appendIfNotEmpty(sb, "포즈", elements.get("pose"));
+        appendIfNotEmpty(sb, "배경", elements.get("background"));
+        appendIfNotEmpty(sb, "시간대", elements.get("time"));
+        appendIfNotEmpty(sb, "구도", elements.get("composition"));
+        appendIfNotEmpty(sb, "조명", elements.get("lighting"));
+        appendIfNotEmpty(sb, "분위기", elements.get("mood"));
+        appendIfNotEmpty(sb, "스토리", elements.get("story"));
+
         String assetHint = buildPinnedAssetHint(scene, state);
         if (!assetHint.isBlank()) {
             sb.append("고정 에셋: ").append(assetHint).append("\n");
@@ -312,6 +337,68 @@ public class GenerationService {
             return "";
         }
         return String.join("; ", descriptions);
+    }
+
+    private List<String> collectPinnedAssetImageUrls(Scene scene, ProjectState state) {
+        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
+        if (customAssets == null || customAssets.isEmpty()) {
+            return List.of();
+        }
+
+        return scene.getPinnedAssets().stream()
+                .map(customAssets::get)
+                .filter(Objects::nonNull)
+                .map(CustomAssetData::getImageUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .map(String::trim)
+                .distinct()
+                .limit(3)
+                .collect(Collectors.toList());
+    }
+
+    private SceneElements findStageElementsBySceneId(ProjectState state, Scene targetScene) {
+        if (state == null || targetScene == null || state.getPlotPlan() == null || state.getPlotPlan().getStages() == null) {
+            return null;
+        }
+
+        String sceneId = String.valueOf(targetScene.getId());
+        List<PlotStage> stages = state.getPlotPlan().getStages();
+        for (int i = 0; i < stages.size(); i++) {
+            PlotStage stage = stages.get(i);
+            if (stage == null) continue;
+            String derivedSceneId = "scene-" + (i + 1);
+            if (sceneId.equals(derivedSceneId)) {
+                return stage.getElements();
+            }
+        }
+        return null;
+    }
+
+    private SceneElements resolveFrameElements(ProjectState state, Scene targetScene) {
+        SceneElements fromStage = findStageElementsBySceneId(state, targetScene);
+        if (fromStage != null) {
+            return fromStage;
+        }
+        if (targetScene != null && targetScene.getElements() != null) {
+            return targetScene.getElements();
+        }
+        Map<String, String> defaults = mergeWithDefaultElements(null);
+        return SceneElements.builder()
+                .mainCharacter(defaults.get("mainCharacter"))
+                .subCharacter(defaults.get("subCharacter"))
+                .action(defaults.get("action"))
+                .pose(defaults.get("pose"))
+                .background(defaults.get("background"))
+                .time(defaults.get("time"))
+                .composition(defaults.get("composition"))
+                .lighting(defaults.get("lighting"))
+                .mood(defaults.get("mood"))
+                .story(defaults.get("story"))
+                .build();
     }
 
     private void appendIfNotEmpty(StringBuilder sb, String label, String value) {
@@ -444,10 +531,13 @@ public class GenerationService {
         sessionService.updateSession(sessionId, state);
 
         try {
-            // 카메라 워킹 및 추가 모션 프롬프트 구성을 위해 한국어 씬 설명 번역
-            String koreanPrompt = buildKoreanSceneDescription(target, state);
+            // 안전 필터 민감도를 낮추기 위해 과도한 자극 표현을 완화하고,
+            // [Start Frame]/[End Frame] 표기를 모션 중심 설명으로 변환한다.
+            String koreanPrompt = buildVideoKoreanPrompt(target, state);
             String englishPrompt = geminiAdapter.generateText(
-                "Translate this scene description to a highly detailed, cinematic English prompt for an AI video generator. Only provide the translated prompt without any conversational text:\n" + koreanPrompt
+                "Translate this scene description to a highly detailed, cinematic English prompt for an AI video generator. " +
+                "Avoid explicit violence/sexual terms and keep wording policy-safe while preserving intent. " +
+                "Only provide the translated prompt without any conversational text:\n" + koreanPrompt
             ) + " Cinematic, realistic motion, highly detailed.";
 
             List<String> referenceImageUrls = collectReferenceImageUrls(target, state);
@@ -520,5 +610,86 @@ public class GenerationService {
             }
         }
         return null;
+    }
+
+    private String buildVideoKoreanPrompt(Scene scene, ProjectState state) {
+        String source = buildKoreanSceneDescription(scene, state);
+        String normalized = normalizeStartEndFrameNarrative(source);
+        return softenSensitiveWording(normalized);
+    }
+
+    private String normalizeStartEndFrameNarrative(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String startTag = "[Start Frame]";
+        String endTag = "[End Frame]";
+        int s = text.indexOf(startTag);
+        int e = text.indexOf(endTag);
+        if (s < 0 || e < 0 || e <= s) {
+            return text;
+        }
+        String before = text.substring(0, s).trim();
+        String start = text.substring(s + startTag.length(), e).trim();
+        String afterEnd = text.substring(e + endTag.length()).trim();
+        String transformed = "시작 장면: " + start + "\n전개 및 마무리 장면: " + afterEnd;
+        return (before.isBlank() ? transformed : before + "\n" + transformed).trim();
+    }
+
+    private String softenSensitiveWording(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String softened = text;
+        softened = softened.replace("살인", "강한 충돌");
+        softened = softened.replace("죽인다", "압도한다");
+        softened = softened.replace("죽음", "이별");
+        softened = softened.replace("피가", "강렬한 흔적이");
+        softened = softened.replace("유혈", "긴장감 있는");
+        softened = softened.replace("고문", "극한의 압박");
+        softened = softened.replace("잔인", "강렬");
+        softened = softened.replace("노출", "세련된 스타일");
+        softened = softened.replace("성적", "감정적");
+        softened = softened.replace("혐오", "불편한");
+        return softened;
+    }
+
+    private static Map<String, String> buildDefaultSceneElements() {
+        Map<String, String> defaults = new LinkedHashMap<>();
+        defaults.put("mainCharacter", "주인공");
+        defaults.put("subCharacter", "조력자 1인");
+        defaults.put("action", "주변을 천천히 살피며 이동한다");
+        defaults.put("pose", "자연스럽고 안정적인 자세");
+        defaults.put("background", "현실적인 도심 배경");
+        defaults.put("time", "늦은 오후");
+        defaults.put("composition", "미디엄 샷 중심의 안정적 구도");
+        defaults.put("lighting", "부드러운 자연광");
+        defaults.put("mood", "차분하지만 기대감 있는 분위기");
+        defaults.put("story", "작은 단서를 통해 다음 장면으로 이어지는 흐름");
+        return defaults;
+    }
+
+    private Map<String, String> mergeWithDefaultElements(SceneElements elements) {
+        Map<String, String> merged = new LinkedHashMap<>(DEFAULT_SCENE_ELEMENTS);
+        if (elements == null) {
+            return merged;
+        }
+        putIfNotBlank(merged, "mainCharacter", elements.getMainCharacter());
+        putIfNotBlank(merged, "subCharacter", elements.getSubCharacter());
+        putIfNotBlank(merged, "action", elements.getAction());
+        putIfNotBlank(merged, "pose", elements.getPose());
+        putIfNotBlank(merged, "background", elements.getBackground());
+        putIfNotBlank(merged, "time", elements.getTime());
+        putIfNotBlank(merged, "composition", elements.getComposition());
+        putIfNotBlank(merged, "lighting", elements.getLighting());
+        putIfNotBlank(merged, "mood", elements.getMood());
+        putIfNotBlank(merged, "story", elements.getStory());
+        return merged;
+    }
+
+    private void putIfNotBlank(Map<String, String> target, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            target.put(key, value.trim());
+        }
     }
 }

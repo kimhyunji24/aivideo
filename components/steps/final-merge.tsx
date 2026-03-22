@@ -60,17 +60,6 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
       setMergeProgress(i)
     }
 
-    if (project.id) {
-      const mockFinalVideoUrl = "/final-video-merged.mp4"
-      try {
-        await fetch(`/api/projects/${project.id}/video?finalVideoUrl=${encodeURIComponent(mockFinalVideoUrl)}`, {
-          method: "PATCH"
-        })
-      } catch (error) {
-        console.error("Error saving final video:", error)
-      }
-    }
-
     setIsMerging(false)
     setIsMerged(true)
   }

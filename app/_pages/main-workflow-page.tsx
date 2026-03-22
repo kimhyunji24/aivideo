@@ -31,6 +31,19 @@ const STEPS = [
   { id: 3, name: "영상", description: "애니메이션 & 완성" },
 ]
 
+const DEFAULT_ELEMENTS = {
+  mainCharacter: "주인공",
+  subCharacter: "조력자 1인",
+  action: "주변을 천천히 살피며 이동한다",
+  pose: "자연스럽고 안정적인 자세",
+  background: "현실적인 도심 배경",
+  time: "늦은 오후",
+  composition: "미디엄 샷 중심의 안정적 구도",
+  lighting: "부드러운 자연광",
+  mood: "차분하지만 기대감 있는 분위기",
+  story: "작은 단서를 통해 다음 장면으로 이어지는 흐름",
+}
+
 /** Convert planning workspace result into scenes for the storyboard */
 function buildScenesFromPlan(project: ProjectState): Scene[] {
   const { plotPlan, characters, logline } = project
@@ -47,16 +60,11 @@ function buildScenesFromPlan(project: ProjectState): Scene[] {
     duration: 3,
     status: "pending" as const,
     elements: {
-      mainCharacter: mainCharName,
-      subCharacter: subCharName,
-      action: "",
-      pose: "",
-      background: "",
-      time: "",
-      composition: "",
-      lighting: "",
-      mood: "",
-      story: stage.content,
+      ...DEFAULT_ELEMENTS,
+      ...stage.elements,
+      mainCharacter: stage.elements?.mainCharacter || mainCharName || DEFAULT_ELEMENTS.mainCharacter,
+      subCharacter: stage.elements?.subCharacter || subCharName || DEFAULT_ELEMENTS.subCharacter,
+      story: stage.elements?.story || stage.content || DEFAULT_ELEMENTS.story,
     },
   }))
 }

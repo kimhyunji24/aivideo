@@ -6,6 +6,7 @@ import type {
   Character,
   PlotPlan,
   PlotStage,
+  SceneElements,
   PlanningSeedRequest,
   PlanningSeedResponse,
 } from "@/lib/types"
@@ -36,7 +37,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 
-// ─── 목업 컬러 (1. 기획 화면) ───────────────────────────────────────────────
+// ─── UI 컬러 (1. 기획 화면) ───────────────────────────────────────────────
 const COLORS = {
   primary: "#000000",
   primaryHover: "#333333",
@@ -54,6 +55,27 @@ const STAGE_LABELS: Record<3 | 4 | 5, string[]> = {
 }
 
 const GENDER_LABEL: Record<"male" | "female", string> = { male: "남", female: "여" }
+
+const DEFAULT_STAGE_ELEMENTS: SceneElements = {
+  mainCharacter: "주인공",
+  subCharacter: "조력자 1인",
+  action: "주변을 천천히 살피며 이동한다",
+  pose: "자연스럽고 안정적인 자세",
+  background: "현실적인 도심 배경",
+  time: "늦은 오후",
+  composition: "미디엄 샷 중심의 안정적 구도",
+  lighting: "부드러운 자연광",
+  mood: "차분하지만 기대감 있는 분위기",
+  story: "작은 단서를 통해 다음 장면으로 이어지는 흐름",
+}
+
+function mergeStageElements(seed?: Partial<SceneElements> | null, content?: string): SceneElements {
+  return {
+    ...DEFAULT_STAGE_ELEMENTS,
+    ...(seed ?? {}),
+    story: seed?.story || content || DEFAULT_STAGE_ELEMENTS.story,
+  }
+}
 
 // ─── AI Auto-generation ─────────────────────────────────────────────────────
 
@@ -78,6 +100,12 @@ function generatePlotStages(
     id: `stage-${i}`,
     label,
     content: templates[label] ?? `${label} 단계의 내용을 작성해 주세요.`,
+    elements: mergeStageElements(
+      {
+        mainCharacter: name,
+      },
+      templates[label] ?? `${label} 단계의 내용을 작성해 주세요.`
+    ),
   }))
 }
 
@@ -145,6 +173,7 @@ function toPlotPlanSeed(
       id: seed?.id || `stage-${idx}`,
       label: seed?.label || defaultLabel,
       content: seed?.content || "",
+      elements: mergeStageElements(seed?.elements, seed?.content || ""),
     }
   })
 
@@ -155,7 +184,7 @@ function toPlotPlanSeed(
   return { stageCount, stages }
 }
 
-// ─── Sub-components (목업 스타일) ───────────────────────────────────────────
+// ─── Sub-components ─────────────────────────────────────────────────────────
 
 function LoglineSection({
   logline,
@@ -878,6 +907,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       id: `stage-${i}`,
       label,
       content: "",
+      elements: mergeStageElements(undefined, ""),
     }))
     setProject({
       ...project,
@@ -890,7 +920,21 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
     if (!plotPlan) return
     setProject({
       ...project,
-      plotPlan: { ...plotPlan, stages: plotPlan.stages.map((s) => (s.id === id ? { ...s, content } : s)) },
+      plotPlan: {
+        ...plotPlan,
+        stages: plotPlan.stages.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                content,
+                elements: {
+                  ...mergeStageElements(s.elements, content),
+                  story: content || s.elements?.story || DEFAULT_STAGE_ELEMENTS.story,
+                },
+              }
+            : s
+        ),
+      },
     })
   }
 
@@ -948,7 +992,12 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
 
   const plot = project.plotPlan ?? {
     stageCount: 3 as const,
-    stages: STAGE_LABELS[3].map((label, i) => ({ id: `stage-${i}`, label, content: "" })),
+    stages: STAGE_LABELS[3].map((label, i) => ({
+      id: `stage-${i}`,
+      label,
+      content: "",
+      elements: mergeStageElements(undefined, ""),
+    })),
   }
 
   const canProceed = charactersConfirmed && plot.stages.some((s) => s.content.trim())

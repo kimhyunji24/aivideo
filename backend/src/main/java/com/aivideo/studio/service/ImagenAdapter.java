@@ -48,12 +48,6 @@ public class ImagenAdapter {
     @Value("${google.application-credentials:#{null}}")
     private String credentialsPath;
 
-    @Value("${aivideo.mock-mode:false}")
-    private boolean mockMode;
-
-    @Value("${aivideo.mock-image-url:}")
-    private String mockImageUrl;
-
     private static final String ENDPOINT_SUFFIX = "-aiplatform.googleapis.com:443";
 
     /**
@@ -65,11 +59,15 @@ public class ImagenAdapter {
      * @return 저장된 이미지 파일의 URL 경로 (예: /generated-images/scene-1.png)
      */
     public String generateImage(String prompt, String sceneId, Integer seed) {
-        if (mockMode) {
-            log.info("[Mock] Imagen 이미지 생성을 스킵합니다. Mock URL 반환");
-            return (mockImageUrl != null && !mockImageUrl.isBlank())
-                    ? mockImageUrl
-                    : "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80";
+        return generateImage(prompt, sceneId, seed, List.of());
+    }
+
+    /**
+     * referenceImages는 현재 프로젝트/리전에서 capability 모델 접근이 열리기 전까지 즉시 실패 처리한다.
+     */
+    public String generateImage(String prompt, String sceneId, Integer seed, List<String> referenceImageUrls) {
+        if (referenceImageUrls != null && !referenceImageUrls.isEmpty()) {
+            throw new IllegalArgumentException("referenceImages 요청 실패: capability 모델 접근이 필요합니다.");
         }
 
         log.info("[Imagen3] 이미지 생성 시작 — sceneId: {}, prompt 길이: {}", sceneId, prompt.length());

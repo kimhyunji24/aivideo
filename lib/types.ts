@@ -67,6 +67,7 @@ export interface PlotStage {
     id: string;
     label: string;
     content: string;
+    elements?: SceneElements;
 }
 
 export interface PlotPlan {
@@ -120,10 +121,11 @@ export interface PlanningSeedStage {
     id?: string;
     label?: string;
     content?: string;
+    elements?: Partial<SceneElements>;
 }
 
 export interface PlanningSeedResponse {
-    source?: "mock" | "gemini" | string;
+    source?: string;
     characters?: PlanningSeedCharacter[];
     plotPlan?: {
         stageCount?: 3 | 4 | 5 | number;
