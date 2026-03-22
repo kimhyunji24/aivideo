@@ -6,8 +6,6 @@ import com.aivideo.studio.dto.Frame;
 import com.aivideo.studio.dto.Character;
 import com.aivideo.studio.dto.PlotStage;
 import com.aivideo.studio.dto.SceneElements;
-import com.aivideo.studio.exception.ApiErrorInfo;
-import com.aivideo.studio.exception.ErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -51,23 +48,21 @@ public class GenerationService {
 
         // 상태를 generating으로 변경 후 저장
         target.setStatus("generating");
-        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
-            // 영어 프롬프트 준비 (없으면 Gemini로 자동 생성)
+            // 구조화된 템플릿 기반 영어 프롬프트 자동 생성 (2x2 레이아웃 포함)
             String englishPrompt = buildEnglishPrompt(target, state);
             List<String> referenceImageUrls = collectReferenceImageUrls(state);
             log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
 
-            // 캐릭터 기준 전역 Seed로 씬 간 외형 일관성을 강화
+            // 안정화된 전역 Seed로 씬 간 외형 일관성을 강화
             Integer seed = resolveConsistencySeed(state, sceneId);
             String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed, referenceImageUrls);
 
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
             target.setStatus("done");
-            clearSceneError(target);
             sessionService.updateSession(sessionId, state);
 
             log.info("[GenerationService] 씬 {} 이미지 생성 완료 — imageUrl: {}", sceneId, imageUrl);
@@ -76,7 +71,6 @@ public class GenerationService {
         } catch (Exception e) {
             log.error("[GenerationService] 씬 {} 이미지 생성 실패", sceneId, e);
             target.setStatus("error");
-            applySceneError(target, e);
             sessionService.updateSession(sessionId, state);
             if (e instanceof IllegalArgumentException iae) {
                 throw iae;
@@ -87,9 +81,6 @@ public class GenerationService {
 
     /**
      * 세션의 모든 씬에 대해 이미지를 순차 생성합니다.
-     *
-     * @param sessionId 세션 ID
-     * @return imageUrl이 채워진 씬 목록
      */
     public List<Scene> generateAllImages(String sessionId) {
         ProjectState state = sessionService.getSession(sessionId);
@@ -140,7 +131,6 @@ public class GenerationService {
 
     /**
      * 특정 씬의 프레임 이미지를 생성합니다.
-     * frameId가 없으면 첫 프레임을 사용하고, 프레임이 없으면 자동 생성합니다.
      */
     public Frame generateFrameForScene(String sessionId, String sceneId, String frameId, String frameScript) {
         ProjectState state = sessionService.getSession(sessionId);
@@ -203,7 +193,7 @@ public class GenerationService {
         String englishPrompt = buildEnglishFramePrompt(prompt, startFrame, targetFrame, state, stageElements);
         log.info("[GenerationService] 씬 {}, 프레임 {} 이미지 생성 — 원본: {}, 번역: {}", sceneId, targetFrame.getId(), prompt, englishPrompt);
 
-        // 캐릭터 기준 전역 Seed로 프레임/씬 간 외형 일관성을 강화
+        // 안정화된 전역 Seed 사용
         Integer seed = resolveConsistencySeed(state, sceneId);
         List<String> referenceImageUrls = collectReferenceImageUrls(state);
         String imageUrl = imagenAdapter.generateImage(
@@ -233,13 +223,11 @@ public class GenerationService {
         
         boolean isNotStartFrame = startFrame != null && !startFrame.getId().equals(currentFrame.getId());
         
-        if (state.getCharacters() != null && !state.getCharacters().isEmpty()) {
-            geminiPrompt.append("[Main Characters Info]\n");
-            for (var c : state.getCharacters()) {
-                geminiPrompt.append("- ").append(c.getName()).append(": ").append(c.getAppearance()).append("\n");
-            }
-            geminiPrompt.append("\n");
+        String characterHint = buildCharacterAppearanceHint(state);
+        if (!characterHint.isBlank()) {
+            geminiPrompt.append("CRITICAL REQUIREMENT: Character Appearance MUST strictly follow these details: [").append(characterHint).append("]. Do not invent new clothing or features.\n\n");
         }
+
         if (stageElements != null) {
             Map<String, String> merged = mergeWithDefaultElements(stageElements);
             geminiPrompt.append("[Scene Element Design]\n");
@@ -253,36 +241,57 @@ public class GenerationService {
              geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt.\n");
              geminiPrompt.append("CRITICAL REQUIREMENT: To ensure visual consistency with the Start Frame, you MUST explicitly re-use the specific exact descriptions of the characters, their existing clothing/outfits, and the background/environment derived from the [Start Frame Description]. Then, apply the new action, pose, or camera angle from the [Current Frame Script].\n\n");
         } else {
-             geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt.\n");
-             geminiPrompt.append("Make sure to explicitly include the detailed descriptions of the characters from the [Main Characters Info] if they appear in the script.\n\n");
+             geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt incorporating the Character Appearance provided above.\n\n");
         }
         
         geminiPrompt.append("[Current Frame Script]\n").append(koreanScript).append("\n\n");
-        geminiPrompt.append("Output ONLY the translated, highly detailed English prompt, without any conversational text or markdown formatting. The prompt should be ready to be passed directly to an image generation model.");
+        geminiPrompt.append("Output ONLY the translated, highly detailed English prompt, without any conversational text or markdown formatting. The prompt should flow logically as a single descriptive paragraph.");
 
         return geminiAdapter.generateText(geminiPrompt.toString()).trim();
     }
 
     /**
      * 씬의 영어 이미지 생성 프롬프트를 반환합니다.
-     * 이미 영어 prompt가 있으면 사용하고, 없으면 씬 정보를 바탕으로 Gemini가 생성합니다.
+     * 이미 영어 prompt가 있으면 사용하고, 없으면 구조화된 템플릿으로 Gemini가 생성합니다.
+     * (2x2 레이아웃, 4컷 스토리보드 형태 생성 규칙 추가)
      */
     private String buildEnglishPrompt(Scene scene, ProjectState state) {
-        String characterHint = buildCharacterAppearanceHint(state);
-        String backgroundHint = buildBackgroundReferenceHint(state);
-
-        // 이미 영어 prompt가 있으면 그대로 사용
-        if (scene.getPrompt() != null && !scene.getPrompt().isBlank()) {
-            return appendPromptHints(scene.getPrompt(), characterHint, backgroundHint);
+        // 이미 영어 prompt가 명확하게 작성되어 있다면 그대로 반환
+        if (scene.getPrompt() != null && !scene.getPrompt().isBlank() && isEnglish(scene.getPrompt())) {
+            return scene.getPrompt().trim();
         }
 
-        // 씬 정보를 조합해 Gemini에게 영어 프롬프트 생성 요청
+        String characterHint = buildCharacterAppearanceHint(state);
+        String backgroundHint = buildBackgroundReferenceHint(state);
         String koreanInfo = buildKoreanSceneDescription(scene, state);
-        String geminiPrompt = "다음 씬 정보를 바탕으로 Imagen 이미지 생성에 사용할 영어 프롬프트를 작성해줘. " +
-                "프롬프트만 출력하고 다른 설명은 하지 마. 영문으로만 작성해.\n\n씬 정보:\n" + koreanInfo;
 
-        String generated = geminiAdapter.generateText(geminiPrompt).trim();
-        return appendPromptHints(generated, characterHint, backgroundHint);
+        // Gemini 프롬프트 고도화: 2x2 레이아웃 및 4컷 스토리 진행 강제
+        StringBuilder geminiPrompt = new StringBuilder();
+        geminiPrompt.append("You are an expert cinematic prompt engineer for Imagen 3.\n");
+        geminiPrompt.append("Your task is to take the following scene elements and write a highly detailed English prompt that generates a SINGLE image containing a 2x2 grid layout (4 panels) illustrating a sequential story.\n\n");
+        
+        geminiPrompt.append("CRITICAL RULES:\n");
+        geminiPrompt.append("1. Layout Requirement: You MUST explicitly start the prompt with phrases like \"A 2x2 grid layout storyboard...\" or \"A 4-panel comic style...\"\n");
+        
+        int ruleIndex = 2;
+        if (!characterHint.isBlank()) {
+            geminiPrompt.append(ruleIndex++).append(". Character Consistency: Whenever you describe the characters across the panels, you MUST seamlessly integrate these exact appearance details: [").append(characterHint).append("]. Do not invent new clothing or features.\n");
+        }
+        if (!backgroundHint.isBlank()) {
+            geminiPrompt.append(ruleIndex++).append(". Background Consistency: The environment MUST be described incorporating these exact elements: [").append(backgroundHint).append("].\n");
+        }
+        
+        geminiPrompt.append(ruleIndex++).append(". Story Progression: Briefly describe what happens in each of the 4 panels (Panel 1: Top-left, Panel 2: Top-right, Panel 3: Bottom-left, Panel 4: Bottom-right) to show a flowing narrative based on the provided [Scene Elements].\n");
+        geminiPrompt.append(ruleIndex++).append(". Visual Style: Ensure the overall description includes the required [Lighting, Composition, Mood].\n");
+        geminiPrompt.append(ruleIndex).append(". Output ONLY the English prompt string. No conversational text, no explanations, and no markdown blocks.\n\n");
+        
+        geminiPrompt.append("[Scene Elements]:\n").append(koreanInfo);
+
+        return geminiAdapter.generateText(geminiPrompt.toString()).trim();
+    }
+
+    private boolean isEnglish(String text) {
+        return text.matches("^[a-zA-Z0-9\\s\\p{Punct}]+$");
     }
 
     private String buildKoreanSceneDescription(Scene scene, ProjectState state) {
@@ -302,34 +311,7 @@ public class GenerationService {
         appendIfNotEmpty(sb, "분위기", elements.get("mood"));
         appendIfNotEmpty(sb, "스토리", elements.get("story"));
 
-        String characterHint = buildCharacterAppearanceHint(state);
-        if (!characterHint.isBlank()) {
-            sb.append("캐릭터 외형 고정: ").append(characterHint).append("\n");
-        }
-        String backgroundHint = buildBackgroundReferenceHint(state);
-        if (!backgroundHint.isBlank()) {
-            sb.append("배경 연출 고정: ").append(backgroundHint).append("\n");
-        }
-
         return sb.toString();
-    }
-
-    private String appendPromptHints(String prompt, String characterHint, String backgroundHint) {
-        if (prompt == null || prompt.isBlank()) {
-            return prompt;
-        }
-
-        StringBuilder suffix = new StringBuilder();
-        if (characterHint != null && !characterHint.isBlank()) {
-            suffix.append("Character consistency requirements: ").append(characterHint).append("\n");
-        }
-        if (backgroundHint != null && !backgroundHint.isBlank()) {
-            suffix.append("Background consistency requirements: ").append(backgroundHint).append("\n");
-        }
-        if (suffix.length() == 0) {
-            return prompt;
-        }
-        return prompt.trim() + "\n\n" + suffix.toString().trim();
     }
 
     private String buildCharacterAppearanceHint(ProjectState state) {
@@ -343,7 +325,7 @@ public class GenerationService {
                     String name = c.getName() != null && !c.getName().isBlank() ? c.getName().trim() : "캐릭터";
                     String appearance = c.getAppearance() != null ? c.getAppearance().trim() : "";
                     if (appearance.isBlank()) return null;
-                    return name + ": " + appearance;
+                    return name + " (" + appearance + ")";
                 })
                 .filter(Objects::nonNull)
                 .distinct()
@@ -527,7 +509,7 @@ public class GenerationService {
 
     private Integer resolveConsistencySeed(ProjectState state, String fallbackKey) {
         Integer sceneOneSeed = resolveSceneOneSeed(state);
-        if (sceneOneSeed != null && sceneOneSeed >= 0) {
+        if (sceneOneSeed != null && sceneOneSeed > 0) {
             return sceneOneSeed;
         }
 
@@ -541,7 +523,11 @@ public class GenerationService {
                     .orElse(null);
         }
         String seedSource = firstNonBlank(base, fallbackKey, "aivideo-consistency-seed");
-        return seedSource.hashCode() & 0x7FFFFFFF;
+        
+        // 안정적인 양수 Seed 생성 로직 (해시 충돌 방지 및 고정 형태)
+        long hash = seedSource.hashCode();
+        hash = (hash ^ (hash >>> 32)) * 0x45d9f3b;
+        return (int) (Math.abs(hash) % 9999999) + 10000;
     }
 
     private Integer resolveSceneOneSeed(ProjectState state) {
@@ -600,18 +586,23 @@ public class GenerationService {
 
         // 상태를 생성 중으로 업데이트
         target.setStatus("generating_video");
-        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
-            // 안전 필터 민감도를 낮추기 위해 과도한 자극 표현을 완화하고,
-            // [Start Frame]/[End Frame] 표기를 모션 중심 설명으로 변환한다.
+            // 카메라와 모션 워크를 명시하도록 Veo 특화 프롬프트 작성
             String koreanPrompt = buildVideoKoreanPrompt(target, state);
-            String englishPrompt = geminiAdapter.generateText(
-                "Translate this scene description to a highly detailed, cinematic English prompt for an AI video generator. " +
-                "Avoid explicit violence/sexual terms and keep wording policy-safe while preserving intent. " +
-                "Only provide the translated prompt without any conversational text:\n" + koreanPrompt
-            ) + " Cinematic, realistic motion, highly detailed.";
+            
+            String geminiVideoPrompt = "You are a master AI video prompt engineer for Veo 3.1.\n" +
+                "Convert the following scene description into a highly detailed video generation prompt.\n" +
+                "CRITICAL REQUIREMENTS:\n" +
+                "1. Start by describing the exact visual state of the [Start Frame].\n" +
+                "2. Explicitly describe the CAMERA MOVEMENT (e.g., slow zoom in, tracking shot, static wide shot).\n" +
+                "3. Explicitly describe the SUBJECT'S MOTION and temporal changes over time.\n" +
+                "4. Ensure wording is policy-safe (avoid explicit violence/sexual terms) while maintaining the cinematic tension.\n" +
+                "5. Output ONLY the English prompt string, without any conversational text.\n\n" +
+                "[Scene Description]:\n" + koreanPrompt;
+
+            String englishPrompt = geminiAdapter.generateText(geminiVideoPrompt).trim() + ", cinematic lighting, photorealistic motion, highly detailed.";
 
             List<String> referenceImageUrls = collectReferenceImageUrls(state);
             String firstFrameUrl = firstNonBlank(findFirstFrameImageUrl(target), target.getImageUrl());
@@ -628,38 +619,16 @@ public class GenerationService {
             // 생성 완료 시 상태 갱신
             target.setVideoUrl(videoUrl);
             target.setStatus("completed");
-            clearSceneError(target);
             log.info("Finished video generation for scene: {}. URL: {}", sceneId, videoUrl);
         } catch (Exception e) {
             log.error("Failed to generate video for scene: {}", sceneId, e);
             target.setStatus("error");
-            applySceneError(target, e);
             throw new RuntimeException("비디오 생성 실패: " + e.getMessage(), e);
         } finally {
             sessionService.updateSession(sessionId, state);
         }
     }
 
-    private void clearSceneError(Scene scene) {
-        if (scene == null) {
-            return;
-        }
-        scene.setLastErrorCode(null);
-        scene.setLastErrorMessage(null);
-        scene.setLastErrorRetryable(null);
-        scene.setLastErrorRequestId(null);
-    }
-
-    private void applySceneError(Scene scene, Throwable throwable) {
-        if (scene == null) {
-            return;
-        }
-        ApiErrorInfo info = ErrorClassifier.classify(throwable);
-        scene.setLastErrorCode(info.code());
-        scene.setLastErrorMessage(info.userMessage());
-        scene.setLastErrorRetryable(info.retryable());
-        scene.setLastErrorRequestId(UUID.randomUUID().toString());
-    }
     private String findFirstFrameImageUrl(Scene scene) {
         if (scene == null || scene.getFrames() == null || scene.getFrames().isEmpty()) {
             return null;
