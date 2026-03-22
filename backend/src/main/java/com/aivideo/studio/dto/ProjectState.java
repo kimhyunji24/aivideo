@@ -16,6 +16,7 @@ public class ProjectState implements Serializable {
     private String idea;
     private String logline;
     private List<String> selectedGenres;
+    private List<String> selectedStyles;
     private List<String> selectedWorldviews;
     private String planningPrompt;
     private Boolean charactersConfirmed;

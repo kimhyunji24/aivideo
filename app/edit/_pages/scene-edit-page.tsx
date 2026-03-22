@@ -23,7 +23,7 @@ type ReturnState = {
   selectedSceneIndex: number
 }
 
-const ELEMENT_FIELDS = ["주제", "동작", "배경", "비율", "색감", "조명", "구도", "날씨", "시간"]
+const ELEMENT_FIELDS = ["주제/인물", "서브 인물", "동작", "자세", "배경", "시간대", "카메라/구도", "조명/렌즈", "분위기/스타일", "서사"]
 const DEFAULT_DETAIL_VALUES = ELEMENT_FIELDS.reduce<Record<string, string>>((acc, field) => {
   acc[field] = ""
   return acc
@@ -42,15 +42,16 @@ const EMPTY_ELEMENTS = {
 }
 
 const DETAIL_TO_ELEMENT_KEY = {
-  주제: "mainCharacter",
-  동작: "action",
-  배경: "background",
-  비율: "pose",
-  색감: "mood",
-  조명: "lighting",
-  구도: "composition",
-  날씨: "subCharacter",
-  시간: "time",
+  "주제/인물":     "mainCharacter",
+  "서브 인물":     "subCharacter",
+  "동작":          "action",
+  "자세":          "pose",
+  "배경":          "background",
+  "시간대":        "time",
+  "카메라/구도":   "composition",
+  "조명/렌즈":     "lighting",
+  "분위기/스타일": "mood",
+  "서사":          "story",
 } as const
 
 function normalizeElements(input?: Partial<SceneElements> | null, description?: string): SceneElements {

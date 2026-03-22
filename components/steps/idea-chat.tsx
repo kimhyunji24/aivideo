@@ -10,9 +10,12 @@ import { generateCharacters, generateLogline, generatePlanningTags, updateSessio
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
 
-const DEFAULT_GENRES = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "귀멸의 칼날"]  
+const DEFAULT_GENRES = ["SF", "코미디", "사이버펑크", "판타지", "로맨스"] 
+const DEFAULT_STYLES = ["3D 애니메이션", "2D 극장판 애니메이션", "실사 시네마틱", "디즈니 스타일"] 
 const DEFAULT_WORLDVIEWS = ["우주", "전쟁터", "일상생활"]
-const GENRE_OPTIONS = ["SF", "코미디", "사이버펑", "픽사(Pixar) 스타일", "귀멸의 칼날", "로맨스", "스릴러"]
+
+const GENRE_OPTIONS = ["SF", "코미디", "사이버펑크", "판타지", "로맨스", "스릴러", "드라마"]
+const STYLE_OPTIONS = ["3D 애니메이션", "2D 극장판 애니메이션", "실사 시네마틱", "디즈니 스타일", "수채화풍", "픽셀 아트"]
 const WORLDVIEW_OPTIONS = ["우주", "전쟁터", "일상생활", "근미래 도시", "판타지 왕국", "학교"]
 
 interface ChatMessage {
@@ -48,10 +51,10 @@ function buildLogline(baseIdea: string, latestPrompt?: string): string {
   if (!coreIdea) return ""
 
   if (!revision || revision === coreIdea) {
-    return `${coreIdea}를 바탕으로, 주인공이 예상치 못한 위기 속에서 감정적 성장과 반전을 만들어내는 단편 서사.`
+    return `${coreIdea}를 바탕으로, 30초 이내의 숏폼 영상에 어울리는 시각적으로 강렬한 단일 장면.`
   }
 
-  return `${coreIdea}를 기반으로 하되 "${revision}" 요구사항을 반영한 간결한 단편 서사.`
+  return `${coreIdea}를 기반으로 하되 "${revision}" 요구사항을 반영하여, 30초 이내 숏폼에 적합하게 연출한 임팩트 있는 핵심 장면.`
 }
 
 export function IdeaChat({ project, setProject, initialView = "chat", onNext, sessionId }: IdeaChatProps) {
@@ -61,18 +64,21 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   const [showConfirm, setShowConfirm] = useState(false)
   const [isGeneratingLogline, setIsGeneratingLogline] = useState(false)
   const [isRefreshingTags, setIsRefreshingTags] = useState(false)
+  
   const [loglineDraft, setLoglineDraft] = useState(project.logline ?? "")
-  const [selectedGenres, setSelectedGenres] = useState<string[]>(
-    project.selectedGenres?.length ? project.selectedGenres : DEFAULT_GENRES
-  )
-  const [selectedWorldviews, setSelectedWorldviews] = useState<string[]>(
-    project.selectedWorldviews?.length ? project.selectedWorldviews : DEFAULT_WORLDVIEWS
-  )
-  const [genreOptions, setGenreOptions] = useState<string[]>(GENRE_OPTIONS)
-  const [worldviewOptions, setWorldviewOptions] = useState<string[]>(WORLDVIEW_OPTIONS)
+  const [selectedGenres, setSelectedGenres] = useState<string[]>(project.selectedGenres || DEFAULT_GENRES)
+  const [selectedStyles, setSelectedStyles] = useState<string[]>(project.selectedStyles || DEFAULT_STYLES)
+  const [selectedWorldviews, setSelectedWorldviews] = useState<string[]>(project.selectedWorldviews || DEFAULT_WORLDVIEWS)
+  const [genreOptions, setGenreOptions] = useState<string[]>(project.selectedGenres || GENRE_OPTIONS)
+  const [styleOptions, setStyleOptions] = useState<string[]>(project.selectedStyles || STYLE_OPTIONS)
+  const [worldviewOptions, setWorldviewOptions] = useState<string[]>(project.selectedWorldviews || WORLDVIEW_OPTIONS)
 
   const toggleGenre = (tag: string) => {
     setSelectedGenres((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
+  }
+
+  const toggleStyle = (tag: string) => {
+    setSelectedStyles((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
   }
 
   const toggleWorldview = (tag: string) => {
@@ -94,17 +100,22 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
 
   const applyTagSet = (
     genres: string[],
+    styles: string[],
     worldviews: string[],
     genreOpts: string[] = genres,
+    styleOpts: string[] = styles,
     worldviewOpts: string[] = worldviews
   ) => {
     const safeGenres = genres.length > 0 ? genres : DEFAULT_GENRES
+    const safeStyles = styles.length > 0 ? styles : DEFAULT_STYLES
     const safeWorldviews = worldviews.length > 0 ? worldviews : DEFAULT_WORLDVIEWS
     setSelectedGenres(safeGenres)
+    setSelectedStyles(safeStyles)
     setSelectedWorldviews(safeWorldviews)
     setGenreOptions(genreOpts.length > 0 ? genreOpts : safeGenres)
+    setStyleOptions(styleOpts.length > 0 ? styleOpts : safeStyles)
     setWorldviewOptions(worldviewOpts.length > 0 ? worldviewOpts : safeWorldviews)
-    return { safeGenres, safeWorldviews }
+    return { safeGenres, safeStyles, safeWorldviews }
   }
 
   const fetchTagsFromApi = async (loglineText: string) => {
@@ -156,10 +167,12 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
         generatedLogline = loglineState.logline?.trim() || generatedLogline
 
         const apiTags = await fetchTagsFromApi(generatedLogline)
-        const { safeGenres, safeWorldviews } = applyTagSet(
+        const { safeGenres, safeStyles, safeWorldviews } = applyTagSet(
           apiTags?.selectedGenres ?? DEFAULT_GENRES,
+          apiTags?.selectedStyles ?? DEFAULT_STYLES,
           apiTags?.selectedWorldviews ?? DEFAULT_WORLDVIEWS,
           apiTags?.genreOptions ?? [],
+          apiTags?.styleOptions ?? [],
           apiTags?.worldviewOptions ?? []
         )
 
@@ -170,6 +183,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
             ...characterState,
             scenes: characterState.scenes ?? merged.scenes ?? [],
             selectedGenres: safeGenres,
+            selectedStyles: safeStyles,
             selectedWorldviews: safeWorldviews,
           }
         } catch (err) {
@@ -179,7 +193,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
         setProject(merged)
         setLoglineDraft(generatedLogline)
       } else {
-        const { safeGenres, safeWorldviews } = applyTagSet(DEFAULT_GENRES, DEFAULT_WORLDVIEWS)
+        const { safeGenres, safeStyles, safeWorldviews } = applyTagSet(DEFAULT_GENRES, DEFAULT_STYLES, DEFAULT_WORLDVIEWS)
         setProject({
           ...project,
           idea: baseIdea,
@@ -187,6 +201,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
           loglineContext: nextContext,
           logline: generatedLogline,
           selectedGenres: safeGenres,
+          selectedStyles: safeStyles,
           selectedWorldviews: safeWorldviews,
         })
         setLoglineDraft(generatedLogline)
@@ -227,6 +242,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
       idea,
       logline: nextLogline,
       selectedGenres,
+      selectedStyles,
       selectedWorldviews,
     })
     setViewMode("summary")
@@ -238,6 +254,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
       ...project,
       logline: finalizedLogline,
       selectedGenres,
+      selectedStyles,
       selectedWorldviews,
     })
     onNext()
@@ -288,7 +305,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-2xl font-bold text-black">
                   <Triangle className="h-5 w-5 fill-black" />
-                  <span>장르 & 스타일</span>
+                  <span>기획 태그</span>
                 </div>
                 <button
                   type="button"
@@ -300,8 +317,10 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
                       const apiTags = await fetchTagsFromApi(currentLogline)
                       applyTagSet(
                         apiTags?.selectedGenres ?? DEFAULT_GENRES,
+                        apiTags?.selectedStyles ?? DEFAULT_STYLES,
                         apiTags?.selectedWorldviews ?? DEFAULT_WORLDVIEWS,
                         apiTags?.genreOptions ?? [],
+                        apiTags?.styleOptions ?? [],
                         apiTags?.worldviewOptions ?? []
                       )
                     } finally {
@@ -316,43 +335,69 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-start">
-                <div className="flex flex-wrap gap-2">
-                  <p className="w-full text-xs font-semibold text-gray-600">장르 & 스타일</p>
-                  {genreOptions.map((genre) => (
-                    <button
-                      type="button"
-                      key={genre}
-                      onClick={() => toggleGenre(genre)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                        selectedGenres.includes(genre)
-                          ? "border-black bg-black text-white"
-                          : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
-                      }`}
-                    >
-                      {genre}
-                    </button>
-                  ))}
+              <div className="flex flex-wrap items-stretch justify-between gap-y-4">
+                <div className="flex w-full flex-col gap-2 sm:w-[30%]">
+                  <p className="text-xs font-semibold text-gray-600">스토리 장르</p>
+                  <div className="flex flex-wrap gap-2">
+                    {genreOptions.map((genre) => (
+                      <button
+                        type="button"
+                        key={genre}
+                        onClick={() => toggleGenre(genre)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          selectedGenres.includes(genre)
+                            ? "border-black bg-black text-white"
+                            : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
+                        }`}
+                      >
+                        {genre}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="hidden h-full w-px bg-[#CFCFCF] sm:block" />
+                <div className="hidden h-auto w-px bg-[#CFCFCF] sm:block" />
 
-                <div className="flex flex-wrap gap-2">
-                  <p className="w-full text-xs font-semibold text-gray-600">세계관 & 배경</p>
-                  {worldviewOptions.map((worldview) => (
-                    <button
-                      type="button"
-                      key={worldview}
-                      onClick={() => toggleWorldview(worldview)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                        selectedWorldviews.includes(worldview)
-                          ? "border-black bg-black text-white"
-                          : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
-                      }`}
-                    >
-                      {worldview}
-                    </button>
-                  ))}
+                <div className="flex w-full flex-col gap-2 sm:w-[30%]">
+                  <p className="text-xs font-semibold text-gray-600">시각적 스타일</p>
+                  <div className="flex flex-wrap gap-2">
+                    {styleOptions.map((style) => (
+                      <button
+                        type="button"
+                        key={style}
+                        onClick={() => toggleStyle(style)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          selectedStyles.includes(style)
+                            ? "border-black bg-black text-white"
+                            : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
+                        }`}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="hidden h-auto w-px bg-[#CFCFCF] sm:block" />
+
+                <div className="flex w-full flex-col gap-2 sm:w-[30%]">
+                  <p className="text-xs font-semibold text-gray-600">세계관 & 배경</p>
+                  <div className="flex flex-wrap gap-2">
+                    {worldviewOptions.map((worldview) => (
+                      <button
+                        type="button"
+                        key={worldview}
+                        onClick={() => toggleWorldview(worldview)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          selectedWorldviews.includes(worldview)
+                            ? "border-black bg-black text-white"
+                            : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
+                        }`}
+                      >
+                        {worldview}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -374,10 +419,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col px-4 sm:px-0 min-h-0 flex-1" style={{ minHeight: "min(640px, calc(100vh - 180px))" }}>
       <div className="text-center mb-5 sm:mb-6 flex-shrink-0">
-        <div className="inline-flex items-center gap-2 bg-gray-100 border border-gray-200 rounded-full px-4 py-2 mb-3">
-          <PenTool className="h-4 w-4 text-black" />
-          <span className="text-sm font-semibold text-black">사이트명</span>
-        </div>
+        <div className="h-12 sm:h-16"></div>
         <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-black animate-fade-up">어떤 이야기를 만들고 싶으신가요?</h2>
         <p className="text-xl text-gray-500 mt-3 animate-fade-up stagger-1">아이디어를 이야기해 주시면 로그라인·캐릭터·플롯으로 발전시켜 드립니다</p>
       </div>

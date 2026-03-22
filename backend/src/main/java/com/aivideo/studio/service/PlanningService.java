@@ -22,9 +22,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class PlanningService {
 
-    private static final List<String> DEFAULT_GENRES = List.of("SF", "코미디", "드라마");
-    private static final List<String> DEFAULT_WORLDVIEWS = List.of("우주", "근미래 도시", "일상생활");
-
+    private static final List<String> DEFAULT_GENRES = List.of("SF", "코미디", "판타지", "로맨스", "스릴러", "드라마");
+    private static final List<String> DEFAULT_STYLES = List.of("3D 애니메이션", "2D 극장판 애니메이션", "실사 시네마틱", "수채화풍", "픽셀 아트", "디즈니 스타일");
+    private static final List<String> DEFAULT_WORLDVIEWS = List.of("우주", "전쟁터", "일상생활", "중세 판타지", "사이버펑크 도시");
     private final SessionService sessionService;
     private final GeminiAdapter geminiAdapter;
     private final ObjectMapper objectMapper;
@@ -60,16 +60,16 @@ public class PlanningService {
             "다음 로그라인과 장르, 세계관을 바탕으로 이 스토리에 등장해야 할 '핵심 인물'들을 생성해줘.\n" +
             "무조건 2명을 생성하지 마. 로그라인에 명시된 주요 인물이 1명이면 1명, 3명이면 3명 등 사건 전개에 꼭 필요한 인물 수만큼만 배열에 담아줘.\n" +
             "로그라인: %s\n장르: %s\n세계관: %s\n\n" +
-            "중요: 반드시 아래의 JSON 배열 규격을 정확히 지켜야 해. 각 항목의 값은 따옴표가 닫히기 전에 절대 큰따옴표(\")를 사용하지 마.\n\n" +
+            "중요: 반드시 아래의 JSON 배열 규격을 정확히 지켜야 해. 각 항목의 값은 따옴표가 닫히기 전에 절대 내부에서 큰따옴표(\")를 사용하지 마.\n\n" +
             "[\n" +
             "  {\n" +
             "    \"id\": \"char-고유값\",\n" +
             "    \"name\": \"캐릭터의 자연스러운 이름 (로그라인에 이름이 있다면 그대로 사용)\",\n" +
             "    \"gender\": \"male 또는 female\",\n" +
-            "    \"appearance\": \"외형 묘사 (180~250자, 형식: 헤어: ...; 얼굴/인상: ...; 체형/비율: ...; 의상/소품: ...; 색상/무드: ...)\",\n" +
-            "    \"personality\": \"성격 묘사 (100자 이내)\",\n" +
+            "    \"appearance\": \"캐릭터의 외형 묘사를 150자 이상으로 매우 상세하고 자연스러운 문장 형태로 작성해 (머리스타일, 의상, 특징 등을 풀어서 설명, 절대 말줄임표나 '헤어:' 와 같은 단답식 개조식 형태 금지)\",\n" +
+            "    \"personality\": \"성격 및 태도 묘사 (100자 가량의 줄글)\",\n" +
             "    \"values\": \"가치관 (100자 이내)\",\n" +
-            "    \"trauma\": \"캐릭터 특징 및 관계성 (100자 이내)\"\n" +
+            "    \"trauma\": \"캐릭터 특징 및 배경 (100자 이내)\"\n" +
             "  }\n" +
             "]",
             state.getLogline() != null ? state.getLogline() : "없음",
@@ -191,35 +191,6 @@ public class PlanningService {
         }
     }
 
-    public ProjectState updateCharacterAppearanceFromImage(String sessionId, String charId, String imageDataUrl) {
-        ProjectState state = sessionService.getSession(sessionId);
-        if (state == null) throw new SessionNotFoundException(sessionId);
-
-        List<Character> characters = state.getCharacters();
-        if (characters == null || characters.isEmpty()) {
-            throw new IllegalArgumentException("No characters exist to update.");
-        }
-
-        Character target = characters.stream()
-                .filter(c -> c != null && charId.equals(c.getId()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("캐릭터를 찾을 수 없습니다: " + charId));
-
-        String analyzedAppearance = geminiAdapter.generateCharacterAppearanceFromImage(
-                imageDataUrl,
-                target.getName()
-        );
-
-        if (analyzedAppearance == null || analyzedAppearance.isBlank()) {
-            throw new IllegalArgumentException("이미지 분석 결과가 비어 있습니다.");
-        }
-
-        target.setImageUrl(imageDataUrl);
-        target.setAppearance(analyzedAppearance.trim());
-        state.setCharacters(characters);
-        sessionService.updateSession(sessionId, state);
-        return state;
-    }
 
     public ProjectState updateBackgroundReferenceFromImage(String sessionId, String imageDataUrl) {
         ProjectState state = sessionService.getSession(sessionId);
@@ -261,20 +232,21 @@ public class PlanningService {
             "      \"label\": \"발단\",\n" +
             "      \"content\": \"[Start Frame] 주인공이 방에 들어온다. [End Frame] 주인공이 의자에 앉아 편지를 읽는다. (총 150자 이내)\",\n" +
             "      \"elements\": {\n" +
-            "        \"mainCharacter\": \"메인 인물\",\n" +
-            "        \"subCharacter\": \"서브 인물\",\n" +
-            "        \"action\": \"핵심 행동\",\n" +
-            "        \"pose\": \"자세\",\n" +
-            "        \"background\": \"배경\",\n" +
-            "        \"time\": \"시간대\",\n" +
-            "        \"composition\": \"구도\",\n" +
-            "        \"lighting\": \"조명\",\n" +
-            "        \"mood\": \"분위기\",\n" +
-            "        \"story\": \"해당 단계 핵심 서사\"\n" +
+            "        \"mainCharacter\": \"메인 인물 (외형, 인상 포함)\",\n" +
+            "        \"subCharacter\": \"서브 인물 (또는 사물, 동물 등)\",\n" +
+            "        \"action\": \"핵심 행동 (걷기, 달리기, 머리 돌리기 등 구체적 동작)\",\n" +
+            "        \"pose\": \"자세 및 특정 포즈\",\n" +
+            "        \"background\": \"배경 (도시 경관, 자연 등 상세 장소)\",\n" +
+            "        \"time\": \"시간대 (새벽, 야간, 골든 아워 등)\",\n" +
+            "        \"composition\": \"구도 및 카메라 (와이드 샷, 클로즈업, 돌리 샷, 로우 앵글 등)\",\n" +
+            "        \"lighting\": \"조명 및 렌즈 효과 (부드러운 조명, 매크로 렌즈, 얕은 포커스 등)\",\n" +
+            "        \"mood\": \"분위기 및 스타일 (시네마틱, 애니메이션 스타일, 따뜻한 색조 등)\",\n" +
+            "        \"story\": \"해당 단계의 핵심 서사와 시각적 묘사 요약\"\n" +
             "      }\n" +
             "    }\n" +
             "  ]\n" +
             "}\n" +
+            "팁: '피사체(주제), 동작, 스타일, 카메라 모션, 구도, 포커스, 분위기'를 빠짐없이 묘사할수록 좋아. 인물의 경우 'Portrait' 키워드를 연상시키는 얼굴 세부 정보를 기록해줘.\n" +
             "반드시 위 형태의 유효한 JSON 객체만 반환해.",
             stageCount,
             state.getLogline() != null ? state.getLogline() : "없음",
@@ -306,18 +278,20 @@ public class PlanningService {
         }
 
         String prompt =
-                "다음 로그라인과 가장 관련있는 장르/스타일과 세계관/배경 태그를 추천해줘.\n" +
+                "다음 로그라인과 가장 관련있는 스토리 장르(Genre), 시각적 영상 렌더링 스타일(Style), 세계관 및 배경(Worldview) 태그를 추천해줘.\n" +
                 "반드시 JSON 객체만 반환하고, 설명 문장은 절대 출력하지 마.\n\n" +
                 "규칙:\n" +
-                "1) selectedGenres, selectedWorldviews는 각각 정확히 3개\n" +
-                "2) genreOptions, worldviewOptions는 각각 4~7개\n" +
-                "3) selected 항목은 반드시 options 안에 포함\n" +
+                "1) selectedGenres, selectedStyles, selectedWorldviews는 각각 정확히 3개\n" +
+                "2) genreOptions, styleOptions, worldviewOptions는 각각 5~8개\n" +
+                "3) selected 항목은 반드시 options 안에 포함되어야 함\n" +
                 "4) 태그는 짧은 한국어 표현으로\n\n" +
                 "반환 JSON 포맷:\n" +
                 "{\n" +
-                "  \"genreOptions\": [\"SF\", \"스릴러\", \"드라마\", \"...\"],\n" +
-                "  \"worldviewOptions\": [\"우주\", \"근미래 도시\", \"...\"],\n" +
+                "  \"genreOptions\": [\"SF\", \"스릴러\", \"코미디\", \"드라마\", \"판타지\"],\n" +
+                "  \"styleOptions\": [\"디즈니 스타일\", \"3D 애니메이션\", \"실사 시네마틱\", \"수채화풍\"],\n" +
+                "  \"worldviewOptions\": [\"우주\", \"근미래 도시\", \"일상생활\"],\n" +
                 "  \"selectedGenres\": [\"SF\", \"스릴러\", \"드라마\"],\n" +
+                "  \"selectedStyles\": [\"디즈니 스타일\", \"3D 애니메이션\", \"실사 시네마틱\"],\n" +
                 "  \"selectedWorldviews\": [\"우주\", \"근미래 도시\", \"일상생활\"]\n" +
                 "}\n\n" +
                 "로그라인: " + effectiveLogline;
@@ -333,18 +307,24 @@ public class PlanningService {
         }
 
         List<String> genreOptions = normalizeList(parsed.getGenreOptions(), DEFAULT_GENRES, 4, 7);
+        List<String> styleOptions = normalizeList(parsed.getStyleOptions(), DEFAULT_STYLES, 4, 7);
         List<String> worldviewOptions = normalizeList(parsed.getWorldviewOptions(), DEFAULT_WORLDVIEWS, 4, 7);
+        
         List<String> selectedGenres = normalizeSelected(parsed.getSelectedGenres(), genreOptions, 3);
+        List<String> selectedStyles = normalizeSelected(parsed.getSelectedStyles(), styleOptions, 3);
         List<String> selectedWorldviews = normalizeSelected(parsed.getSelectedWorldviews(), worldviewOptions, 3);
 
         state.setSelectedGenres(selectedGenres);
+        state.setSelectedStyles(selectedStyles);
         state.setSelectedWorldviews(selectedWorldviews);
         sessionService.updateSession(sessionId, state);
 
         return PlanningTagsResponse.builder()
                 .genreOptions(genreOptions)
+                .styleOptions(styleOptions)
                 .worldviewOptions(worldviewOptions)
                 .selectedGenres(selectedGenres)
+                .selectedStyles(selectedStyles)
                 .selectedWorldviews(selectedWorldviews)
                 .build();
     }
@@ -361,15 +341,23 @@ public class PlanningService {
     }
 
     private String buildLoglinePrompt(String baseIdea, String incomingIdea, boolean hasOriginalIdea) {
+        String formatInstruction = "출력 시 반드시 쌍따옴표 없이 영문 로그라인과 한글 번역본을 모두 포함해서 아래 형식으로 답변해줘.\n\n" +
+                                   "형식:\n" +
+                                   "[English]\n(영문 로그라인 작성)\n\n[Korean]\n(한글 번역본 작성)\n\n" +
+                                   "불필요한 인사말이나 추가 설명 없이 위의 형식만 정확히 지켜서 출력해.\n";
+
         if (!hasOriginalIdea) {
-            return "다음 사용자의 아이디어를 바탕으로, 주인공이 무언가를 겪는 1~2줄짜리 흥미로운 단편 영화 로그라인을 작성해줘. " +
-                    "추가적인 말이나 설명 없이 로그라인 한 문장만 출력해줘.\n" +
+            return "다음 사용자의 아이디어를 바탕으로, 최종적으로 약 30초 분량(4~6개 컷씬)의 AI 비디오로 제작될 스토리의 로그라인을 작성해줘. " +
+                    "시선을 끄는 훅(Hook), 몰입감 있는 갈등 전개(Body), 카타르시스가 있는 결말(Outro)의 명확한 기승전결이 포함된 2~3문장의 시각적이고 풍부한 로그라인이어야 해. " +
+                    formatInstruction +
                     "최초 아이디어: " + baseIdea;
         }
 
         return "아래의 최초 아이디어를 절대적인 기준으로 유지하고, 사용자의 최신 수정 요청을 반영해 로그라인을 다시 작성해줘. " +
+                "이 스토리는 최종적으로 약 30초 분량(4~6개 컷씬)의 AI 비디오로 제작될 예정이므로, " +
+                "시선을 끄는 훅(Hook), 몰입감 있는 갈등 전개(Body), 카타르시스가 있는 결말(Outro)의 명확한 기승전결이 포함된 2~3문장의 시각적이고 풍부한 로그라인으로 발전시켜줘. " +
                 "핵심 사건/주제는 최초 아이디어에서 벗어나지 마.\n" +
-                "출력은 추가 설명 없이 로그라인 한 문장만.\n" +
+                formatInstruction +
                 "최초 아이디어: " + baseIdea + "\n" +
                 "최신 수정 요청: " + incomingIdea;
     }

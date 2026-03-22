@@ -25,11 +25,11 @@ interface StoryboardProps {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DETAIL_ROWS: { left: { key: keyof SceneElements; label: string }; right: { key: keyof SceneElements; label: string } }[] = [
-  { left: { key: "mainCharacter", label: "주제" },  right: { key: "quality",       label: "품질" } },
-  { left: { key: "action",       label: "동작" },  right: { key: "lighting",     label: "조명" } },
-  { left: { key: "background",   label: "배경" },  right: { key: "pose",         label: "영글" } },
-  { left: { key: "composition",  label: "렌즈" },  right: { key: "subCharacter", label: "날짜" } },
-  { left: { key: "mood",         label: "색감" },  right: { key: "time",         label: "시간" } },
+  { left: { key: "mainCharacter", label: "주제/인물" },  right: { key: "subCharacter",  label: "서브 인물" } },
+  { left: { key: "action",        label: "동작" },        right: { key: "pose",          label: "자세" } },
+  { left: { key: "background",    label: "배경" },        right: { key: "time",          label: "시간대" } },
+  { left: { key: "composition",   label: "카메라/구도" },  right: { key: "lighting",      label: "조명/렌즈" } },
+  { left: { key: "mood",          label: "분위기/스타일" }, right: { key: "story",         label: "서사" } },
 ]
 
 // ── Helper ────────────────────────────────────────────────────────────────────

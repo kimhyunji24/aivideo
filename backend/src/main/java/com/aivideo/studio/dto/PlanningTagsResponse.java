@@ -13,8 +13,10 @@ import java.util.List;
 @AllArgsConstructor
 public class PlanningTagsResponse {
     private List<String> genreOptions;
+    private List<String> styleOptions;
     private List<String> worldviewOptions;
     private List<String> selectedGenres;
+    private List<String> selectedStyles;
     private List<String> selectedWorldviews;
 }
 

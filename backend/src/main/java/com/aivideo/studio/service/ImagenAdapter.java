@@ -137,19 +137,24 @@ public class ImagenAdapter {
         String accessToken = credentials.getAccessToken().getTokenValue();
 
         String instanceJson = buildInstanceJson(prompt, referenceImages);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> instance = objectMapper.readValue(instanceJson, Map.class);
+        Map<String, Object> instance = new LinkedHashMap<>(objectMapper.readValue(instanceJson, Map.class));
+        if (referenceImages != null && !referenceImages.isEmpty()) {
+            // Google Imagen 3 requires 'referenceImages' (or 'referenceImage' in older versions) at the instance level.
+            instance.put("referenceImages", referenceImages);
+        }
 
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("instances", List.of(instance));
         Map<String, Object> parameters = new LinkedHashMap<>();
         // capability-001은 파라미터 허용 범위가 좁아 최소 파라미터만 전달
         parameters.put("sampleCount", 1);
-        parameters.put("addWatermark", false);
-        if (seed == null || seed < 0) {
-            throw new IllegalArgumentException("seed는 필수이며 0 이상의 정수여야 합니다.");
-        }
-        parameters.put("seed", seed);
+        // addWatermark: false 는 특정 권한(Allowlisting)이 없으면 400 오류를 유발하므로 제거하고 기본값(true) 사용
+        // parameters.put("addWatermark", false);
+        parameters.put("personGeneration", "ALLOW_ADULT"); // 인물 생성 차단 우회 보호장치
+        
+        // 워터마크가 활성화된 상태(addWatermark 옵션 사용 불가 시 기본값 true)에서는
+        // Google Imagen 3 API가 seed 파라미터를 지원하지 않아 400 에러를 뱉습니다. 
+        // 따라서 seed 파라미터 전달을 생략하고 레퍼런스 이미지(Reference Subject)만으로 일관성을 유지합니다.
         requestBody.put("parameters", parameters);
 
         String url = String.format(
@@ -179,6 +184,9 @@ public class ImagenAdapter {
         var root = objectMapper.readTree(response);
         var predictions = root.path("predictions");
         if (!predictions.isArray() || predictions.isEmpty()) {
+            if ("{}".equals(response.trim())) {
+                throw new RuntimeException("구글 안전 필터 차단: 프롬프트 또는 업로드한 사진(저작권, 실존 인물 등)이 모델 정책에 의해 차단되어 빈 응답({})이 반환되었습니다. 다른 사진이나 내용으로 시도해주세요.");
+            }
             throw new RuntimeException("Imagen3 REST 응답에 predictions가 없습니다: " + response);
         }
         String base64Image = predictions.get(0).path("bytesBase64Encoded").asText("");
@@ -218,15 +226,18 @@ public class ImagenAdapter {
             }
 
             Map<String, Object> ref = new LinkedHashMap<>();
-            ref.put("referenceType", "REFERENCE_TYPE_SUBJECT");
+            ref.put("referenceType", "SUBJECT"); // Shortened from REFERENCE_TYPE_SUBJECT
             ref.put("referenceId", idx++);
-            ref.put("referenceImage", Map.of("bytesBase64Encoded", parsed.base64Data));
+            
+            // 이미지 데이터 필드명 'image'로 변경 (기존 'referenceImage'는 이전 버전 규격)
+            ref.put("image", Map.of("bytesBase64Encoded", parsed.base64Data));
+            
             ref.put("subjectImageConfig", Map.of(
-                    "subjectType", "SUBJECT_TYPE_DEFAULT",
-                    "subjectDescription", "reference subject"
+                    "subjectType", "DEFAULT", // Shortened from SUBJECT_TYPE_DEFAULT
+                    "subjectDescription", "character identity: " + shorten(url) // 캐릭터 이미지를 식별할 수 있는 힌트
             ));
             refs.add(ref);
-            if (refs.size() >= 2) break;
+            if (refs.size() >= 4) break; // 업로드된 다수의 캐릭터(최대 4개) 지원
         }
         return refs;
     }
