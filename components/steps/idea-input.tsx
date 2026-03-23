@@ -92,7 +92,7 @@ export function IdeaInput({ project, setProject, onNext }: IdeaInputProps) {
                 {isGenerating ? (
                   <>
                     <Sparkles className="h-4 w-4 mr-2 animate-pulse" />
-                    플롯 생성 중...
+                    플롯 생성 중
                   </>
                 ) : (
                   <>

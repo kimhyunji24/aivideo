@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import type { ProjectState } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool } from "lucide-react"
+import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool, Loader2 } from "lucide-react"
 import { generateCharacters, generateLogline, generatePlanningTags, updateSession } from "@/lib/api"
 
 const AI_GREETING =
@@ -31,7 +31,7 @@ interface IdeaChatProps {
   sessionId?: string | null
 }
 
-const LOGLINE_LOADING_MESSAGE = "로그라인 생성중..."
+const LOGLINE_LOADING_MESSAGE = "로그라인 생성중"
 
 function appendLoglineContext(existing: string | undefined, next: string): string {
   const incoming = next.trim()
@@ -440,7 +440,14 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
                     : "bg-black text-white shadow-lg"
                 }`}
               >
-                {msg.content}
+                {msg.role === "ai" && msg.content === LOGLINE_LOADING_MESSAGE ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                    {msg.content}
+                  </span>
+                ) : (
+                  msg.content
+                )}
               </div>
             </div>
           ))}

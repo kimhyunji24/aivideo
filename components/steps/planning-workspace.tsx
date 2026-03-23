@@ -28,6 +28,7 @@ import {
   X,
   RefreshCcw,
   User,
+  Loader2,
 } from "lucide-react"
 import {
   Dialog,
@@ -433,7 +434,10 @@ function PlotSection({
             style={{ backgroundColor: COLORS.primary }}
           >
             {isGenerating ? (
-              <>생성 중...</>
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                생성 중...
+              </>
             ) : (
               <>
                 <Wand2 className="h-4 w-4" />
@@ -462,11 +466,16 @@ function PlotSection({
       </div>
 
       <div className="rounded-2xl border border-[#E0E0E0] bg-[#F5F5F5] px-4 py-3 flex items-center justify-between">
-        <Input
+        <Textarea
           value={userPrompt}
-          onChange={(e) => onUserPromptChange(e.target.value)}
+          onChange={(e) => {
+            onUserPromptChange(e.target.value)
+            e.target.style.height = 'auto'
+            e.target.style.height = `${e.target.scrollHeight}px`
+          }}
           placeholder="추가 요구사항 작성 창"
-          className="border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 w-full"
+          className="border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 w-full resize-none overflow-hidden min-h-[40px] max-h-[200px] py-2"
+          rows={1}
         />
         <button type="button" className="text-gray-500 hover:text-gray-800 ml-2">
            <RefreshCcw className="w-4 h-4" />
@@ -1136,7 +1145,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-lg border-[#E0E0E0] text-gray-800"
+                  className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0]"
                   onClick={() => backgroundRefInputRef.current?.click()}
                   disabled={analyzingBackgroundRef}
                 >
