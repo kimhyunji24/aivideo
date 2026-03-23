@@ -144,7 +144,6 @@ public class GeminiAdapter {
         if (prompt == null || prompt.isBlank()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
-
         try {
             if (isVertexConfigured()) {
                 return sendVertexRequest(prompt, mimeType);
@@ -176,11 +175,11 @@ public class GeminiAdapter {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(buildRequestBody(prompt, mimeType))
                 .retrieve()
-                .onStatus(status -> status.isError(), clientResponse -> {
-                    return clientResponse.bodyToMono(String.class)
-                            .doOnNext(body -> log.error("Vertex AI Gemini error body: {}", body))
-                            .map(body -> new UpstreamServiceException("Vertex AI Gemini error " + clientResponse.statusCode() + ": " + body));
-                })
+                .onStatus(status -> status.isError(), clientResponse ->
+                        clientResponse.bodyToMono(String.class)
+                                .doOnNext(body -> log.error("Vertex AI Gemini error body: {}", body))
+                                .map(body -> new UpstreamServiceException("Vertex AI Gemini error " + clientResponse.statusCode() + ": " + body))
+                )
                 .bodyToMono(String.class)
                 .block();
 
@@ -195,11 +194,11 @@ public class GeminiAdapter {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(buildRequestBody(prompt, mimeType))
                 .retrieve()
-                .onStatus(status -> status.isError(), clientResponse -> {
-                    return clientResponse.bodyToMono(String.class)
-                            .doOnNext(body -> log.error("Gemini API key mode error body: {}", body))
-                            .map(body -> new UpstreamServiceException("Gemini API key mode error " + clientResponse.statusCode() + ": " + body));
-                })
+                .onStatus(status -> status.isError(), clientResponse ->
+                        clientResponse.bodyToMono(String.class)
+                                .doOnNext(body -> log.error("Gemini API key mode error body: {}", body))
+                                .map(body -> new UpstreamServiceException("Gemini API key mode error " + clientResponse.statusCode() + ": " + body))
+                )
                 .bodyToMono(String.class)
                 .block();
 
