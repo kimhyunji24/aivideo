@@ -1,4 +1,4 @@
-import { PlanningTagsResponse, ProjectState } from "./types"
+import { ProjectState } from "./types"
 
 const API_BASE = "http://localhost:8080/api/v1/sessions"
 
@@ -67,23 +67,6 @@ export async function regenerateCharacter(sessionId: string, charId: string): Pr
     return res.json()
 }
 
-export async function analyzeCharacterImage(
-    sessionId: string,
-    charId: string,
-    imageDataUrl: string
-): Promise<ProjectState> {
-    const res = await fetch(`${API_BASE}/${sessionId}/planning/characters/${charId}/analyze-image`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageDataUrl }),
-    })
-    if (!res.ok) {
-        const errBody = await res.text().catch(() => "")
-        throw new Error("Failed to analyze character image: " + res.status + " " + errBody)
-    }
-    return res.json()
-}
-
 export async function analyzeBackgroundReferenceImage(
     sessionId: string,
     imageDataUrl: string
@@ -113,15 +96,3 @@ export async function generatePlot(sessionId: string, stageCount: number, userPr
     return res.json()
 }
 
-export async function generatePlanningTags(sessionId: string, logline?: string): Promise<PlanningTagsResponse> {
-    const res = await fetch(`${API_BASE}/${sessionId}/planning/tags`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logline: logline || "" }),
-    })
-    if (!res.ok) {
-        const errBody = await res.text().catch(()=>"");
-        throw new Error("Failed to generate planning tags: " + res.status + " " + errBody);
-    }
-    return res.json()
-}

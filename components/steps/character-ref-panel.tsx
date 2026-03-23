@@ -317,7 +317,9 @@ export function CharacterRefPanel({ project, setProject, sessionId }: CharacterR
                             ) : (
                               <div className="flex flex-col items-center gap-1">
                                 <Plus className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
-                                <span className="text-[10px] text-gray-400 group-hover:text-gray-600">베이스 생성</span>
+                                <span className="text-[10px] text-gray-400 group-hover:text-gray-600">
+                                  {char.imageUrl?.startsWith("data:") ? "📷 사진 참조로 생성" : "베이스 생성"}
+                                </span>
                               </div>
                             )}
                           </button>
@@ -342,7 +344,7 @@ export function CharacterRefPanel({ project, setProject, sessionId }: CharacterR
                             ? <Loader2 className="w-3 h-3 animate-spin" />
                             : <Sparkles className="w-3 h-3" />
                           }
-                          베이스 재생성
+                          {char.imageUrl?.startsWith("data:") ? "📷 사진 참조로 재생성" : "베이스 재생성"}
                         </Button>
                       )}
 

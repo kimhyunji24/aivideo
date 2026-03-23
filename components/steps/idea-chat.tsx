@@ -4,19 +4,11 @@ import { useEffect, useMemo, useState } from "react"
 import type { ProjectState } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, ArrowRight, Lightbulb, FileText, RefreshCw, Triangle, PenTool } from "lucide-react"
-import { generateCharacters, generateLogline, generatePlanningTags, updateSession } from "@/lib/api"
+import { Send, ArrowRight, Lightbulb, FileText, PenTool } from "lucide-react"
+import { generateCharacters, generateLogline, updateSession } from "@/lib/api"
 
 const AI_GREETING =
   "안녕하세요! 저는 AI 기획 어시스턴트입니다. 어떤 이야기를 만들고 싶으신가요? 장르, 주인공, 배경, 분위기 등 떠오르는 것들을 자유롭게 말씀해 주세요."
-
-const DEFAULT_GENRES = ["SF", "코미디", "사이버펑크", "판타지", "로맨스"] 
-const DEFAULT_STYLES = ["3D 애니메이션", "2D 극장판 애니메이션", "실사 시네마틱", "디즈니 스타일"] 
-const DEFAULT_WORLDVIEWS = ["우주", "전쟁터", "일상생활"]
-
-const GENRE_OPTIONS = ["SF", "코미디", "사이버펑크", "판타지", "로맨스", "스릴러", "드라마"]
-const STYLE_OPTIONS = ["3D 애니메이션", "2D 극장판 애니메이션", "실사 시네마틱", "디즈니 스타일", "수채화풍", "픽셀 아트"]
-const WORLDVIEW_OPTIONS = ["우주", "전쟁터", "일상생활", "근미래 도시", "판타지 왕국", "학교"]
 
 interface ChatMessage {
   role: "ai" | "user"
@@ -63,27 +55,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
   const [input, setInput] = useState(project.idea ?? "")
   const [showConfirm, setShowConfirm] = useState(false)
   const [isGeneratingLogline, setIsGeneratingLogline] = useState(false)
-  const [isRefreshingTags, setIsRefreshingTags] = useState(false)
-  
   const [loglineDraft, setLoglineDraft] = useState(project.logline ?? "")
-  const [selectedGenres, setSelectedGenres] = useState<string[]>(project.selectedGenres || DEFAULT_GENRES)
-  const [selectedStyles, setSelectedStyles] = useState<string[]>(project.selectedStyles || DEFAULT_STYLES)
-  const [selectedWorldviews, setSelectedWorldviews] = useState<string[]>(project.selectedWorldviews || DEFAULT_WORLDVIEWS)
-  const [genreOptions, setGenreOptions] = useState<string[]>(project.selectedGenres || GENRE_OPTIONS)
-  const [styleOptions, setStyleOptions] = useState<string[]>(project.selectedStyles || STYLE_OPTIONS)
-  const [worldviewOptions, setWorldviewOptions] = useState<string[]>(project.selectedWorldviews || WORLDVIEW_OPTIONS)
-
-  const toggleGenre = (tag: string) => {
-    setSelectedGenres((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
-  }
-
-  const toggleStyle = (tag: string) => {
-    setSelectedStyles((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
-  }
-
-  const toggleWorldview = (tag: string) => {
-    setSelectedWorldviews((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
-  }
 
   const latestUserIdea = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -97,36 +69,6 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
     if (project.logline?.trim()) return project.logline
     return buildLogline(project.idea ?? latestUserIdea ?? input, project.planningPrompt ?? latestUserIdea ?? input)
   }, [loglineDraft, project.logline, project.idea, project.planningPrompt, latestUserIdea, input])
-
-  const applyTagSet = (
-    genres: string[],
-    styles: string[],
-    worldviews: string[],
-    genreOpts: string[] = genres,
-    styleOpts: string[] = styles,
-    worldviewOpts: string[] = worldviews
-  ) => {
-    const safeGenres = genres.length > 0 ? genres : DEFAULT_GENRES
-    const safeStyles = styles.length > 0 ? styles : DEFAULT_STYLES
-    const safeWorldviews = worldviews.length > 0 ? worldviews : DEFAULT_WORLDVIEWS
-    setSelectedGenres(safeGenres)
-    setSelectedStyles(safeStyles)
-    setSelectedWorldviews(safeWorldviews)
-    setGenreOptions(genreOpts.length > 0 ? genreOpts : safeGenres)
-    setStyleOptions(styleOpts.length > 0 ? styleOpts : safeStyles)
-    setWorldviewOptions(worldviewOpts.length > 0 ? worldviewOpts : safeWorldviews)
-    return { safeGenres, safeStyles, safeWorldviews }
-  }
-
-  const fetchTagsFromApi = async (loglineText: string) => {
-    if (!sessionId || !loglineText.trim()) return null
-    try {
-      return await generatePlanningTags(sessionId, loglineText)
-    } catch (err) {
-      console.error("Failed to generate tags via API:", err)
-      return null
-    }
-  }
 
   const handleSend = async (idea?: string) => {
     if (isGeneratingLogline) return
@@ -166,25 +108,12 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
         }
         generatedLogline = loglineState.logline?.trim() || generatedLogline
 
-        const apiTags = await fetchTagsFromApi(generatedLogline)
-        const { safeGenres, safeStyles, safeWorldviews } = applyTagSet(
-          apiTags?.selectedGenres ?? DEFAULT_GENRES,
-          apiTags?.selectedStyles ?? DEFAULT_STYLES,
-          apiTags?.selectedWorldviews ?? DEFAULT_WORLDVIEWS,
-          apiTags?.genreOptions ?? [],
-          apiTags?.styleOptions ?? [],
-          apiTags?.worldviewOptions ?? []
-        )
-
         try {
           const characterState = await generateCharacters(sessionId)
           merged = {
             ...merged,
             ...characterState,
             scenes: characterState.scenes ?? merged.scenes ?? [],
-            selectedGenres: safeGenres,
-            selectedStyles: safeStyles,
-            selectedWorldviews: safeWorldviews,
           }
         } catch (err) {
           console.error("Failed to generate characters via API:", err)
@@ -193,16 +122,12 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
         setProject(merged)
         setLoglineDraft(generatedLogline)
       } else {
-        const { safeGenres, safeStyles, safeWorldviews } = applyTagSet(DEFAULT_GENRES, DEFAULT_STYLES, DEFAULT_WORLDVIEWS)
         setProject({
           ...project,
           idea: baseIdea,
           planningPrompt: text,
           loglineContext: nextContext,
           logline: generatedLogline,
-          selectedGenres: safeGenres,
-          selectedStyles: safeStyles,
-          selectedWorldviews: safeWorldviews,
         })
         setLoglineDraft(generatedLogline)
       }
@@ -241,9 +166,6 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
       ...project,
       idea,
       logline: nextLogline,
-      selectedGenres,
-      selectedStyles,
-      selectedWorldviews,
     })
     setViewMode("summary")
   }
@@ -253,9 +175,6 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
     setProject({
       ...project,
       logline: finalizedLogline,
-      selectedGenres,
-      selectedStyles,
-      selectedWorldviews,
     })
     onNext()
   }
@@ -284,123 +203,18 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div className="rounded-3xl border border-[#BDBDBD] bg-[#F6F6F6] p-5 sm:p-6">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-2xl font-bold text-black">
-                  <FileText className="h-5 w-5 fill-black" />
-                  <span>로그라인</span>
-                </div>
-              </div>
-              <Textarea
-                value={loglineDraft}
-                onChange={(e) => setLoglineDraft(e.target.value)}
-                rows={5}
-                className="min-h-[130px] resize-none rounded-2xl border-[#CFCFCF] bg-white px-4 py-3 text-sm leading-6 text-black"
-                placeholder="로그라인을 직접 수정해 주세요."
-              />
+          <div className="mx-auto max-w-2xl rounded-3xl border border-[#BDBDBD] bg-[#F6F6F6] p-5 sm:p-6">
+            <div className="mb-3 flex items-center gap-2 text-2xl font-bold text-black">
+              <FileText className="h-5 w-5 fill-black" />
+              <span>로그라인</span>
             </div>
-
-            <div className="rounded-3xl border border-[#BDBDBD] bg-[#F6F6F6] p-5 sm:p-6">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-2xl font-bold text-black">
-                  <Triangle className="h-5 w-5 fill-black" />
-                  <span>기획 태그</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (isRefreshingTags) return
-                    setIsRefreshingTags(true)
-                    try {
-                      const currentLogline = (loglineDraft || project.logline || "").trim()
-                      const apiTags = await fetchTagsFromApi(currentLogline)
-                      applyTagSet(
-                        apiTags?.selectedGenres ?? DEFAULT_GENRES,
-                        apiTags?.selectedStyles ?? DEFAULT_STYLES,
-                        apiTags?.selectedWorldviews ?? DEFAULT_WORLDVIEWS,
-                        apiTags?.genreOptions ?? [],
-                        apiTags?.styleOptions ?? [],
-                        apiTags?.worldviewOptions ?? []
-                      )
-                    } finally {
-                      setIsRefreshingTags(false)
-                    }
-                  }}
-                  disabled={isRefreshingTags}
-                  className="rounded-full p-1 text-black hover:bg-black/5"
-                  aria-label="태그 다시 생성"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshingTags ? "animate-spin" : ""}`} />
-                </button>
-              </div>
-
-              <div className="flex flex-wrap items-stretch justify-between gap-y-4">
-                <div className="flex w-full flex-col gap-2 sm:w-[30%]">
-                  <p className="text-xs font-semibold text-gray-600">스토리 장르</p>
-                  <div className="flex flex-wrap gap-2">
-                    {genreOptions.map((genre) => (
-                      <button
-                        type="button"
-                        key={genre}
-                        onClick={() => toggleGenre(genre)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                          selectedGenres.includes(genre)
-                            ? "border-black bg-black text-white"
-                            : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
-                        }`}
-                      >
-                        {genre}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="hidden h-auto w-px bg-[#CFCFCF] sm:block" />
-
-                <div className="flex w-full flex-col gap-2 sm:w-[30%]">
-                  <p className="text-xs font-semibold text-gray-600">시각적 스타일</p>
-                  <div className="flex flex-wrap gap-2">
-                    {styleOptions.map((style) => (
-                      <button
-                        type="button"
-                        key={style}
-                        onClick={() => toggleStyle(style)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                          selectedStyles.includes(style)
-                            ? "border-black bg-black text-white"
-                            : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
-                        }`}
-                      >
-                        {style}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="hidden h-auto w-px bg-[#CFCFCF] sm:block" />
-
-                <div className="flex w-full flex-col gap-2 sm:w-[30%]">
-                  <p className="text-xs font-semibold text-gray-600">세계관 & 배경</p>
-                  <div className="flex flex-wrap gap-2">
-                    {worldviewOptions.map((worldview) => (
-                      <button
-                        type="button"
-                        key={worldview}
-                        onClick={() => toggleWorldview(worldview)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                          selectedWorldviews.includes(worldview)
-                            ? "border-black bg-black text-white"
-                            : "border-[#CFCFCF] bg-white text-black hover:bg-gray-50"
-                        }`}
-                      >
-                        {worldview}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <Textarea
+              value={loglineDraft}
+              onChange={(e) => setLoglineDraft(e.target.value)}
+              rows={5}
+              className="min-h-[130px] resize-none rounded-2xl border-[#CFCFCF] bg-white px-4 py-3 text-sm leading-6 text-black"
+              placeholder="로그라인을 직접 수정해 주세요."
+            />
           </div>
 
           <div className="flex justify-center">

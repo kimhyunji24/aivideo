@@ -4,6 +4,7 @@ import com.aivideo.studio.dto.ProjectState;
 import com.aivideo.studio.dto.Scene;
 import com.aivideo.studio.dto.Frame;
 import com.aivideo.studio.dto.CustomAssetData;
+import com.aivideo.studio.dto.SplitScriptResponse;
 import com.aivideo.studio.exception.ApiErrorInfo;
 import com.aivideo.studio.exception.ErrorClassifier;
 import lombok.RequiredArgsConstructor;
@@ -243,7 +244,29 @@ public class GenerationService {
         }
 
         String prompt = buildCharacterBasePrompt(character, state);
-        String imageUrl = imagenAdapter.generateImage(prompt, "char-ref-" + charId, null);
+
+        // 사용자가 첨부한 사진(Data URL)이 있으면 Imagen 레퍼런스로 전달
+        String uploadedPhoto = character.getImageUrl();
+        boolean hasUploadedPhoto = uploadedPhoto != null
+                && !uploadedPhoto.isBlank()
+                && uploadedPhoto.startsWith("data:");
+
+        String imageUrl;
+        if (hasUploadedPhoto) {
+            String appearance = character.getAppearance() != null ? character.getAppearance() : "";
+            imageUrl = imagenAdapter.generateImage(
+                    prompt,
+                    "char-ref-" + charId,
+                    null,
+                    List.of(uploadedPhoto),
+                    List.of(appearance),
+                    true
+            );
+            log.info("[GenerationService] 업로드 사진 레퍼런스로 캐릭터 베이스 생성 — charId: {}", charId);
+        } else {
+            imageUrl = imagenAdapter.generateImage(prompt, "char-ref-" + charId, null);
+            log.info("[GenerationService] 텍스트 프롬프트로 캐릭터 베이스 생성 — charId: {}", charId);
+        }
 
         // 베이스 이미지는 항상 첫 번째로 교체
         if (refs.isEmpty()) {
@@ -338,9 +361,6 @@ public class GenerationService {
         sb.append("Create a high-quality character reference sheet image.\n");
         sb.append("Character name: ").append(character.getName()).append("\n");
         sb.append("Appearance: ").append(character.getAppearance()).append("\n");
-        if (state.getSelectedStyles() != null && !state.getSelectedStyles().isEmpty()) {
-            sb.append("Art style: ").append(String.join(", ", state.getSelectedStyles())).append("\n");
-        }
         sb.append("\nRules:\n");
         sb.append("- Neutral expression, front-facing, full body or portrait\n");
         sb.append("- Clear, clean white or simple background\n");
@@ -820,6 +840,79 @@ public class GenerationService {
     }
 
     /**
+     * 씬의 description을 Gemini로 Start Frame / End Frame 스크립트로 분리합니다.
+     * 분리 결과는 씬의 frames[0], frames[1]에 저장됩니다.
+     */
+    public SplitScriptResponse splitFrameScripts(String sessionId, String sceneId) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        Scene scene = findScene(state.getScenes(), sceneId);
+        if (scene == null) throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
+
+        String description = firstNonBlank(scene.getDescription(), scene.getPrompt());
+        if (description == null || description.isBlank()) {
+            throw new IllegalArgumentException("씬 설명이 없어 스크립트를 분리할 수 없습니다.");
+        }
+
+        String prompt = """
+                다음 씬 설명을 'Start Frame'과 'End Frame' 스크립트로 분리해줘.
+                - Start Frame: 씬이 시작되는 순간의 장면 묘사 (첫 컷)
+                - End Frame: 씬이 끝나는 순간의 장면 묘사 (마지막 컷)
+                각각 이미지 생성 프롬프트로 쓸 수 있는 한국어 문장으로 작성해줘.
+                원본 씬 설명의 인물, 배경, 분위기를 유지하면서 시간적 흐름이 느껴지게 분리해줘.
+
+                씬 설명: %s
+
+                반드시 아래 JSON만 출력하고 다른 설명은 하지 마:
+                {"startScript": "...", "endScript": "..."}
+                """.formatted(description);
+
+        String json = geminiAdapter.generateJson(prompt);
+
+        // JSON 파싱
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            // ```json ... ``` 코드블록 제거
+            String cleaned = json.trim()
+                    .replaceAll("(?s)```json\\s*", "")
+                    .replaceAll("(?s)```\\s*", "")
+                    .trim();
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(cleaned);
+            String startScript = node.path("startScript").asText("").trim();
+            String endScript   = node.path("endScript").asText("").trim();
+
+            if (startScript.isBlank() || endScript.isBlank()) {
+                throw new IllegalStateException("AI 응답에서 스크립트를 추출할 수 없습니다: " + json);
+            }
+
+            // 씬의 frames를 Start/End 2개로 갱신
+            List<Frame> frames = new ArrayList<>();
+            frames.add(Frame.builder()
+                    .id("f-start-" + System.currentTimeMillis())
+                    .script(startScript)
+                    .imageUrl(null)
+                    .build());
+            frames.add(Frame.builder()
+                    .id("f-end-" + System.currentTimeMillis())
+                    .script(endScript)
+                    .imageUrl(null)
+                    .build());
+            scene.setFrames(frames);
+            sessionService.updateSession(sessionId, state);
+
+            SplitScriptResponse response = new SplitScriptResponse();
+            response.setStartScript(startScript);
+            response.setEndScript(endScript);
+            return response;
+
+        } catch (Exception e) {
+            log.error("[GenerationService] 스크립트 분리 실패 — sceneId: {}, json: {}", sceneId, json, e);
+            throw new RuntimeException("스크립트 분리 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * 씬의 현재 상태를 조회합니다 (프론트엔드 폴링용).
      */
     public Scene getSceneStatus(String sessionId, String sceneId) {
@@ -973,7 +1066,23 @@ public class GenerationService {
             applySceneError(target, e);
             throw new RuntimeException("비디오 생성 실패: " + e.getMessage(), e);
         } finally {
-            sessionService.updateSession(sessionId, state);
+            // 동시에 여러 씬의 영상이 생성될 때 race condition으로 인한 덮어쓰기를 방지하기 위해
+            // 저장 직전에 최신 세션을 다시 읽어 해당 씬의 상태만 갱신 후 저장합니다.
+            ProjectState latestState = sessionService.getSession(sessionId);
+            if (latestState != null) {
+                Scene latestTarget = findScene(latestState.getScenes(), sceneId);
+                if (latestTarget != null) {
+                    latestTarget.setVideoUrl(target.getVideoUrl());
+                    latestTarget.setStatus(target.getStatus());
+                    latestTarget.setLastErrorCode(target.getLastErrorCode());
+                    latestTarget.setLastErrorMessage(target.getLastErrorMessage());
+                    latestTarget.setLastErrorRetryable(target.getLastErrorRetryable());
+                    latestTarget.setLastErrorRequestId(target.getLastErrorRequestId());
+                }
+                sessionService.updateSession(sessionId, latestState);
+            } else {
+                sessionService.updateSession(sessionId, state);
+            }
         }
     }
 

@@ -210,6 +210,7 @@ export default function MainWorkflowPage() {
         <FinalMerge
           project={project}
           setProject={setProject}
+          sessionId={sessionId}
           onBack={() => setReadyToMerge(false)}
           onRestart={() => {
             setReadyToMerge(false)

@@ -34,6 +34,10 @@ public class GeminiAdapter {
     @Value("${vertex.location:us-central1}")
     private String location;
 
+    /** Gemini 전용 리전. 설정 시 vertex.location보다 우선 적용 (리전별 할당량 분리 대응용) */
+    @Value("${gemini.location:${vertex.location:us-central1}}")
+    private String geminiLocation;
+
     @Value("${gemini.text-model:gemini-1.5-flash-002}")
     private String textModel;
 
@@ -164,7 +168,7 @@ public class GeminiAdapter {
 
         // Use non-streaming endpoint for deterministic JSON response parsing.
         String url = String.format("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:generateContent",
-                location, projectId, location, textModel);
+                geminiLocation, projectId, geminiLocation, textModel);
 
         String response = webClient.post()
                 .uri(url)
@@ -226,7 +230,7 @@ public class GeminiAdapter {
 
         String url = String.format(
                 "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:generateContent",
-                location, projectId, location, textModel
+                geminiLocation, projectId, geminiLocation, textModel
         );
 
         String response = webClient.post()

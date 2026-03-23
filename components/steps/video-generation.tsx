@@ -16,7 +16,7 @@ import {
   Video,
   Pause,
   Layers,
-  Zap
+  Zap,
 } from "lucide-react"
 import { useState, Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
@@ -33,6 +33,7 @@ interface VideoGenerationProps {
 export function VideoGeneration({ project, setProject, onNext, onBack, sessionId }: VideoGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [sceneErrors, setSceneErrors] = useState<Record<string, string>>({})
+
   const apiBase = sessionId
     ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
     : null
@@ -443,6 +444,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
           )
         })}
       </div>
+
         </div>
       </div>
 

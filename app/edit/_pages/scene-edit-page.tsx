@@ -128,6 +128,10 @@ export default function SceneEditPage() {
   const queryIndex = Number.parseInt(searchParams.get("sceneIndex") ?? "0", 10)
 
   const initialReturnState = loadReturnState()
+  const [sessionId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null
+    return sessionStorage.getItem("aivideo:sessionId")
+  })
   const [project, setProject] = useState<ProjectState>(
     initialReturnState?.project ?? buildFallbackProject(queryScenes)
   )
@@ -204,6 +208,7 @@ export default function SceneEditPage() {
           onNext={() => setIsEditingFrame(false)}
           selectedFrameIndex={currentFrameIndex}
           onSelectedFrameIndexChange={handleSelectedFrameIndexChange}
+          sessionId={sessionId}
         />
       </main>
     )

@@ -3,6 +3,7 @@ package com.aivideo.studio.controller;
 import com.aivideo.studio.dto.Scene;
 import com.aivideo.studio.dto.Frame;
 import com.aivideo.studio.dto.FrameGenerateRequest;
+import com.aivideo.studio.dto.SplitScriptResponse;
 import com.aivideo.studio.service.GenerationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -152,6 +153,20 @@ public class GenerationController {
         Frame frame = generationService.regenerateFrameWithReference(
                 sessionId, sceneId, request.getFrameId(), request.getPrompt());
         return ResponseEntity.ok(frame);
+    }
+
+    /**
+     * 씬 description을 Gemini로 Start/End Frame 스크립트로 분리합니다.
+     * POST /api/v1/sessions/{sessionId}/generation/frames/{sceneId}/split
+     */
+    @PostMapping("/frames/{sceneId}/split")
+    public ResponseEntity<SplitScriptResponse> splitFrameScripts(
+            @PathVariable String sessionId,
+            @PathVariable String sceneId) {
+
+        log.info("[GenerationController] 스크립트 분리 요청 — sessionId: {}, sceneId: {}", sessionId, sceneId);
+        SplitScriptResponse response = generationService.splitFrameScripts(sessionId, sceneId);
+        return ResponseEntity.ok(response);
     }
 
     /**

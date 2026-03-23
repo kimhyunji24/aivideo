@@ -8,15 +8,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Check, RefreshCw, Pencil, ArrowRight, Film, Layers } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { updateSession } from "@/lib/api"
 
 interface PlotSelectionProps {
   project: ProjectState
   setProject: (project: ProjectState) => void
   onNext: () => void
   onBack: () => void
+  sessionId?: string | null
 }
 
-export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelectionProps) {
+export function PlotSelection({ project, setProject, onNext, onBack, sessionId }: PlotSelectionProps) {
   const [selectedId, setSelectedId] = useState<string | null>(project.selectedPlot?.id || null)
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [regeneratingPlotId, setRegeneratingPlotId] = useState<string | null>(null)
@@ -48,34 +50,18 @@ export function PlotSelection({ project, setProject, onNext, onBack }: PlotSelec
     if (selectedId && project.selectedPlot) {
       setIsSaving(true)
       try {
-        const response = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            idea: project.idea,
-            scenes: project.selectedPlot.scenes.map(s => ({
-              title: s.title,
-              description: s.description,
-              prompt: s.prompt,
-              duration: s.duration,
-              elements: s.elements
-            }))
-          })
-        })
-
-        if (response.ok) {
-          const savedProject = await response.json()
-          setProject({
-            ...project,
-            id: savedProject.id,
-            scenes: savedProject.scenes
-          })
-          onNext()
-        } else {
-          console.error("Failed to save project")
-          // 에러 처리는 간소화 (필요시 토스트 추가 가능)
-          onNext() // 데모 목적을 위해 실패해도 넘어감
+        const updatedProject = {
+          ...project,
+          scenes: project.selectedPlot.scenes,
         }
+        setProject(updatedProject)
+
+        if (sessionId) {
+          await updateSession(sessionId, updatedProject).catch(e =>
+            console.error("Failed to sync plot selection to session:", e)
+          )
+        }
+        onNext()
       } catch (error) {
         console.error("Error saving project:", error)
         onNext()
