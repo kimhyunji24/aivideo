@@ -1,6 +1,6 @@
 import { PlanningTagsResponse, ProjectState } from "./types"
 
-const API_BASE = "http://localhost:8080/api/v1/sessions"
+const API_BASE = "/api/v1/sessions"
 
 export async function createSession(): Promise<string> {
     const res = await fetch(API_BASE, { method: "POST" })

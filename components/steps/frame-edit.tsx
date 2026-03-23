@@ -239,7 +239,7 @@ export function FrameEdit({
 
     let sid = resolveSessionId()
     if (!sid) {
-      const createRes = await fetch("http://localhost:8080/api/v1/sessions", { method: "POST" })
+      const createRes = await fetch("/api/v1/sessions", { method: "POST" })
       if (!createRes.ok) {
         alert("세션 생성에 실패해 프레임 이미지를 만들 수 없습니다.")
         return
@@ -253,7 +253,7 @@ export function FrameEdit({
 
     // Always ensure the latest edited script and frames are saved to the backend before generating image
     try {
-      await fetch("http://localhost:8080/api/v1/sessions/" + encodeURIComponent(sid), {
+      await fetch("/api/v1/sessions/" + encodeURIComponent(sid), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(project),
@@ -265,7 +265,7 @@ export function FrameEdit({
     setIsGenerating(true)
     try {
       const response = await fetch(
-        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/frames/${encodeURIComponent(String(scene.id ?? sceneIndex))}`,
+        `/api/v1/sessions/${encodeURIComponent(sid)}/generation/frames/${encodeURIComponent(String(scene.id ?? sceneIndex))}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -423,7 +423,7 @@ export function FrameEdit({
   const hasCharacters = (project.characters ?? []).length > 0
 
   return (
-    <div className="h-[calc(100vh-180px)] flex flex-col">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 h-[calc(100vh-180px)] flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="px-3 py-1 text-sm font-semibold rounded-full">

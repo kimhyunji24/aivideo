@@ -34,7 +34,7 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
   const [isGenerating, setIsGenerating] = useState(false)
   const [sceneErrors, setSceneErrors] = useState<Record<string, string>>({})
   const apiBase = sessionId
-    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    ? `/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
     : null
 
   const readErrorMessage = async (response: Response) => {

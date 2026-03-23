@@ -38,7 +38,10 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
   const [keepCharacter, setKeepCharacter] = useState<string | null>(null)
   const [sceneErrors, setSceneErrors] = useState<Record<string, string>>({})
   const apiBase = sessionId
-    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    ? `/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    : null
+  const sessionBase = sessionId
+    ? `/api/v1/sessions/${encodeURIComponent(sessionId)}`
     : null
 
   const completedCount = project.scenes.filter((s) => s.status === "done").length
