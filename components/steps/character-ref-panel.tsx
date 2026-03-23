@@ -63,7 +63,7 @@ export function CharacterRefPanel({ project, setProject, sessionId }: CharacterR
     setLoadingCharId(charId)
     try {
       const res = await fetch(
-        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(charId)}/references/generate`,
+        `/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(charId)}/references/generate`,
         { method: "POST" }
       )
       if (!res.ok) {
@@ -86,7 +86,7 @@ export function CharacterRefPanel({ project, setProject, sessionId }: CharacterR
     setLoadingVariant(`${charId}-${variantType}`)
     try {
       const res = await fetch(
-        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(charId)}/references/variant`,
+        `/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(charId)}/references/variant`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -112,7 +112,7 @@ export function CharacterRefPanel({ project, setProject, sessionId }: CharacterR
 
     try {
       const res = await fetch(
-        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(charId)}/references/${index}`,
+        `/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(charId)}/references/${index}`,
         { method: "DELETE" }
       )
       if (!res.ok) throw new Error(`요청 실패 (${res.status})`)
@@ -132,7 +132,7 @@ export function CharacterRefPanel({ project, setProject, sessionId }: CharacterR
     setIsActionLoading(true)
     try {
       const res = await fetch(
-        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(activeRef.charId)}/references/${activeRef.index}/pose`,
+        `/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(activeRef.charId)}/references/${activeRef.index}/pose`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -166,7 +166,7 @@ export function CharacterRefPanel({ project, setProject, sessionId }: CharacterR
     setIsActionLoading(true)
     try {
       const res = await fetch(
-        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(activeRef.charId)}/references/${activeRef.index}/edit`,
+        `/api/v1/sessions/${encodeURIComponent(sid)}/generation/characters/${encodeURIComponent(activeRef.charId)}/references/${activeRef.index}/edit`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

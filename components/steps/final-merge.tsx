@@ -43,7 +43,7 @@ type MergeStatus = "idle" | "processing" | "completed" | "error"
 
 export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }: FinalMergeProps) {
   const mergeBase = sessionId
-    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/merge`
+    ? `/api/v1/sessions/${encodeURIComponent(sessionId)}/merge`
     : null
 
   // 씬 선택

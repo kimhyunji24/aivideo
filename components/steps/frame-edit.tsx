@@ -42,7 +42,7 @@ export function FrameEdit({
   if (!scene) return null
 
   const BASE = sessionId
-    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}`
+    ? `/api/v1/sessions/${encodeURIComponent(sessionId)}`
     : null
 
   // Start / End frame 상태
