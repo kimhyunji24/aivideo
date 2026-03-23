@@ -1,0 +1,21 @@
+name: Deploy to GCP VM (Blue-Green)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute deployment script on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_VM_HOST }}
+          username: ${{ secrets.GCP_VM_USERNAME }}
+          key: ${{ secrets.GCP_VM_SSH_KEY }}
+          script: |
+            chmod +x /home/${{ secrets.GCP_VM_USERNAME }}/aivideo/deploy.sh
+            bash /home/${{ secrets.GCP_VM_USERNAME }}/aivideo/deploy.sh

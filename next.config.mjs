@@ -10,15 +10,15 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8080/api/:path*',
+        destination: `${process.env.BACKEND_URL || 'http://localhost:8080'}/api/:path*`,
       },
       {
         source: '/generated-images/:path*',
-        destination: 'http://localhost:8080/generated-images/:path*',
+        destination: `${process.env.BACKEND_URL || 'http://localhost:8080'}/generated-images/:path*`,
       },
       {
         source: '/generated-videos/:path*',
-        destination: 'http://localhost:8080/generated-videos/:path*',
+        destination: `${process.env.BACKEND_URL || 'http://localhost:8080'}/generated-videos/:path*`,
       },
     ];
   },
