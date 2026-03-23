@@ -256,7 +256,7 @@ export default function MainWorkflowPage() {
             </div>
             <div className="min-w-0">
               <h1 className="text-sm sm:text-base font-semibold tracking-tight text-gray-900 truncate">
-                사이트명
+                가중치 - AI 2차 창작 비디오 서비스
               </h1>
               <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">아이디어를 영상으로</p>
             </div>

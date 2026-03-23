@@ -3,7 +3,7 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '사이트명',
+  title: '가중치 - AI 2차 창작 비디오 서비스',
   description: 'AI 기반 팬콘텐츠 영상 제작 플랫폼',
   generator: 'v0.app',
   icons: {
