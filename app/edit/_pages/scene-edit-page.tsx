@@ -113,7 +113,7 @@ function buildFallbackProject(scenes: EditScene[]): ProjectState {
       title: scene.title,
       description: scene.description,
       prompt: scene.description,
-      duration: 3,
+      duration: 8,
       status: "pending",
       elements: normalizeElements(scene.elements, scene.description),
     })),

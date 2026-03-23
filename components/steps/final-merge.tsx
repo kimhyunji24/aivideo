@@ -61,7 +61,8 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
   const [transition, setTransition] = useState("crossfade")
 
   const scenesWithVideo = project.scenes.filter((s) => s.videoUrl)
-  const totalDuration = project.scenes.reduce((sum, s) => sum + (s.duration ?? 0), 0)
+  const mergeClipDurationSeconds = 8
+  const totalDuration = scenesWithVideo.length * mergeClipDurationSeconds
 
   const toggleSceneSelection = (sceneId: string) => {
     setSelectedSceneIds(prev => {
@@ -226,7 +227,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
                       </div>
                     </div>
                     <p className="text-xs truncate font-medium">씬 {index + 1}</p>
-                    <p className="text-[10px] text-muted-foreground">{scene.duration}초</p>
+                    <p className="text-[10px] text-muted-foreground">{mergeClipDurationSeconds}초</p>
                   </button>
                 )
               })
