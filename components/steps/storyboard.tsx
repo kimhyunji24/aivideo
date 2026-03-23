@@ -45,7 +45,7 @@ export function Storyboard({
 }: StoryboardProps) {
   const router = useRouter()
   const apiBase = sessionId
-    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    ? `/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
     : null
 
   const selectedScene = project.scenes[selectedSceneIndex]
