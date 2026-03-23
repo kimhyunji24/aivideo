@@ -41,6 +41,9 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
   const apiBase = sessionId
     ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
     : null
+  const sessionBase = sessionId
+    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}`
+    : null
 
   const completedCount = project.scenes.filter((s) => s.status === "done").length
   const errorCount = project.scenes.filter((s) => s.status === "error").length
@@ -217,12 +220,58 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
     setSceneErrors({})
   }
 
-  const handleKeepStyle = (sceneId: string) => {
-    setKeepStyle(keepStyle === sceneId ? null : sceneId)
+  const handleKeepStyle = async (sceneId: string) => {
+    const newKeepStyle = keepStyle === sceneId ? null : sceneId
+    setKeepStyle(newKeepStyle)
+
+    // [일관성 강화] 선택한 씬의 이미지를 세션 backgroundReferenceImageUrl로 저장
+    if (newKeepStyle && sessionBase) {
+      const selectedScene = project.scenes.find(s => String(s.id) === newKeepStyle)
+      const imageUrl = selectedScene?.imageUrl
+      if (imageUrl) {
+        try {
+          const updatedProject = {
+            ...project,
+            backgroundReferenceImageUrl: imageUrl,
+          }
+          await fetch(sessionBase, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedProject),
+          })
+          setProject(updatedProject)
+        } catch {
+          console.error("스타일 기준 씬 저장 실패")
+        }
+      }
+    }
   }
 
-  const handleKeepCharacter = (sceneId: string) => {
-    setKeepCharacter(keepCharacter === sceneId ? null : sceneId)
+  const handleKeepCharacter = async (sceneId: string) => {
+    const newKeepCharacter = keepCharacter === sceneId ? null : sceneId
+    setKeepCharacter(newKeepCharacter)
+
+    // [일관성 강화] 선택한 씬의 이미지를 세션 backgroundReferenceImageUrl로 저장 (캐릭터 기준)
+    if (newKeepCharacter && sessionBase) {
+      const selectedScene = project.scenes.find(s => String(s.id) === newKeepCharacter)
+      const imageUrl = selectedScene?.imageUrl
+      if (imageUrl) {
+        try {
+          const updatedProject = {
+            ...project,
+            backgroundReferenceImageUrl: imageUrl,
+          }
+          await fetch(sessionBase, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedProject),
+          })
+          setProject(updatedProject)
+        } catch {
+          console.error("캐릭터 기준 씬 저장 실패")
+        }
+      }
+    }
   }
 
   const getStatusIcon = (status: Scene["status"]) => {

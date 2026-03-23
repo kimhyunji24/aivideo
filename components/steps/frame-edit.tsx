@@ -33,7 +33,8 @@ export function FrameEdit({
   onSelectedFrameIndexChange,
   sessionId,
 }: FrameEditProps) {
-  const scene = project.scenes[sceneIndex]
+  const safeScenes = Array.isArray(project?.scenes) ? project.scenes : []
+  const scene = safeScenes[sceneIndex]
   if (!scene) return null
 
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(selectedFrameIndexProp)
@@ -60,7 +61,7 @@ export function FrameEdit({
       ]
       setProject((prev) => ({
         ...prev,
-        scenes: prev.scenes.map((s, i) => (i === sceneIndex ? { ...s, frames: defaultFrames } : s)),
+        scenes: (Array.isArray(prev.scenes) ? prev.scenes : []).map((s, i) => (i === sceneIndex ? { ...s, frames: defaultFrames } : s)),
       }))
     }
   }, [frames.length, scene.description, scene.imageUrl, sceneIndex, setProject])

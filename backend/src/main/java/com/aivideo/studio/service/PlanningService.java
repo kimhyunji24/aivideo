@@ -281,7 +281,9 @@ public class PlanningService {
                 "다음 로그라인과 가장 관련있는 스토리 장르(Genre), 시각적 영상 렌더링 스타일(Style), 세계관 및 배경(Worldview) 태그를 추천해줘.\n" +
                 "반드시 JSON 객체만 반환하고, 설명 문장은 절대 출력하지 마.\n\n" +
                 "규칙:\n" +
-                "1) selectedGenres, selectedStyles, selectedWorldviews는 각각 정확히 3개\n" +
+                // 임시 비활성화: selected 3개 고정 규칙 제거
+                // "1) selectedGenres, selectedStyles, selectedWorldviews는 각각 정확히 3개\n" +
+                "1) selectedGenres, selectedStyles, selectedWorldviews 개수는 자유롭게 추천\n" +
                 "2) genreOptions, styleOptions, worldviewOptions는 각각 5~8개\n" +
                 "3) selected 항목은 반드시 options 안에 포함되어야 함\n" +
                 "4) 태그는 짧은 한국어 표현으로\n\n" +
@@ -309,10 +311,14 @@ public class PlanningService {
         List<String> genreOptions = normalizeList(parsed.getGenreOptions(), DEFAULT_GENRES, 4, 7);
         List<String> styleOptions = normalizeList(parsed.getStyleOptions(), DEFAULT_STYLES, 4, 7);
         List<String> worldviewOptions = normalizeList(parsed.getWorldviewOptions(), DEFAULT_WORLDVIEWS, 4, 7);
-        
-        List<String> selectedGenres = normalizeSelected(parsed.getSelectedGenres(), genreOptions, 3);
-        List<String> selectedStyles = normalizeSelected(parsed.getSelectedStyles(), styleOptions, 3);
-        List<String> selectedWorldviews = normalizeSelected(parsed.getSelectedWorldviews(), worldviewOptions, 3);
+
+        // 임시 비활성화: selected 3개 강제 고정
+        // List<String> selectedGenres = normalizeSelected(parsed.getSelectedGenres(), genreOptions, 3);
+        // List<String> selectedStyles = normalizeSelected(parsed.getSelectedStyles(), styleOptions, 3);
+        // List<String> selectedWorldviews = normalizeSelected(parsed.getSelectedWorldviews(), worldviewOptions, 3);
+        List<String> selectedGenres = normalizeSelectedFlexible(parsed.getSelectedGenres(), genreOptions);
+        List<String> selectedStyles = normalizeSelectedFlexible(parsed.getSelectedStyles(), styleOptions);
+        List<String> selectedWorldviews = normalizeSelectedFlexible(parsed.getSelectedWorldviews(), worldviewOptions);
 
         state.setSelectedGenres(selectedGenres);
         state.setSelectedStyles(selectedStyles);
@@ -400,6 +406,25 @@ public class PlanningService {
                 .map(String::trim)
                 .distinct()
                 .limit(size)
+                .toList();
+    }
+
+    private List<String> normalizeSelectedFlexible(List<String> raw, List<String> options) {
+        List<String> fromRaw = raw == null ? List.of() : raw.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .filter(options::contains)
+                .distinct()
+                .toList();
+
+        if (!fromRaw.isEmpty()) {
+            return fromRaw;
+        }
+        return options.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .distinct()
+                .limit(1)
                 .toList();
     }
 
