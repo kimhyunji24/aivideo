@@ -24,6 +24,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.google.cloud.aiplatform.v1.EndpointName;
+import com.google.cloud.aiplatform.v1.PredictResponse;
+import com.google.cloud.aiplatform.v1.PredictionServiceClient;
+import com.google.cloud.aiplatform.v1.PredictionServiceSettings;
+import com.google.protobuf.util.JsonFormat;
+
 /**
  * Imagen 3 (Vertex AI) 이미지 생성 어댑터
  *
@@ -60,6 +66,12 @@ public class ImagenAdapter {
     @Value("${google.application-credentials:#{null}}")
     private String credentialsPath;
 
+    @Value("${imagen.mock-mode:false}")
+    private boolean mockMode;
+
+    @Value("${imagen.mock-image-url:#{null}}")
+    private String mockImageUrl;
+
     /**
      * 프롬프트를 받아 Imagen 3로 이미지를 생성하고, 저장된 파일의 URL 경로를 반환합니다.
      *
@@ -82,12 +94,20 @@ public class ImagenAdapter {
      * @param appearanceDescriptions referenceImageUrls와 순서가 대응되는 영어 외형 묘사 목록
      */
     public String generateImage(String prompt, String sceneId, Integer seed, List<String> referenceImageUrls, List<String> appearanceDescriptions) {
-        log.info("[Imagen3] 이미지 생성 시작 — sceneId: {}, prompt 길이: {}", sceneId, prompt.length());
+        return generateImage(prompt, sceneId, seed, referenceImageUrls, appearanceDescriptions, true);
+    }
+
+    /**
+     * strictIdentity=false 시: 레퍼런스는 얼굴/외형 참조에만 사용하고 포즈/동작은 텍스트 프롬프트를 우선합니다.
+     * 자세 변경 등 포즈 재생성에 사용하세요.
+     */
+    public String generateImage(String prompt, String sceneId, Integer seed, List<String> referenceImageUrls, List<String> appearanceDescriptions, boolean strictIdentity) {
+        log.info("[Imagen3] 이미지 생성 시작 — sceneId: {}, prompt 길이: {}, strictIdentity: {}", sceneId, prompt.length(), strictIdentity);
 
         try {
             List<Map<String, Object>> referenceImages = buildReferenceImages(referenceImageUrls, appearanceDescriptions);
             String selectedModel = selectModel(referenceImages);
-            String base64Image = predictViaRest(selectedModel, prompt, referenceImages, seed);
+            String base64Image = predictViaRest(selectedModel, prompt, referenceImages, seed, strictIdentity);
             byte[] imageBytes = Base64.getDecoder().decode(base64Image);
             String savedPath = saveImageToFile(imageBytes, sceneId);
             log.info("[Imagen3] 이미지 생성 완료 — sceneId: {}, 저장경로: {}", sceneId, savedPath);
@@ -101,7 +121,130 @@ public class ImagenAdapter {
         }
     }
 
+    /**
+     * 프롬프트, 원본 이미지 URL, 마스크 이미지 Base64를 받아 Imagen 3로 인페인팅(Inpainting)을 수행합니다.
+     */
+    public String editImage(String prompt, String targetImageUrl, String maskImageBase64, String sceneId) {
+        if (mockMode) {
+            log.info("[Mock] Imagen 이미지 인페인팅을 스킵합니다. Mock URL 반환");
+            return (mockImageUrl != null && !mockImageUrl.isBlank())
+                    ? mockImageUrl
+                    : "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80";
+        }
+
+        log.info("[Imagen3] 이미지 인페인팅 시작 — sceneId: {}, prompt 기재 유무: {}", sceneId, prompt != null && !prompt.isBlank());
+
+        try {
+            // 원본 이미지 로드
+            String filename = targetImageUrl.substring(targetImageUrl.lastIndexOf('/') + 1);
+            Path filePath = Paths.get(outputDir).resolve(filename);
+            byte[] baseImageBytes = Files.readAllBytes(filePath);
+            String baseImageBase64 = Base64.getEncoder().encodeToString(baseImageBytes);
+
+            GoogleCredentials credentials = loadCredentials();
+            credentials.refreshIfExpired();
+            String accessToken = credentials.getAccessToken().getTokenValue();
+
+            // imagen-3.0-capability-001 referenceImages inpainting format
+            Map<String, Object> instance = new LinkedHashMap<>();
+            if (prompt != null && !prompt.isBlank()) {
+                instance.put("prompt", prompt.trim());
+            }
+
+            Map<String, Object> rawRef = new LinkedHashMap<>();
+            rawRef.put("referenceType", "REFERENCE_TYPE_RAW");
+            rawRef.put("referenceId", 1);
+            rawRef.put("referenceImage", Map.of("bytesBase64Encoded", baseImageBase64));
+
+            Map<String, Object> maskRef = new LinkedHashMap<>();
+            maskRef.put("referenceType", "REFERENCE_TYPE_MASK");
+            maskRef.put("referenceId", 2);
+            maskRef.put("referenceImage", Map.of("bytesBase64Encoded", maskImageBase64));
+            maskRef.put("maskImageConfig", Map.of("maskMode", "MASK_MODE_USER_PROVIDED"));
+
+            instance.put("referenceImages", List.of(rawRef, maskRef));
+
+            Map<String, Object> parameters = new LinkedHashMap<>();
+            parameters.put("editMode", "EDIT_MODE_INPAINT_INSERTION");
+            parameters.put("sampleCount", 1);
+
+            Map<String, Object> requestBody = new LinkedHashMap<>();
+            requestBody.put("instances", List.of(instance));
+            requestBody.put("parameters", parameters);
+
+            String url = String.format(
+                    "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/imagen-3.0-capability-001:predict",
+                    location, projectId, location
+            );
+
+            log.info("[Imagen3] Vertex AI Edit REST 호출 중 — URL: {}", url);
+
+            String response;
+            try {
+                response = webClient.post()
+                        .uri(url)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(requestBody)
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .block();
+            } catch (Exception e) {
+                throw enrichWebClientException(e);
+            }
+
+            if (response == null || response.isBlank()) {
+                throw new RuntimeException("Imagen3 REST 응답이 비어 있습니다.");
+            }
+
+            var root = objectMapper.readTree(response);
+            var predictions = root.path("predictions");
+            if (!predictions.isArray() || predictions.isEmpty()) {
+                if ("{}".equals(response.trim())) {
+                    throw new RuntimeException("구글 안전 필터 차단: 정책에 의해 편집이 차단되었습니다.");
+                }
+                throw new RuntimeException("Imagen3 REST 응답에 predictions가 없습니다: " + response);
+            }
+            String resultBase64 = predictions.get(0).path("bytesBase64Encoded").asText("");
+            if (resultBase64.isBlank()) {
+                throw new RuntimeException("Imagen3 REST 응답에 bytesBase64Encoded가 없습니다.");
+            }
+
+            byte[] imageBytes = Base64.getDecoder().decode(resultBase64);
+            String savedPath = saveImageToFile(imageBytes, sceneId + "-edited");
+
+            log.info("[Imagen3] 이미지 인페인팅 완료 — 저장경로: {}", savedPath);
+            return savedPath;
+
+        } catch (PolicyBlockedException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[Imagen3] 이미지 인페인팅 실패 — sceneId: {}, 원인: {}", sceneId, e.getMessage(), e);
+            throw new RuntimeException("Imagen3 이미지 인페인팅 실패: " + e.getMessage(), e);
+        }
+    }
+
     // ─── Private 헬퍼 ────────────────────────────────────────────────────────
+
+    private String escapeJson(String text) {
+        if (text == null) return "";
+        return text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    private PredictionServiceSettings buildServiceSettings() throws IOException {
+        PredictionServiceSettings.Builder builder = PredictionServiceSettings.newBuilder()
+                .setEndpoint(location + "-aiplatform.googleapis.com:443");
+        if (credentialsPath != null && !credentialsPath.isBlank()) {
+            try (FileInputStream fis = new FileInputStream(credentialsPath)) {
+                builder.setCredentialsProvider(() -> GoogleCredentials.fromStream(fis)
+                        .createScoped("https://www.googleapis.com/auth/cloud-platform"));
+            }
+        } else {
+            builder.setCredentialsProvider(() -> GoogleCredentials.getApplicationDefault()
+                    .createScoped("https://www.googleapis.com/auth/cloud-platform"));
+        }
+        return builder.build();
+    }
 
     private GoogleCredentials loadCredentials() throws IOException {
         if (credentialsPath != null && !credentialsPath.isBlank()) {
@@ -129,8 +272,12 @@ public class ImagenAdapter {
     }
 
     private String buildInstanceJson(String prompt, List<Map<String, Object>> referenceImages) throws IOException {
+        return buildInstanceJson(prompt, referenceImages, true);
+    }
+
+    private String buildInstanceJson(String prompt, List<Map<String, Object>> referenceImages, boolean strictIdentity) throws IOException {
         Map<String, Object> instance = new LinkedHashMap<>();
-        instance.put("prompt", withReferenceTokens(prompt, referenceImages));
+        instance.put("prompt", withReferenceTokens(prompt, referenceImages, strictIdentity));
 
         if (!referenceImages.isEmpty()) {
             instance.put("referenceImages", referenceImages);
@@ -141,11 +288,15 @@ public class ImagenAdapter {
     }
 
     private String predictViaRest(String model, String prompt, List<Map<String, Object>> referenceImages, Integer seed) throws IOException {
+        return predictViaRest(model, prompt, referenceImages, seed, true);
+    }
+
+    private String predictViaRest(String model, String prompt, List<Map<String, Object>> referenceImages, Integer seed, boolean strictIdentity) throws IOException {
         GoogleCredentials credentials = loadCredentials();
         credentials.refreshIfExpired();
         String accessToken = credentials.getAccessToken().getTokenValue();
 
-        String instanceJson = buildInstanceJson(prompt, referenceImages);
+        String instanceJson = buildInstanceJson(prompt, referenceImages, strictIdentity);
         Map<String, Object> instance = new LinkedHashMap<>(objectMapper.readValue(instanceJson, Map.class));
         if (referenceImages != null && !referenceImages.isEmpty()) {
             // Google Imagen 3 requires 'referenceImages' (or 'referenceImage' in older versions) at the instance level.
@@ -255,11 +406,11 @@ public class ImagenAdapter {
                     : "reference subject " + idx;
 
             Map<String, Object> ref = new LinkedHashMap<>();
-            ref.put("referenceType", "SUBJECT");
+            ref.put("referenceType", "REFERENCE_TYPE_SUBJECT");
             ref.put("referenceId", idx++);
-            ref.put("image", Map.of("bytesBase64Encoded", parsed.base64Data));
+            ref.put("referenceImage", Map.of("bytesBase64Encoded", parsed.base64Data));
             ref.put("subjectImageConfig", Map.of(
-                    "subjectType", "DEFAULT",
+                    "subjectType", "SUBJECT_TYPE_PERSON",
                     "subjectDescription", subjectDesc
             ));
             refs.add(ref);
@@ -270,15 +421,25 @@ public class ImagenAdapter {
 
     private String selectModel(List<Map<String, Object>> referenceImages) {
         boolean hasRefs = referenceImages != null && !referenceImages.isEmpty();
-        boolean capabilityConfigured = imagenModel != null && imagenModel.contains("capability");
-        if (hasRefs || !capabilityConfigured) {
-            return imagenModel;
+        if (hasRefs) {
+            // Subject Reference는 capability 모델만 지원
+            String capModel = (imagenModel != null && imagenModel.contains("capability"))
+                    ? imagenModel : "imagen-3.0-capability-001";
+            log.info("[Imagen3] referenceImages 있음 — capability 모델 사용: {}", capModel);
+            return capModel;
         }
-        log.info("[Imagen3] referenceImages가 없어 capability 모델 대신 fallback 모델 사용 — model: {}", fallbackModel);
-        return fallbackModel;
+        // 레퍼런스 없으면 generate 모델 사용 (빠르고 저렴)
+        String genModel = (imagenModel != null && imagenModel.contains("generate"))
+                ? imagenModel : fallbackModel;
+        log.info("[Imagen3] referenceImages 없음 — generate 모델 사용: {}", genModel);
+        return genModel;
     }
 
     private String withReferenceTokens(String prompt, List<Map<String, Object>> refs) {
+        return withReferenceTokens(prompt, refs, true);
+    }
+
+    private String withReferenceTokens(String prompt, List<Map<String, Object>> refs, boolean strictIdentity) {
         if (prompt == null || prompt.isBlank() || refs == null || refs.isEmpty()) {
             return prompt;
         }
@@ -297,26 +458,32 @@ public class ImagenAdapter {
         if (tokenList.length() == 0) {
             return normalized;
         }
-        String strictRefInstruction;
-        if (refs.size() >= 2) {
-            strictRefInstruction =
-                    // [일관성 강화] reference [1]을 전 씬 공통 identity anchor로 고정
-                    "PRIMARY IDENTITY LOCK — reference [1] is the immutable anchor across ALL scenes. " +
-                    "All panels MUST exactly replicate face geometry, hair color/length/style, skin tone, eye shape/color, " +
-                    "and outfit (color, texture, cut, accessories) from reference [1]. " +
-                    "Use reference [2] only as continuity/background support. " +
-                    "Any deviation from these references is a CRITICAL failure. " +
-                    "If text description conflicts with references, ALWAYS follow references.";
+        String refInstruction;
+        if (strictIdentity) {
+            // 씬 간 캐릭터 일관성용 — 레퍼런스가 텍스트보다 우선
+            refInstruction = refs.size() >= 2
+                    ? "PRIMARY IDENTITY LOCK — reference [1] is the immutable anchor across ALL scenes. " +
+                      "All panels MUST exactly replicate face geometry, hair color/length/style, skin tone, eye shape/color, " +
+                      "and outfit (color, texture, cut, accessories) from reference [1]. " +
+                      "Use reference [2] only as continuity/background support. " +
+                      "Any deviation from these references is a CRITICAL failure. " +
+                      "If text description conflicts with references, ALWAYS follow references."
+                    : "PRIMARY IDENTITY LOCK — reference [1] is immutable across ALL scenes. " +
+                      "Every panel MUST exactly reproduce face geometry, hair color/length/style, skin tone, eye shape/color, " +
+                      "and exact outfit (color, texture, cut, accessories) from reference [1]. " +
+                      "Any deviation from reference [1] is a CRITICAL failure. " +
+                      "If text conflicts with reference [1], ALWAYS follow reference [1].";
         } else {
-            strictRefInstruction =
-                    // 단일 레퍼런스일 때도 anchor 고정
-                    "PRIMARY IDENTITY LOCK — reference [1] is immutable across ALL scenes. " +
-                    "Every panel MUST exactly reproduce face geometry, hair color/length/style, skin tone, eye shape/color, " +
-                    "and exact outfit (color, texture, cut, accessories) from reference [1]. " +
-                    "Any deviation from reference [1] is a CRITICAL failure. " +
-                    "If text conflicts with reference [1], ALWAYS follow reference [1].";
+            // 자세/동작 변경용 — 얼굴·외형·그림체만 참조, 포즈는 텍스트 우선
+            refInstruction = "IDENTITY AND STYLE REFERENCE ONLY — use reference [1] to match: " +
+                    "face structure, skin tone, eye color and shape, hair color and style, outfit appearance, " +
+                    "art style, rendering style, and background environment. " +
+                    "CRITICAL: Do NOT replicate the body pose or arm positions from reference [1]. " +
+                    "The limbs and body must be fully replaced by the pose described in the text prompt. " +
+                    "This avoids duplicate limbs. " +
+                    "Text prompt takes absolute priority for body pose; reference takes priority for face, appearance, style, and background.";
         }
-        return strictRefInstruction + " " + tokenList + " " + normalized;
+        return refInstruction + " " + tokenList + " " + normalized;
     }
 
     private ParsedDataUrl parseImageUrl(String imageUrl) {

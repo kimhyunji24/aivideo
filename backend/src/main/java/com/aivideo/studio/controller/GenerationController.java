@@ -113,6 +113,48 @@ public class GenerationController {
     }
 
     /**
+     * 특정 씬 또는 프레임의 이미지를 수정(인페인팅)합니다.
+     */
+    @PostMapping("/images/{sceneId}/edit")
+    public ResponseEntity<?> editImage(
+            @PathVariable String sessionId,
+            @PathVariable String sceneId,
+            @RequestBody com.aivideo.studio.dto.ImageEditRequest request) {
+
+        log.info("[GenerationController] 이미지 인페인팅 요청 — sessionId: {}, sceneId: {}, frameId: {}",
+                sessionId, sceneId, request.getFrameId());
+
+        if (request.getMaskBase64() == null || request.getMaskBase64().isBlank()) {
+            throw new IllegalArgumentException("maskBase64가 필요합니다.");
+        }
+
+        if (request.getFrameId() != null && !request.getFrameId().isBlank()) {
+            Frame frame = generationService.editFrameImage(sessionId, sceneId, request.getFrameId(), request.getPrompt(), request.getMaskBase64());
+            return ResponseEntity.ok(frame);
+        } else {
+            Scene scene = generationService.editSceneImage(sessionId, sceneId, request.getPrompt(), request.getMaskBase64());
+            return ResponseEntity.ok(scene);
+        }
+    }
+
+    /**
+     * 현재 프레임 이미지를 레퍼런스로 유지하면서 자세/동작을 재생성합니다.
+     */
+    @PostMapping("/images/{sceneId}/regenerate")
+    public ResponseEntity<Frame> regenerateWithReference(
+            @PathVariable String sessionId,
+            @PathVariable String sceneId,
+            @RequestBody com.aivideo.studio.dto.ImageEditRequest request) {
+
+        log.info("[GenerationController] 레퍼런스 재생성 요청 — sessionId: {}, sceneId: {}, frameId: {}",
+                sessionId, sceneId, request.getFrameId());
+
+        Frame frame = generationService.regenerateFrameWithReference(
+                sessionId, sceneId, request.getFrameId(), request.getPrompt());
+        return ResponseEntity.ok(frame);
+    }
+
+    /**
      * 특정 씬의 비디오를 Veo 3.1 모델로 생성합니다. (Phase 3)
      */
     @PostMapping("/videos/{sceneId}")
@@ -157,5 +199,91 @@ public class GenerationController {
                 .contentType(contentType)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(upstream.getBody());
+    }
+
+    // ─── Character Reference Image APIs ──────────────────────────────────────
+
+    /**
+     * 캐릭터 베이스 레퍼런스 이미지를 생성합니다.
+     * POST /api/v1/sessions/{sessionId}/generation/characters/{charId}/references/generate
+     */
+    @PostMapping("/characters/{charId}/references/generate")
+    public ResponseEntity<com.aivideo.studio.dto.Character> generateCharacterBase(
+            @PathVariable String sessionId,
+            @PathVariable String charId) {
+
+        log.info("[GenerationController] 캐릭터 베이스 이미지 생성 — sessionId: {}, charId: {}", sessionId, charId);
+        com.aivideo.studio.dto.Character character = generationService.generateCharacterBaseImage(sessionId, charId);
+        return ResponseEntity.ok(character);
+    }
+
+    /**
+     * 베이스 이미지를 레퍼런스로 표정/앵글 변형 이미지를 생성합니다.
+     * POST /api/v1/sessions/{sessionId}/generation/characters/{charId}/references/variant
+     * body: { "variantType": "smile" | "cry" | "angry" | "back" | "side" }
+     */
+    @PostMapping("/characters/{charId}/references/variant")
+    public ResponseEntity<com.aivideo.studio.dto.Character> generateCharacterVariant(
+            @PathVariable String sessionId,
+            @PathVariable String charId,
+            @RequestBody Map<String, String> body) {
+
+        String variantType = body.getOrDefault("variantType", "smile");
+        log.info("[GenerationController] 캐릭터 변형 이미지 생성 — sessionId: {}, charId: {}, type: {}", sessionId, charId, variantType);
+        com.aivideo.studio.dto.Character character = generationService.generateCharacterVariant(sessionId, charId, variantType);
+        return ResponseEntity.ok(character);
+    }
+
+    /**
+     * 특정 레퍼런스 이미지를 삭제합니다.
+     * DELETE /api/v1/sessions/{sessionId}/generation/characters/{charId}/references/{index}
+     */
+    @DeleteMapping("/characters/{charId}/references/{index}")
+    public ResponseEntity<com.aivideo.studio.dto.Character> deleteCharacterReference(
+            @PathVariable String sessionId,
+            @PathVariable String charId,
+            @PathVariable int index) {
+
+        log.info("[GenerationController] 캐릭터 레퍼런스 삭제 — sessionId: {}, charId: {}, index: {}", sessionId, charId, index);
+        com.aivideo.studio.dto.Character character = generationService.deleteCharacterReference(sessionId, charId, index);
+        return ResponseEntity.ok(character);
+    }
+
+    /**
+     * 캐릭터 레퍼런스 이미지를 유지하면서 자세/동작을 변경해 재생성합니다.
+     * POST /api/v1/sessions/{sessionId}/generation/characters/{charId}/references/{index}/pose
+     * body: { "prompt": "웃으면서 팔짱을 낀 자세" }
+     */
+    @PostMapping("/characters/{charId}/references/{index}/pose")
+    public ResponseEntity<com.aivideo.studio.dto.Character> regenerateCharacterRefPose(
+            @PathVariable String sessionId,
+            @PathVariable String charId,
+            @PathVariable int index,
+            @RequestBody Map<String, String> body) {
+
+        String prompt = body.getOrDefault("prompt", "");
+        log.info("[GenerationController] 캐릭터 레퍼런스 자세 변경 — sessionId: {}, charId: {}, index: {}", sessionId, charId, index);
+        com.aivideo.studio.dto.Character character = generationService.regenerateCharacterRefWithPose(sessionId, charId, index, prompt);
+        return ResponseEntity.ok(character);
+    }
+
+    /**
+     * 캐릭터 레퍼런스 이미지를 인페인팅(부분 수정)합니다.
+     * POST /api/v1/sessions/{sessionId}/generation/characters/{charId}/references/{index}/edit
+     */
+    @PostMapping("/characters/{charId}/references/{index}/edit")
+    public ResponseEntity<com.aivideo.studio.dto.Character> editCharacterRef(
+            @PathVariable String sessionId,
+            @PathVariable String charId,
+            @PathVariable int index,
+            @RequestBody com.aivideo.studio.dto.ImageEditRequest request) {
+
+        if (request.getMaskBase64() == null || request.getMaskBase64().isBlank()) {
+            throw new IllegalArgumentException("maskBase64가 필요합니다.");
+        }
+        log.info("[GenerationController] 캐릭터 레퍼런스 인페인팅 — sessionId: {}, charId: {}, index: {}", sessionId, charId, index);
+        com.aivideo.studio.dto.Character character = generationService.editCharacterRefImage(
+                sessionId, charId, index, request.getPrompt(), request.getMaskBase64());
+        return ResponseEntity.ok(character);
     }
 }

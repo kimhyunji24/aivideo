@@ -22,7 +22,6 @@ import {
 } from "lucide-react"
 import { useState, Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
-import { updateSession } from "@/lib/api"
 
 interface ImageGenerationProps {
   project: ProjectState
@@ -220,58 +219,12 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
     setSceneErrors({})
   }
 
-  const handleKeepStyle = async (sceneId: string) => {
-    const newKeepStyle = keepStyle === sceneId ? null : sceneId
-    setKeepStyle(newKeepStyle)
-
-    // [일관성 강화] 선택한 씬의 이미지를 세션 backgroundReferenceImageUrl로 저장
-    if (newKeepStyle && sessionBase) {
-      const selectedScene = project.scenes.find(s => String(s.id) === newKeepStyle)
-      const imageUrl = selectedScene?.imageUrl
-      if (imageUrl) {
-        try {
-          const updatedProject = {
-            ...project,
-            backgroundReferenceImageUrl: imageUrl,
-          }
-          await fetch(sessionBase, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(updatedProject),
-          })
-          setProject(updatedProject)
-        } catch {
-          console.error("스타일 기준 씬 저장 실패")
-        }
-      }
-    }
+  const handleKeepStyle = (sceneId: string) => {
+    setKeepStyle(keepStyle === sceneId ? null : sceneId)
   }
 
-  const handleKeepCharacter = async (sceneId: string) => {
-    const newKeepCharacter = keepCharacter === sceneId ? null : sceneId
-    setKeepCharacter(newKeepCharacter)
-
-    // [일관성 강화] 선택한 씬의 이미지를 세션 backgroundReferenceImageUrl로 저장 (캐릭터 기준)
-    if (newKeepCharacter && sessionBase) {
-      const selectedScene = project.scenes.find(s => String(s.id) === newKeepCharacter)
-      const imageUrl = selectedScene?.imageUrl
-      if (imageUrl) {
-        try {
-          const updatedProject = {
-            ...project,
-            backgroundReferenceImageUrl: imageUrl,
-          }
-          await fetch(sessionBase, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(updatedProject),
-          })
-          setProject(updatedProject)
-        } catch {
-          console.error("캐릭터 기준 씬 저장 실패")
-        }
-      }
-    }
+  const handleKeepCharacter = (sceneId: string) => {
+    setKeepCharacter(keepCharacter === sceneId ? null : sceneId)
   }
 
   const getStatusIcon = (status: Scene["status"]) => {
@@ -505,37 +458,9 @@ export function ImageGeneration({ project, setProject, onNext, onBack, sessionId
 
               <p className="text-xs text-muted-foreground truncate">{scene.title}</p>
               {scene.status === "error" && sceneErrors[String(scene.id)] && (
-                <div className="mt-2 text-[11px] text-destructive flex flex-col gap-2">
-                  <p className="line-clamp-2">{sceneErrors[String(scene.id)]}</p>
-                  <div className="flex flex-col gap-2 mt-1">
-                    <textarea
-                      className="w-full text-xs p-2 border border-destructive/30 rounded bg-white text-black"
-                      rows={2}
-                      value={scene.description || ""}
-                      onChange={(e) => {
-                        setProject(prev => ({
-                          ...prev,
-                          scenes: prev.scenes.map(s => s.id === scene.id ? { ...s, description: e.target.value } : s)
-                        }))
-                      }}
-                      placeholder="수정할 씬 대본을 입력하세요..."
-                    />
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="h-7 text-xs border-destructive/50 hover:bg-destructive/10 text-destructive w-full"
-                      onClick={async () => {
-                        if (sessionId) {
-                          await updateSession(sessionId, project);
-                        }
-                        regenerateScene(String(scene.id));
-                      }}
-                    >
-                      <RefreshCw className="h-3 w-3 mr-1.5" />
-                      수정 대본으로 재시도
-                    </Button>
-                  </div>
-                </div>
+                <p className="mt-1 text-[11px] text-destructive line-clamp-2">
+                  {sceneErrors[String(scene.id)]}
+                </p>
               )}
             </CardContent>
           </Card>

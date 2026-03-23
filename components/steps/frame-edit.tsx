@@ -6,9 +6,12 @@ import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Sparkles, Loader2, Plus, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Sparkles, Loader2, Plus, Trash2, Pencil } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectState, Frame } from "@/lib/types"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { MaskCanvas } from "@/components/ui/mask-canvas"
+import { CharacterRefPanel } from "@/components/steps/character-ref-panel"
 
 interface FrameEditProps {
   project: ProjectState
@@ -39,6 +42,9 @@ export function FrameEdit({
 
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(selectedFrameIndexProp)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isEditingCanvas, setIsEditingCanvas] = useState(false)
+  const [isRegenDialogOpen, setIsRegenDialogOpen] = useState(false)
+  const [regenPrompt, setRegenPrompt] = useState("")
   const frames = scene.frames ?? []
   const safeSelectedFrameIndex =
     frames.length === 0 ? 0 : Math.max(0, Math.min(selectedFrameIndex, frames.length - 1))
@@ -322,6 +328,86 @@ export function FrameEdit({
     }
   }
 
+  const handleRegenWithReference = async () => {
+    if (!currentFrame || !regenPrompt.trim()) return
+    let sid = resolveSessionId()
+    if (!sid) { alert("세션이 확인되지 않습니다."); return }
+
+    setIsRegenDialogOpen(false)
+    setIsGenerating(true)
+    try {
+      const res = await fetch(`http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/images/${encodeURIComponent(String(scene.id ?? sceneIndex))}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frameId: currentFrame.id, prompt: regenPrompt.trim() })
+      })
+      if (!res.ok) {
+        const message = await readErrorMessage(res)
+        throw new Error(message)
+      }
+      const updatedFrame = await res.json()
+      setProject((prev) => ({
+        ...prev,
+        scenes: prev.scenes.map((s, i) => {
+          if (i !== sceneIndex) return s
+          const newFrames = s.frames ? [...s.frames] : []
+          const idx = newFrames.findIndex(f => f.id === currentFrame.id)
+          if (idx >= 0) newFrames[idx] = updatedFrame
+          return { ...s, frames: newFrames, imageUrl: newFrames[0]?.imageUrl || s.imageUrl }
+        })
+      }))
+      setRegenPrompt("")
+    } catch(e: any) {
+      alert(e.message || "재생성 중 오류가 발생했습니다.")
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleEditFrame = async (maskBase64: string) => {
+    if (!currentFrame) return
+    let sid = resolveSessionId()
+    if (!sid) {
+      alert("세션이 확인되지 않습니다.")
+      return
+    }
+
+    const editPrompt = window.prompt("수정할 내용을 입력하세요 (비워두면 AI가 문맥에 맞게 지우거나 채웁니다):") || ""
+    setIsEditingCanvas(false)
+    setIsGenerating(true)
+
+    try {
+      const res = await fetch(`http://localhost:8080/api/v1/sessions/${encodeURIComponent(sid)}/generation/images/${encodeURIComponent(String(scene.id ?? sceneIndex))}/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maskBase64, prompt: editPrompt, frameId: currentFrame.id })
+      })
+      if (!res.ok) {
+        const message = await readErrorMessage(res)
+        throw new Error(message)
+      }
+      const updatedFrame = await res.json()
+      setProject((prev) => ({
+        ...prev,
+        scenes: prev.scenes.map((s, i) => {
+          if (i !== sceneIndex) return s
+          const newFrames = s.frames ? [...s.frames] : []
+          const idx = newFrames.findIndex(f => f.id === currentFrame.id)
+          if (idx >= 0) newFrames[idx] = updatedFrame
+          return {
+            ...s,
+            frames: newFrames,
+            imageUrl: newFrames[0]?.imageUrl || s.imageUrl
+          }
+        })
+      }))
+    } catch(e: any) {
+      alert(e.message || "프레임 부분 수정 중 오류가 발생했습니다.")
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
   const handleComplete = () => {
     onComplete()
   }
@@ -333,6 +419,8 @@ export function FrameEdit({
       </div>
     )
   }
+
+  const hasCharacters = (project.characters ?? []).length > 0
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 h-[calc(100vh-180px)] flex flex-col">
@@ -354,16 +442,57 @@ export function FrameEdit({
         </Button>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-        <Card className="col-span-1 lg:col-span-8 flex flex-col border-border/60 shadow-sm glass-card">
+      <div className={cn(
+        "flex-1 grid gap-4 min-h-0",
+        hasCharacters
+          ? "grid-cols-[272px_1fr_auto] lg:grid-cols-[272px_1fr_320px]"
+          : "grid-cols-1 lg:grid-cols-12"
+      )}>
+        {/* 왼쪽: 캐릭터 레퍼런스 사이드 패널 */}
+        {hasCharacters && (
+          <div className="rounded-xl border border-border/60 shadow-sm overflow-hidden flex flex-col">
+            <CharacterRefPanel
+              project={project}
+              setProject={setProject}
+              sessionId={sessionId}
+            />
+          </div>
+        )}
+
+        <Card className={cn(
+          "flex flex-col border-border/60 shadow-sm glass-card",
+          !hasCharacters && "col-span-1 lg:col-span-8"
+        )}>
           <div className="relative flex-1 min-h-[220px] max-h-[420px] bg-black/5 flex items-center justify-center p-4">
             {currentFrame.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={currentFrame.imageUrl}
-                alt={`Frame ${safeSelectedFrameIndex + 1}`}
-                className="w-full h-full object-contain rounded-lg"
-              />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={currentFrame.imageUrl}
+                  alt={`Frame ${safeSelectedFrameIndex + 1}`}
+                  className="w-full h-full object-contain rounded-lg"
+                />
+                <div className="absolute bottom-4 right-4 flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-2 bg-black/60 hover:bg-black/80 text-white border-0 backdrop-blur-sm shadow-md"
+                    onClick={() => setIsRegenDialogOpen(true)}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    자세/동작 변경
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-2 bg-black/60 hover:bg-black/80 text-white border-0 backdrop-blur-sm shadow-md"
+                    onClick={() => setIsEditingCanvas(true)}
+                  >
+                    <Pencil className="w-4 h-4" />
+                    부분 수정
+                  </Button>
+                </div>
+              </>
             ) : (
               <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-black/5 transition-colors rounded-lg group">
                 <ImageIcon className="w-16 h-16 mb-2 opacity-50 group-hover:opacity-80 transition-opacity text-gray-500" />
@@ -452,7 +581,10 @@ export function FrameEdit({
           </div>
         </Card>
 
-        <Card className="col-span-1 lg:col-span-4 flex flex-col border-border/60 shadow-sm glass-card">
+        <Card className={cn(
+          "flex flex-col border-border/60 shadow-sm glass-card",
+          !hasCharacters && "col-span-1 lg:col-span-4"
+        )}>
           <div className="p-4 border-b flex items-center justify-between bg-white rounded-t-xl">
             <div className="flex items-center gap-2">
               <span className="font-serif text-lg font-bold text-black">T</span>
@@ -487,6 +619,57 @@ export function FrameEdit({
         </Card>
       </div>
 
+      <Dialog open={isRegenDialogOpen} onOpenChange={setIsRegenDialogOpen}>
+        <DialogContent className="max-w-md bg-white/95 backdrop-blur-lg border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">자세 / 동작 변경</DialogTitle>
+            <DialogDescription>
+              현재 이미지를 외형 레퍼런스로 유지하면서 자세나 동작을 바꿔 재생성합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 mt-2">
+            <Textarea
+              value={regenPrompt}
+              onChange={(e) => setRegenPrompt(e.target.value)}
+              placeholder="예: 일어서서 팔짱을 낀 자세, 뒤를 돌아보는 자세, 앉아서 책을 읽는 자세..."
+              className="min-h-[100px] resize-none text-sm"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setIsRegenDialogOpen(false)}>취소</Button>
+              <Button
+                size="sm"
+                disabled={!regenPrompt.trim() || isGenerating}
+                onClick={handleRegenWithReference}
+                className="gap-2 bg-black hover:bg-gray-800 text-white"
+              >
+                {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                재생성
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditingCanvas} onOpenChange={setIsEditingCanvas}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col pt-6 bg-white/95 backdrop-blur-lg border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">프레임 부분 수정 (Canvas Inpainting)</DialogTitle>
+            <DialogDescription>
+              수정하고 싶은 부분에 형광색 브러시를 칠해주세요. 이 영역만 AI가 다시 그리게 됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {currentFrame.imageUrl && (
+            <div className="flex-1 overflow-hidden min-h-[400px] mt-2 border rounded-xl bg-gray-50 shadow-inner">
+              <MaskCanvas 
+                imageUrl={currentFrame.imageUrl}
+                onCancel={() => setIsEditingCanvas(false)}
+                onSave={handleEditFrame}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
