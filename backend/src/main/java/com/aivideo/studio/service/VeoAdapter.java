@@ -34,7 +34,7 @@ public class VeoAdapter {
     @Value("${vertex.project-id:default-project-id}")
     private String projectId;
 
-    @Value("${vertex.location:us-central1}")
+    @Value("${veo.location:${vertex.location:us-central1}}")
     private String location;
 
     @Value("${google.application-credentials:}")

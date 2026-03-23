@@ -28,7 +28,7 @@ gemini:
 # Vertex AI (Imagen 3) 설정
 vertex:
   project-id: ${VERTEX_PROJECT_ID:project-1a126ade-f2d4-4793-a08}
-  location: ${VERTEX_LOCATION:us-central1}
+  location: ${VERTEX_LOCATION:asia-northeast1}
 
 imagen:
   model: ${IMAGEN_MODEL:imagen-3.0-generate-002}
@@ -36,6 +36,7 @@ imagen:
 
 veo:
   model: ${VEO_MODEL:veo-3.1-generate-preview}
+  location: ${VEO_LOCATION:us-central1}
   storage-uri: ${VEO_STORAGE_URI:gs://gongmojeon-veo3-model}
   duration-seconds: ${VEO_DURATION_SECONDS:8}
   poll-interval-ms: ${VEO_POLL_INTERVAL_MS:10000}

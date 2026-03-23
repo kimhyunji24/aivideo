@@ -947,7 +947,14 @@ public class GenerationService {
             // 카메라 워킹 및 추가 모션 프롬프트 구성을 위해 한국어 씬 설명 번역
             String koreanPrompt = buildKoreanSceneDescription(target, state);
             String englishPrompt = geminiAdapter.generateText(
-                "Translate this scene description to a highly detailed, cinematic English prompt for an AI video generator. Only provide the translated prompt without any conversational text:\n" + koreanPrompt
+                "Translate this scene description to a highly detailed, cinematic English prompt for an AI video generator.\n"
+                + "IMPORTANT SAFETY RULES — strictly follow all of these:\n"
+                + "- Never use words related to violence, weapons, blood, gore, death, killing, war, or injury.\n"
+                + "- Never use words related to sexual content, nudity, or adult themes.\n"
+                + "- Replace any such concepts with safe, neutral alternatives (e.g. 'conflict' → 'tense confrontation', 'sword' → 'wooden staff').\n"
+                + "- Use only clean, family-safe language throughout.\n"
+                + "- Only provide the translated prompt without any conversational text or explanation.\n\n"
+                + koreanPrompt
             ) + " Cinematic, realistic motion, highly detailed.";
 
             List<String> referenceImageUrls = collectReferenceImageUrls(target, state);
