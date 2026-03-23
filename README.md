@@ -54,3 +54,32 @@ npm run dev -- --hostname 127.0.0.1 --port 3000
 
 ## 종료
 - 각 실행 터미널에서 `Ctrl+C`
+
+## VM 운영 배포 (권장)
+로컬에서 개발 후 `main`에 푸시하고, GCP VM에서 아래 순서로 배포하세요.
+
+1. 런타임 설치 (1회)
+```bash
+cd /home/hyunji/aivideo
+sudo bash scripts/setup-server.sh
+```
+
+2. systemd + Nginx 등록 (1회)
+```bash
+cd /home/hyunji/aivideo
+sudo APP_USER=hyunji APP_DIR=/home/hyunji/aivideo bash scripts/vm/install-systemd.sh
+sudo vi /etc/aivideo/aivideo.env
+```
+
+3. 배포 실행 (매 배포)
+```bash
+cd /home/hyunji/aivideo
+bash scripts/vm/deploy-main.sh
+```
+
+4. 운영 점검
+```bash
+sudo systemctl status aivideo-backend
+sudo systemctl status aivideo-frontend
+sudo journalctl -u aivideo-backend -f
+```
