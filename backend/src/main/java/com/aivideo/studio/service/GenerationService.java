@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,16 +54,47 @@ public class GenerationService {
         try {
             // 구조화된 템플릿 기반 영어 프롬프트 자동 생성 (2x2 레이아웃 포함)
             String englishPrompt = buildEnglishPrompt(target, state);
-            List<String> referenceImageUrls = collectReferenceImageUrls(state);
-            log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
+
+            // 레퍼런스 순서 고정: 이전씬 -> 주인공 -> 배경 (최대 3개)
+            List<String> referenceImageUrls = buildOrderedReferenceImageUrls(state, target);
+
+            List<String> appearanceDescriptions = collectReferenceAppearances(state, referenceImageUrls);
+            log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 레퍼런스 {}개, 프롬프트 길이: {}",
+                    sceneId, referenceImageUrls.size(), englishPrompt.length());
 
             // 안정화된 전역 Seed로 씬 간 외형 일관성을 강화
             Integer seed = resolveConsistencySeed(state, sceneId);
-            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed, referenceImageUrls);
+            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed, referenceImageUrls, appearanceDescriptions);
 
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
             target.setStatus("done");
+
+            // [일관성 자동 체인] 씬 1의 이미지를 배경 레퍼런스와 캐릭터 레퍼런스로 자동 등록
+            boolean isFirstScene = "scene-1".equals(String.valueOf(target.getId()))
+                    || (state.getScenes() != null && !state.getScenes().isEmpty()
+                        && state.getScenes().get(0).getId() == target.getId());
+            if (isFirstScene) {
+                // 배경 레퍼런스: backgroundReferenceImageUrl이 아직 없을 때만 등록
+                if (state.getBackgroundReferenceImageUrl() == null
+                        || state.getBackgroundReferenceImageUrl().isBlank()) {
+                    state.setBackgroundReferenceImageUrl(imageUrl);
+                    log.info("[GenerationService] 씬 1 이미지를 배경 레퍼런스로 자동 등록: {}", imageUrl);
+                }
+                // [핵심 Fix] 캐릭터 레퍼런스: imageUrl이 없는 캐릭터에 씬1 이미지를 등록
+                // → 씬2부터 collectCharacterReferenceImageUrls()가 이 URL을 반환
+                // → Imagen에 실제 레퍼런스 이미지가 전달되어 APPEARANCE LOCKED가 실제로 작동
+                if (state.getCharacters() != null) {
+                    for (com.aivideo.studio.dto.Character c : state.getCharacters()) {
+                        if (c != null && (c.getImageUrl() == null || c.getImageUrl().isBlank())) {
+                            c.setImageUrl(imageUrl);
+                            log.info("[GenerationService] 씬 1 이미지를 캐릭터 '{}' 레퍼런스로 자동 등록: {}",
+                                    c.getName(), imageUrl);
+                            break; // 첫 번째 캐릭터에만 등록 (주인공 기준)
+                        }
+                    }
+                }
+            }
             sessionService.updateSession(sessionId, state);
 
             log.info("[GenerationService] 씬 {} 이미지 생성 완료 — imageUrl: {}", sceneId, imageUrl);
@@ -197,12 +229,14 @@ public class GenerationService {
 
         // 안정화된 전역 Seed 사용
         Integer seed = resolveConsistencySeed(state, sceneId);
-        List<String> referenceImageUrls = collectReferenceImageUrls(state);
+        List<String> referenceImageUrls = buildOrderedReferenceImageUrls(state, target);
+        List<String> appearanceDescriptions = collectReferenceAppearances(state, referenceImageUrls);
         String imageUrl = imagenAdapter.generateImage(
                 englishPrompt,
                 buildFrameSceneKey(sceneId, targetFrame.getId()),
                 seed,
-                referenceImageUrls
+                referenceImageUrls,
+                appearanceDescriptions
         );
         targetFrame.setImageUrl(imageUrl);
         if (targetFrame.getScript() == null || targetFrame.getScript().isBlank()) {
@@ -253,7 +287,8 @@ public class GenerationService {
         geminiPrompt.append("[Current Frame Script]\n").append(koreanScript).append("\n\n");
         geminiPrompt.append("Output ONLY the translated, highly detailed English prompt, without any conversational text or markdown formatting. The prompt should flow logically as a single descriptive paragraph.");
 
-        return geminiAdapter.generateText(geminiPrompt.toString()).trim();
+        String generated = geminiAdapter.generateText(geminiPrompt.toString()).trim();
+        return enforceFourPanelLayoutPrompt(generated);
     }
 
     /**
@@ -262,11 +297,6 @@ public class GenerationService {
      * (2x2 레이아웃, 4컷 스토리보드 형태 생성 규칙 추가)
      */
     private String buildEnglishPrompt(Scene scene, ProjectState state) {
-        // 이미 영어 prompt가 명확하게 작성되어 있다면 그대로 반환
-        if (scene.getPrompt() != null && !scene.getPrompt().isBlank() && isEnglish(scene.getPrompt())) {
-            return scene.getPrompt().trim();
-        }
-
         String characterHint = buildCharacterAppearanceHint(state);
         String backgroundHint = buildBackgroundReferenceHint(state);
         String koreanInfo = buildKoreanSceneDescription(scene, state);
@@ -295,11 +325,39 @@ public class GenerationService {
         
         geminiPrompt.append("[Scene Elements]:\n").append(koreanInfo);
 
-        return geminiAdapter.generateText(geminiPrompt.toString()).trim();
+        String generated = geminiAdapter.generateText(geminiPrompt.toString()).trim();
+        String scenePrompt = enforceFourPanelLayoutPrompt(generated);
+
+        // [Fix B] 캐릭터 외형을 영어로 번역해서 Imagen 프롬프트 앞에 고정 prefix로 삽입
+        // Gemini가 씬마다 외형 묘사를 다르게 번역하더라도 Imagen은 앞부분 고정 묘사를 일관되게 따름
+        String appearancePrefix = buildTranslatedAppearancePrefix(state);
+        if (!appearancePrefix.isBlank()) {
+            scenePrompt = appearancePrefix + " " + scenePrompt;
+        }
+        return scenePrompt;
     }
 
-    private boolean isEnglish(String text) {
-        return text.matches("^[a-zA-Z0-9\\s\\p{Punct}]+$");
+    private String enforceFourPanelLayoutPrompt(String prompt) {
+        String base = (prompt == null ? "" : prompt.trim());
+        if (base.isBlank()) {
+            return "A 2x2 grid layout storyboard, single image split into 4 panels, clear sequential narrative from intro to outro.";
+        }
+
+        String lowered = base.toLowerCase();
+        boolean has2x2 = lowered.contains("2x2");
+        boolean hasFourPanel = lowered.contains("4-panel") || lowered.contains("four-panel") || lowered.contains("4 panel") || lowered.contains("four panel");
+        boolean hasSingleImage = lowered.contains("single image");
+        boolean hasCollage = lowered.contains("four-cut") || lowered.contains("4-cut") || lowered.contains("collage");
+
+        StringBuilder forced = new StringBuilder(base);
+        if (!hasSingleImage || !(has2x2 || hasFourPanel)) {
+            forced.insert(0, "A single image in a 2x2 grid 4-panel storyboard layout, ");
+        }
+        if (!hasCollage) {
+            forced.append(" Ensure a four-cut photography collage composition with visible panel boundaries.");
+        }
+        forced.append(" Never output a single full-frame scene; always keep four distinct panels in one image.");
+        return forced.toString().trim();
     }
 
     private String buildKoreanSceneDescription(Scene scene, ProjectState state) {
@@ -346,6 +404,87 @@ public class GenerationService {
         return desc == null ? "" : desc.trim();
     }
 
+    /**
+     * [Fix B] 캐릭터 외형을 한 번 영어로 번역하여 Imagen 프롬프트 앞에 붙일 고정 prefix를 생성합니다.
+     * Gemini가 씬마다 외형을 다르게 해석하더라도, Imagen은 이 prefix를 항상 먼저 읽어 일관성을 유지합니다.
+     */
+    private String buildTranslatedAppearancePrefix(ProjectState state) {
+        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
+            return "";
+        }
+        StringBuilder prefix = new StringBuilder();
+        for (com.aivideo.studio.dto.Character c : state.getCharacters()) {
+            if (c == null) continue;
+            String name = c.getName() != null && !c.getName().isBlank() ? c.getName().trim() : "character";
+            String appearance = c.getAppearance() != null ? c.getAppearance().trim() : "";
+            if (appearance.isBlank()) continue;
+            String englishAppearance = translateAppearanceToEnglish(name, appearance);
+            if (prefix.length() > 0) prefix.append(" | ");
+            prefix.append("CHARACTER APPEARANCE [DO NOT ALTER]: ").append(englishAppearance)
+                  .append(". Face, hair, outfit, skin tone MUST match exactly in every panel.");
+        }
+        return prefix.toString();
+    }
+
+    private List<String> buildOrderedReferenceImageUrls(ProjectState state, Scene currentScene) {
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+
+        // 1) 첫 번째 생성 이미지를 절대 기준(anchor)으로 고정
+        String anchorRef = findFirstCompletedSceneImage(state);
+        if (isSupportedReferenceImageUrl(anchorRef)) {
+            ordered.add(anchorRef.trim());
+        }
+
+        // 2) 보조 연속성: 직전 완료 씬
+        String previousSceneRef = findMostRecentCompletedSceneImage(state, currentScene);
+        if (isSupportedReferenceImageUrl(previousSceneRef)) {
+            ordered.add(previousSceneRef.trim());
+        }
+
+        // 3) 배경 고정
+        String backgroundRef = state != null ? firstNonBlank(state.getBackgroundReferenceImageUrl()) : null;
+        if (isSupportedReferenceImageUrl(backgroundRef)) {
+            ordered.add(backgroundRef.trim());
+        }
+
+        // anchor를 못 찾은 경우에만 주인공 레퍼런스를 대체로 사용
+        if (ordered.isEmpty()) {
+            String mainCharacterRef = findMainCharacterReferenceImageUrl(state);
+            if (isSupportedReferenceImageUrl(mainCharacterRef)) {
+                ordered.add(mainCharacterRef.trim());
+            }
+        }
+
+        return ordered.stream().limit(3).collect(Collectors.toList());
+    }
+
+    private String findFirstCompletedSceneImage(ProjectState state) {
+        if (state == null || state.getScenes() == null || state.getScenes().isEmpty()) {
+            return null;
+        }
+        for (Scene s : state.getScenes()) {
+            if (s == null) continue;
+            if ("done".equals(s.getStatus())
+                    && s.getImageUrl() != null
+                    && !s.getImageUrl().isBlank()
+                    && isSupportedReferenceImageUrl(s.getImageUrl())) {
+                return s.getImageUrl().trim();
+            }
+        }
+        return null;
+    }
+
+    private String findMainCharacterReferenceImageUrl(ProjectState state) {
+        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
+            return null;
+        }
+        Character main = state.getCharacters().get(0);
+        if (main == null || main.getImageUrl() == null || main.getImageUrl().isBlank()) {
+            return null;
+        }
+        return main.getImageUrl().trim();
+    }
+
     private List<String> collectReferenceImageUrls(ProjectState state) {
         List<String> refs = new ArrayList<>();
         refs.addAll(collectCharacterReferenceImageUrls(state));
@@ -360,6 +499,110 @@ public class GenerationService {
                 .distinct()
                 .limit(2)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 레퍼런스 이미지 URL 목록에 대응하는 캐릭터 외형 묘사(영어) 목록을 생성합니다.
+     * characters의 appearance를 영어 프롬프트 형식으로 번역하여 반환합니다.
+     * 배경 레퍼런스의 경우 backgroundReferenceDescription을 사용합니다.
+     */
+    private List<String> collectReferenceAppearances(ProjectState state, List<String> referenceImageUrls) {
+        if (referenceImageUrls == null || referenceImageUrls.isEmpty() || state == null) {
+            return List.of();
+        }
+        List<String> appearances = new ArrayList<>(referenceImageUrls.size());
+        Map<String, String> charAppearanceByImage = new LinkedHashMap<>();
+        if (state.getCharacters() != null) {
+            for (Character c : state.getCharacters()) {
+                if (c == null || c.getImageUrl() == null || c.getImageUrl().isBlank()) continue;
+                String img = c.getImageUrl().trim();
+                if (!isSupportedReferenceImageUrl(img)) continue;
+                String name = c.getName() != null && !c.getName().isBlank() ? c.getName().trim() : "character";
+                String appearance = c.getAppearance() != null ? c.getAppearance().trim() : "";
+                String desc = !appearance.isBlank()
+                        ? translateAppearanceToEnglish(name, appearance)
+                        : name + " character reference";
+                charAppearanceByImage.putIfAbsent(img, desc);
+            }
+        }
+
+        String bgRef = firstNonBlank(state.getBackgroundReferenceImageUrl());
+        String bgDesc = state.getBackgroundReferenceDescription() != null && !state.getBackgroundReferenceDescription().isBlank()
+                ? state.getBackgroundReferenceDescription().trim()
+                : "background environment reference";
+
+        String anchorRef = findFirstCompletedSceneImage(state);
+        String mainCharRef = findMainCharacterReferenceImageUrl(state);
+
+        for (String refUrl : referenceImageUrls) {
+            if (refUrl == null || refUrl.isBlank()) {
+                appearances.add("reference subject");
+                continue;
+            }
+            String normalized = refUrl.trim();
+            if (anchorRef != null && normalized.equals(anchorRef)) {
+                String anchorDesc = (mainCharRef != null && charAppearanceByImage.containsKey(mainCharRef))
+                        ? charAppearanceByImage.get(mainCharRef)
+                        : "primary character identity lock reference (keep same face and outfit)";
+                appearances.add("PRIMARY IDENTITY LOCK: " + anchorDesc);
+            } else if (mainCharRef != null && normalized.equals(mainCharRef)) {
+                appearances.add(charAppearanceByImage.getOrDefault(normalized, "main character reference"));
+            } else if (bgRef != null && normalized.equals(bgRef.trim())) {
+                appearances.add(bgDesc);
+            } else if (charAppearanceByImage.containsKey(normalized)) {
+                appearances.add(charAppearanceByImage.get(normalized));
+            } else {
+                appearances.add("previous scene continuity reference");
+            }
+        }
+        return appearances;
+    }
+
+    /**
+     * 캐릭터 외형 묘사(한국어)를 Imagen 3 영어 프롬프트용 형식으로 번역합니다.
+     * 번역 실패 시 원본을 그대로 반환합니다.
+     */
+    private String translateAppearanceToEnglish(String name, String koreanAppearance) {
+        if (koreanAppearance == null || koreanAppearance.isBlank()) return name + " character reference";
+        // 이미 영문이 대부분인 경우(영어 단어 비율) 번역 스킵
+        long englishChars = koreanAppearance.chars().filter(c -> (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')).count();
+        if (englishChars > koreanAppearance.length() * 0.4) {
+            return name + ": " + koreanAppearance;
+        }
+        try {
+            String prompt = "Translate the following Korean character appearance description into concise English keywords " +
+                    "suitable for an image generation prompt. " +
+                    "Format: [hair], [face], [body], [outfit], [color/mood]. " +
+                    "No explanations. Output ONLY the English description as a single line.\n\n" +
+                    "Character name: " + name + "\n" +
+                    "Korean appearance: " + koreanAppearance;
+            String translated = geminiAdapter.generateText(prompt).trim();
+            if (translated.isBlank()) return name + ": " + koreanAppearance;
+            return name + ": " + translated;
+        } catch (Exception e) {
+            log.warn("[GenerationService] 외형 번역 실패 — name: {}, 원인: {}", name, e.getMessage());
+            return name + ": " + koreanAppearance;
+        }
+    }
+
+    /**
+     * 현재 씬보다 순서가 앞서고 이미 완료된 씬의 imageUrl 중 가장 최근 것을 반환합니다.
+     * 씬 간 캐릭터/배경 일관성을 위해 이전 씬 이미지를 subject reference로 직접 주입할 때 사용합니다.
+     */
+    private String findMostRecentCompletedSceneImage(ProjectState state, Scene currentScene) {
+        if (state == null || state.getScenes() == null || currentScene == null) return null;
+        List<Scene> scenes = state.getScenes();
+        String result = null;
+        for (Scene s : scenes) {
+            if (s == null || s == currentScene || s.getId() == currentScene.getId()) break;
+            if ("done".equals(s.getStatus())
+                    && s.getImageUrl() != null
+                    && !s.getImageUrl().isBlank()
+                    && isSupportedReferenceImageUrl(s.getImageUrl())) {
+                result = s.getImageUrl();
+            }
+        }
+        return result;
     }
 
     private List<String> collectCharacterReferenceImageUrls(ProjectState state) {
@@ -613,7 +856,7 @@ public class GenerationService {
                 "1. Descriptive Language: Use vivid adjectives and adverbs to paint a clear picture for Veo.\n" +
                 "2. Face Detail Enhancement: If there are people, mention 'Portrait' to focus on facial details.\n" +
                 "3. Copyright/Safety Bypass: DO NOT use real person names, trademarked characters (e.g., Pororo), or sensitive IP. Genericize them by appearance (e.g., 'a young animated penguin').\n" +
-                "4. Narrative Hook: Start by describing the [Start Frame] visual state and ensure the action perfectly concludes within 5 seconds.\n" +
+                "4. Narrative Hook: Start by describing the [Start Frame] visual state and ensure the action perfectly concludes within 4 seconds.\n" +
                 "5. Formatting: Output ONLY the English prompt string. No conversational text.\n\n" +
                 "[Scene Description]:\n" + koreanPrompt;
 

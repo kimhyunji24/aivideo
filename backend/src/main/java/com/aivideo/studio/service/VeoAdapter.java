@@ -49,7 +49,7 @@ public class VeoAdapter {
     @Value("${veo.storage-uri:}")
     private String veoStorageUri;
 
-    @Value("${veo.duration-seconds:8}")
+    @Value("${veo.duration-seconds:4}")
     private int durationSeconds;
 
     @Value("${veo.poll-interval-ms:10000}")
@@ -183,7 +183,7 @@ public class VeoAdapter {
         parameters.put("aspectRatio", "16:9");
         parameters.put("resolution", "720p"); // 해상도 720p 고정 (사용자 요청)
         parameters.put("sampleCount", 1);
-        parameters.put("durationSeconds", 5); // 5초로 고정
+        parameters.put("durationSeconds", normalizeDurationSeconds(durationSeconds));
         parameters.put("storageUri", veoStorageUri);
 
         Map<String, Object> requestBody = new LinkedHashMap<>();
@@ -503,5 +503,13 @@ public class VeoAdapter {
         if (!veoStorageUri.startsWith("gs://")) {
             throw new IllegalArgumentException("veo.storage-uri는 gs:// 로 시작해야 합니다.");
         }
+    }
+
+    private int normalizeDurationSeconds(int requested) {
+        // Veo image_to_video supports 4, 6, 8 seconds.
+        if (requested == 4 || requested == 6 || requested == 8) {
+            return requested;
+        }
+        return 4;
     }
 }

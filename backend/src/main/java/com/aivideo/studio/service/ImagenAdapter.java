@@ -69,14 +69,23 @@ public class ImagenAdapter {
      * @return 저장된 이미지 파일의 URL 경로 (예: /generated-images/scene-1.png)
      */
     public String generateImage(String prompt, String sceneId, Integer seed) {
-        return generateImage(prompt, sceneId, seed, List.of());
+        return generateImage(prompt, sceneId, seed, List.of(), List.of());
     }
 
     public String generateImage(String prompt, String sceneId, Integer seed, List<String> referenceImageUrls) {
+        return generateImage(prompt, sceneId, seed, referenceImageUrls, List.of());
+    }
+
+    /**
+     * 캐릭터 외형 묘사(appearance) 목록을 함께 받아 레퍼런스 이미지의 subjectDescription에 반영합니다.
+     *
+     * @param appearanceDescriptions referenceImageUrls와 순서가 대응되는 영어 외형 묘사 목록
+     */
+    public String generateImage(String prompt, String sceneId, Integer seed, List<String> referenceImageUrls, List<String> appearanceDescriptions) {
         log.info("[Imagen3] 이미지 생성 시작 — sceneId: {}, prompt 길이: {}", sceneId, prompt.length());
 
         try {
-            List<Map<String, Object>> referenceImages = buildReferenceImages(referenceImageUrls);
+            List<Map<String, Object>> referenceImages = buildReferenceImages(referenceImageUrls, appearanceDescriptions);
             String selectedModel = selectModel(referenceImages);
             String base64Image = predictViaRest(selectedModel, prompt, referenceImages, seed);
             byte[] imageBytes = Base64.getDecoder().decode(base64Image);
@@ -211,13 +220,25 @@ public class ImagenAdapter {
     }
 
     private List<Map<String, Object>> buildReferenceImages(List<String> referenceImageUrls) {
+        return buildReferenceImages(referenceImageUrls, List.of());
+    }
+
+    /**
+     * 레퍼런스 이미지 목록과 대응되는 캐릭터 외형 묘사(appearance) 목록을 받아 Imagen referenceImages 페이로드를 구성합니다.
+     * appearanceDescriptions가 비어 있거나 인덱스에 값이 없을 경우 빈 description으로 대체합니다.
+     *
+     * @param referenceImageUrls     레퍼런스 이미지 URL 목록 (data URL, /generated-images/..., https://...)
+     * @param appearanceDescriptions 각 이미지에 대응되는 캐릭터 외형 묘사 (영어 권장)
+     */
+    public List<Map<String, Object>> buildReferenceImages(List<String> referenceImageUrls, List<String> appearanceDescriptions) {
         if (referenceImageUrls == null || referenceImageUrls.isEmpty()) {
             return List.of();
         }
 
         List<Map<String, Object>> refs = new ArrayList<>();
         int idx = 1;
-        for (String url : referenceImageUrls) {
+        for (int i = 0; i < referenceImageUrls.size(); i++) {
+            String url = referenceImageUrls.get(i);
             if (url == null || url.isBlank()) continue;
             ParsedDataUrl parsed = parseImageUrl(url.trim());
             if (parsed == null) {
@@ -225,19 +246,24 @@ public class ImagenAdapter {
                 continue;
             }
 
+            // 캐릭터 외형 묘사를 subjectDescription으로 활용 (없으면 간략한 기본값 사용)
+            String appearance = (appearanceDescriptions != null && i < appearanceDescriptions.size())
+                    ? appearanceDescriptions.get(i)
+                    : null;
+            String subjectDesc = (appearance != null && !appearance.isBlank())
+                    ? shorten(appearance, 200)
+                    : "reference subject " + idx;
+
             Map<String, Object> ref = new LinkedHashMap<>();
-            ref.put("referenceType", "SUBJECT"); // Shortened from REFERENCE_TYPE_SUBJECT
+            ref.put("referenceType", "SUBJECT");
             ref.put("referenceId", idx++);
-            
-            // 이미지 데이터 필드명 'image'로 변경 (기존 'referenceImage'는 이전 버전 규격)
             ref.put("image", Map.of("bytesBase64Encoded", parsed.base64Data));
-            
             ref.put("subjectImageConfig", Map.of(
-                    "subjectType", "DEFAULT", // Shortened from SUBJECT_TYPE_DEFAULT
-                    "subjectDescription", "character identity: " + shorten(url) // 캐릭터 이미지를 식별할 수 있는 힌트
+                    "subjectType", "DEFAULT",
+                    "subjectDescription", subjectDesc
             ));
             refs.add(ref);
-            if (refs.size() >= 4) break; // 업로드된 다수의 캐릭터(최대 4개) 지원
+            if (refs.size() >= 4) break;
         }
         return refs;
     }
@@ -274,16 +300,23 @@ public class ImagenAdapter {
         String strictRefInstruction;
         if (refs.size() >= 2) {
             strictRefInstruction =
-                    "Use reference [1] for the primary subject identity/appearance and [2] for background/environment consistency. " +
-                    "If text conflicts with references, ALWAYS follow references. " +
-                    "Do not alter subject face, body proportions, key colors, or outfit details from [1].";
+                    // [일관성 강화] reference [1]을 전 씬 공통 identity anchor로 고정
+                    "PRIMARY IDENTITY LOCK — reference [1] is the immutable anchor across ALL scenes. " +
+                    "All panels MUST exactly replicate face geometry, hair color/length/style, skin tone, eye shape/color, " +
+                    "and outfit (color, texture, cut, accessories) from reference [1]. " +
+                    "Use reference [2] only as continuity/background support. " +
+                    "Any deviation from these references is a CRITICAL failure. " +
+                    "If text description conflicts with references, ALWAYS follow references.";
         } else {
             strictRefInstruction =
-                    "Use reference [1] as the exact source of truth for subject identity and appearance. " +
-                    "If text conflicts with reference [1], ALWAYS follow reference [1]. " +
-                    "Do not alter subject face, body proportions, key colors, or outfit details from [1].";
+                    // 단일 레퍼런스일 때도 anchor 고정
+                    "PRIMARY IDENTITY LOCK — reference [1] is immutable across ALL scenes. " +
+                    "Every panel MUST exactly reproduce face geometry, hair color/length/style, skin tone, eye shape/color, " +
+                    "and exact outfit (color, texture, cut, accessories) from reference [1]. " +
+                    "Any deviation from reference [1] is a CRITICAL failure. " +
+                    "If text conflicts with reference [1], ALWAYS follow reference [1].";
         }
-        return normalized + " " + strictRefInstruction + " " + tokenList;
+        return strictRefInstruction + " " + tokenList + " " + normalized;
     }
 
     private ParsedDataUrl parseImageUrl(String imageUrl) {
@@ -392,9 +425,13 @@ public class ImagenAdapter {
     }
 
     private String shorten(String text) {
+        return shorten(text, 60);
+    }
+
+    private String shorten(String text, int maxLen) {
         if (text == null) return "";
-        if (text.length() <= 60) return text;
-        return text.substring(0, 57) + "...";
+        if (text.length() <= maxLen) return text;
+        return text.substring(0, maxLen - 3) + "...";
     }
 
     private record ParsedDataUrl(String mimeType, String base64Data) {}

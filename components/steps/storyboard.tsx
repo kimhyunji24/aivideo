@@ -80,19 +80,13 @@ export function Storyboard({
       readyToMerge: false,
       selectedSceneIndex: globalIndex,
     }
-    sessionStorage.setItem("aivideo:return-state", JSON.stringify(returnState))
-
-    const scenesPayload = project.scenes.map((scene) => ({
-      id: scene.id,
-      title: scene.title,
-      description: scene.description,
-      elements: scene.elements,
-    }))
-    const params = new URLSearchParams({
-      sceneIndex: String(globalIndex),
-      scenes: JSON.stringify(scenesPayload),
-    })
-    router.push(`/edit?${params.toString()}`)
+    try {
+      sessionStorage.setItem("aivideo:return-state", JSON.stringify(returnState))
+    } catch (err) {
+      console.error("Failed to persist return state for edit page", err)
+    }
+    // scenes 전체를 querystring으로 넘기면 URL이 과도하게 길어져 라우팅/렌더링이 깨질 수 있다.
+    router.push(`/edit?sceneIndex=${globalIndex}`)
   }
 
   return (

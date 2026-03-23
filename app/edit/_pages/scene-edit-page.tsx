@@ -141,7 +141,8 @@ export default function SceneEditPage() {
   const [frameIndexByScene, setFrameIndexByScene] = useState<Record<string, number>>({})
   const [isEditingFrame, setIsEditingFrame] = useState(false)
 
-  const scenes = project.scenes.length > 0 ? project.scenes : queryScenes
+  const projectScenes = Array.isArray(project?.scenes) ? project.scenes : []
+  const scenes = projectScenes.length > 0 ? projectScenes : queryScenes
   const safeSelectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, scenes.length - 1)))
   const selectedScene = scenes[safeSelectedIndex]
   const selectedSceneKey = String(selectedScene?.id ?? safeSelectedIndex)
