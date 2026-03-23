@@ -335,7 +335,7 @@ export function FrameEdit({
   }
 
   return (
-    <div className="h-[calc(100vh-180px)] flex flex-col">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 h-[calc(100vh-180px)] flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="px-3 py-1 text-sm font-semibold rounded-full">
