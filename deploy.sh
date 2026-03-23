@@ -54,9 +54,7 @@ npm run build
 echo "🚀 Starting $TARGET_COLOR environment applications..."
 pm2 start "java -jar backend/build/libs/aivideo-studio-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod --server.port=$TARGET_BACKEND_PORT" --name "backend-$TARGET_COLOR"
 
-export BACKEND_URL="http://localhost:$TARGET_BACKEND_PORT"
-export PORT=$TARGET_FRONTEND_PORT
-pm2 start "npm start" --name "frontend-$TARGET_COLOR"
+pm2 start "npm start -- -p $TARGET_FRONTEND_PORT" --name "frontend-$TARGET_COLOR" --update-env --env BACKEND_URL="http://localhost:$TARGET_BACKEND_PORT"
 
 # 6. Health Check
 echo "⏳ Waiting 30 seconds for applications to initialize..."
