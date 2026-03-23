@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -28,4 +29,5 @@ public class ProjectState implements Serializable {
     private String mode;
     private String backgroundReferenceImageUrl;
     private String backgroundReferenceDescription;
+    private Map<String, CustomAssetData> customAssets;
 }

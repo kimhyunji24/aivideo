@@ -9,6 +9,7 @@ import {
 import { Dispatch, SetStateAction } from "react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { CharacterRefPanel } from "@/components/steps/character-ref-panel"
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -89,10 +90,27 @@ export function Storyboard({
     router.push(`/edit?sceneIndex=${globalIndex}`)
   }
 
+  const hasCharacters = (project.characters ?? []).length > 0
+
   return (
     <div className="storyboard-root bg-white h-full flex flex-col">
 
-      <div className="flex-1 overflow-auto flex flex-col p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto w-full">
+      {/* ── 콘텐츠 영역: 캐릭터 레퍼런스 사이드바 + 스토리보드 ── */}
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* 캐릭터 레퍼런스 사이드바 */}
+        {hasCharacters && (
+          <div className="w-[260px] flex-shrink-0 overflow-y-auto border-r border-gray-100">
+            <CharacterRefPanel
+              project={project}
+              setProject={setProject}
+              sessionId={sessionId}
+            />
+          </div>
+        )}
+
+        {/* 스토리보드 본문 */}
+        <div className="flex-1 overflow-auto flex flex-col p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto w-full">
         {/* ── 개별 씬 인디케이터 (1, 2, 3...) ── */}
         <div className="storyboard-indicators mb-6">
           {project.scenes.map((scene, i) => {
@@ -255,7 +273,10 @@ export function Storyboard({
         </div>
       </div>
 
-      {/* flex-1 overflow-auto (B) 닫힘 */}
+        {/* 스토리보드 본문 div 닫힘 */}
+        </div>
+
+      {/* flex-1 flex overflow-hidden (콘텐츠+사이드바 행) 닫힘 */}
       </div>
 
       {/* ── 하단 네비게이션 ── */}

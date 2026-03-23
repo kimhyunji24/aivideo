@@ -65,6 +65,8 @@ export interface Character {
     personality: string;
     values: string;
     trauma: string;
+    /** 캐릭터 레퍼런스 이미지 URL 목록 (최대 10개) */
+    referenceImageUrls?: string[];
 }
 
 export interface PlotStage {

@@ -3,20 +3,20 @@ package com.aivideo.studio.service;
 import com.aivideo.studio.dto.ProjectState;
 import com.aivideo.studio.dto.Scene;
 import com.aivideo.studio.dto.Frame;
-import com.aivideo.studio.dto.Character;
-import com.aivideo.studio.dto.PlotStage;
-import com.aivideo.studio.dto.SceneElements;
+import com.aivideo.studio.dto.CustomAssetData;
+import com.aivideo.studio.exception.ApiErrorInfo;
+import com.aivideo.studio.exception.ErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -28,8 +28,6 @@ public class GenerationService {
     private final ImagenAdapter imagenAdapter;
     private final GeminiAdapter geminiAdapter;
     private final VeoAdapter veoAdapter;
-
-    private static final Map<String, String> DEFAULT_SCENE_ELEMENTS = buildDefaultSceneElements();
 
     /**
      * 특정 씬의 이미지를 Imagen 3로 생성합니다.
@@ -49,52 +47,22 @@ public class GenerationService {
 
         // 상태를 generating으로 변경 후 저장
         target.setStatus("generating");
+        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
-            // 구조화된 템플릿 기반 영어 프롬프트 자동 생성 (2x2 레이아웃 포함)
+            // 영어 프롬프트 준비 (없으면 Gemini로 자동 생성)
             String englishPrompt = buildEnglishPrompt(target, state);
+            log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 프롬프트: {}", sceneId, englishPrompt);
 
-            // 레퍼런스 순서 고정: 이전씬 -> 주인공 -> 배경 (최대 3개)
-            List<String> referenceImageUrls = buildOrderedReferenceImageUrls(state, target);
-
-            List<String> appearanceDescriptions = collectReferenceAppearances(state, referenceImageUrls);
-            log.info("[GenerationService] 씬 {} 이미지 생성 시작 — 레퍼런스 {}개, 프롬프트 길이: {}",
-                    sceneId, referenceImageUrls.size(), englishPrompt.length());
-
-            // 안정화된 전역 Seed로 씬 간 외형 일관성을 강화
-            Integer seed = resolveConsistencySeed(state, sceneId);
-            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed, referenceImageUrls, appearanceDescriptions);
+            // Imagen 3 이미지 생성 - 캐릭터/스타일 일관성을 위해 Scene ID 기반의 고정 Seed 사용
+            Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
+            String imageUrl = imagenAdapter.generateImage(englishPrompt, sceneId, seed);
 
             // 세션에 이미지 URL 저장
             target.setImageUrl(imageUrl);
             target.setStatus("done");
-
-            // [일관성 자동 체인] 씬 1의 이미지를 배경 레퍼런스와 캐릭터 레퍼런스로 자동 등록
-            boolean isFirstScene = "scene-1".equals(String.valueOf(target.getId()))
-                    || (state.getScenes() != null && !state.getScenes().isEmpty()
-                        && state.getScenes().get(0).getId() == target.getId());
-            if (isFirstScene) {
-                // 배경 레퍼런스: backgroundReferenceImageUrl이 아직 없을 때만 등록
-                if (state.getBackgroundReferenceImageUrl() == null
-                        || state.getBackgroundReferenceImageUrl().isBlank()) {
-                    state.setBackgroundReferenceImageUrl(imageUrl);
-                    log.info("[GenerationService] 씬 1 이미지를 배경 레퍼런스로 자동 등록: {}", imageUrl);
-                }
-                // [핵심 Fix] 캐릭터 레퍼런스: imageUrl이 없는 캐릭터에 씬1 이미지를 등록
-                // → 씬2부터 collectCharacterReferenceImageUrls()가 이 URL을 반환
-                // → Imagen에 실제 레퍼런스 이미지가 전달되어 APPEARANCE LOCKED가 실제로 작동
-                if (state.getCharacters() != null) {
-                    for (com.aivideo.studio.dto.Character c : state.getCharacters()) {
-                        if (c != null && (c.getImageUrl() == null || c.getImageUrl().isBlank())) {
-                            c.setImageUrl(imageUrl);
-                            log.info("[GenerationService] 씬 1 이미지를 캐릭터 '{}' 레퍼런스로 자동 등록: {}",
-                                    c.getName(), imageUrl);
-                            break; // 첫 번째 캐릭터에만 등록 (주인공 기준)
-                        }
-                    }
-                }
-            }
+            clearSceneError(target);
             sessionService.updateSession(sessionId, state);
 
             log.info("[GenerationService] 씬 {} 이미지 생성 완료 — imageUrl: {}", sceneId, imageUrl);
@@ -103,18 +71,17 @@ public class GenerationService {
         } catch (Exception e) {
             log.error("[GenerationService] 씬 {} 이미지 생성 실패", sceneId, e);
             target.setStatus("error");
-            target.setLastErrorMessage(e.getMessage() != null ? e.getMessage() : "알 수 없는 오류");
-            target.setLastErrorRetryable(true);
+            applySceneError(target, e);
             sessionService.updateSession(sessionId, state);
-            if (e instanceof IllegalArgumentException iae) {
-                throw iae;
-            }
             throw new RuntimeException("이미지 생성 실패: " + e.getMessage(), e);
         }
     }
 
     /**
      * 세션의 모든 씬에 대해 이미지를 순차 생성합니다.
+     *
+     * @param sessionId 세션 ID
+     * @return imageUrl이 채워진 씬 목록
      */
     public List<Scene> generateAllImages(String sessionId) {
         ProjectState state = sessionService.getSession(sessionId);
@@ -165,6 +132,7 @@ public class GenerationService {
 
     /**
      * 특정 씬의 프레임 이미지를 생성합니다.
+     * frameId가 없으면 첫 프레임을 사용하고, 프레임이 없으면 자동 생성합니다.
      */
     public Frame generateFrameForScene(String sessionId, String sceneId, String frameId, String frameScript) {
         ProjectState state = sessionService.getSession(sessionId);
@@ -209,11 +177,9 @@ public class GenerationService {
             }
         }
 
-        SceneElements stageElements = resolveFrameElements(state, target);
         String prompt = firstNonBlank(
-                targetFrame.getScript(), // 사용자 수정값 최우선
+                targetFrame.getScript(),
                 target.getPrompt(),
-                stageElements != null ? stageElements.getStory() : null, // 플롯 elements 차순위
                 target.getDescription()
         );
 
@@ -224,20 +190,27 @@ public class GenerationService {
         Frame startFrame = frames.isEmpty() ? null : frames.get(0);
         
         // 프레임 대본(한국어)을 영어 프롬프트로 변환 (Start Frame 일관성 유지 포함)
-        String englishPrompt = buildEnglishFramePrompt(prompt, startFrame, targetFrame, state, stageElements);
+        String englishPrompt = buildEnglishFramePrompt(prompt, startFrame, targetFrame, state);
         log.info("[GenerationService] 씬 {}, 프레임 {} 이미지 생성 — 원본: {}, 번역: {}", sceneId, targetFrame.getId(), prompt, englishPrompt);
 
-        // 안정화된 전역 Seed 사용
-        Integer seed = resolveConsistencySeed(state, sceneId);
-        List<String> referenceImageUrls = buildOrderedReferenceImageUrls(state, target);
-        List<String> appearanceDescriptions = collectReferenceAppearances(state, referenceImageUrls);
-        String imageUrl = imagenAdapter.generateImage(
-                englishPrompt,
-                buildFrameSceneKey(sceneId, targetFrame.getId()),
-                seed,
-                referenceImageUrls,
-                appearanceDescriptions
-        );
+        // 캐릭터 레퍼런스 이미지 수집 (베이스 이미지가 있는 캐릭터만)
+        List<String> characterRefUrls = new ArrayList<>();
+        List<String> characterAppearances = new ArrayList<>();
+        if (state.getCharacters() != null) {
+            for (var c : state.getCharacters()) {
+                List<String> refs = c.getReferenceImageUrls();
+                if (refs != null && !refs.isEmpty()) {
+                    characterRefUrls.add(refs.get(0)); // 베이스 이미지(index 0) 사용
+                    characterAppearances.add(c.getAppearance() != null ? c.getAppearance() : "");
+                }
+            }
+        }
+
+        // 일관성(캐릭터/의상 유지)을 위해 해당 Scene ID를 기반으로 고정된 Seed 추출
+        Integer seed = sceneId.hashCode() & 0x7FFFFFFF;
+        String imageUrl = characterRefUrls.isEmpty()
+                ? imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()), seed)
+                : imagenAdapter.generateImage(englishPrompt, buildFrameSceneKey(sceneId, targetFrame.getId()), seed, characterRefUrls, characterAppearances, true);
         targetFrame.setImageUrl(imageUrl);
         if (targetFrame.getScript() == null || targetFrame.getScript().isBlank()) {
             targetFrame.setScript(prompt); // 원본 한국어 스크립트 유지
@@ -248,27 +221,501 @@ public class GenerationService {
         return targetFrame;
     }
 
+    // ─── Character Reference Image Methods ───────────────────────────────────
+
+    private static final int MAX_REFERENCE_IMAGES = 10;
+
+    /**
+     * 캐릭터 외형 설명을 기반으로 베이스 레퍼런스 이미지를 생성합니다.
+     */
+    public com.aivideo.studio.dto.Character generateCharacterBaseImage(String sessionId, String charId) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        com.aivideo.studio.dto.Character character = findCharacter(state, charId);
+        if (character == null) throw new IllegalArgumentException("캐릭터를 찾을 수 없습니다: " + charId);
+
+        List<String> refs = character.getReferenceImageUrls() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(character.getReferenceImageUrls());
+        if (refs.size() >= MAX_REFERENCE_IMAGES) {
+            throw new IllegalArgumentException("레퍼런스 이미지는 최대 " + MAX_REFERENCE_IMAGES + "개까지 저장할 수 있습니다.");
+        }
+
+        String prompt = buildCharacterBasePrompt(character, state);
+        String imageUrl = imagenAdapter.generateImage(prompt, "char-ref-" + charId, null);
+
+        // 베이스 이미지는 항상 첫 번째로 교체
+        if (refs.isEmpty()) {
+            refs.add(imageUrl);
+        } else {
+            refs.set(0, imageUrl);
+        }
+        character.setReferenceImageUrls(refs);
+        character.setImageUrl(imageUrl); // 기존 단일 imageUrl도 동기화
+
+        sessionService.updateSession(sessionId, state);
+        log.info("[GenerationService] 캐릭터 베이스 이미지 생성 완료 — charId: {}", charId);
+        return character;
+    }
+
+    /**
+     * 베이스 이미지를 레퍼런스로 표정/앵글 변형 이미지를 생성합니다.
+     * variantType: smile | cry | angry | back | side
+     */
+    public com.aivideo.studio.dto.Character generateCharacterVariant(String sessionId, String charId, String variantType) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        com.aivideo.studio.dto.Character character = findCharacter(state, charId);
+        if (character == null) throw new IllegalArgumentException("캐릭터를 찾을 수 없습니다: " + charId);
+
+        List<String> refs = character.getReferenceImageUrls() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(character.getReferenceImageUrls());
+        if (refs.isEmpty()) {
+            throw new IllegalArgumentException("베이스 이미지를 먼저 생성해야 합니다.");
+        }
+        if (refs.size() >= MAX_REFERENCE_IMAGES) {
+            throw new IllegalArgumentException("레퍼런스 이미지는 최대 " + MAX_REFERENCE_IMAGES + "개까지 저장할 수 있습니다.");
+        }
+
+        String baseImageUrl = refs.get(0);
+        String variantPrompt = buildCharacterVariantPrompt(character, variantType, state);
+
+        String newImageUrl = imagenAdapter.generateImage(
+                variantPrompt,
+                "char-ref-" + charId + "-" + variantType + "-" + System.currentTimeMillis(),
+                null,
+                List.of(baseImageUrl),
+                List.of(character.getAppearance() != null ? character.getAppearance() : ""),
+                true
+        );
+
+        refs.add(newImageUrl);
+        character.setReferenceImageUrls(refs);
+        sessionService.updateSession(sessionId, state);
+        log.info("[GenerationService] 캐릭터 변형 이미지 생성 완료 — charId: {}, type: {}", charId, variantType);
+        return character;
+    }
+
+    /**
+     * 특정 레퍼런스 이미지를 삭제합니다.
+     */
+    public com.aivideo.studio.dto.Character deleteCharacterReference(String sessionId, String charId, int index) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        com.aivideo.studio.dto.Character character = findCharacter(state, charId);
+        if (character == null) throw new IllegalArgumentException("캐릭터를 찾을 수 없습니다: " + charId);
+
+        List<String> refs = character.getReferenceImageUrls() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(character.getReferenceImageUrls());
+        if (index < 0 || index >= refs.size()) {
+            throw new IllegalArgumentException("유효하지 않은 인덱스입니다: " + index);
+        }
+
+        refs.remove(index);
+        character.setReferenceImageUrls(refs);
+        if (index == 0) {
+            character.setImageUrl(refs.isEmpty() ? null : refs.get(0));
+        }
+        sessionService.updateSession(sessionId, state);
+        return character;
+    }
+
+    private com.aivideo.studio.dto.Character findCharacter(ProjectState state, String charId) {
+        if (state.getCharacters() == null) return null;
+        return state.getCharacters().stream()
+                .filter(c -> charId.equals(c.getId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String buildCharacterBasePrompt(com.aivideo.studio.dto.Character character, ProjectState state) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Create a high-quality character reference sheet image.\n");
+        sb.append("Character name: ").append(character.getName()).append("\n");
+        sb.append("Appearance: ").append(character.getAppearance()).append("\n");
+        if (state.getSelectedStyles() != null && !state.getSelectedStyles().isEmpty()) {
+            sb.append("Art style: ").append(String.join(", ", state.getSelectedStyles())).append("\n");
+        }
+        sb.append("\nRules:\n");
+        sb.append("- Neutral expression, front-facing, full body or portrait\n");
+        sb.append("- Clear, clean white or simple background\n");
+        sb.append("- High detail: reproduce all appearance details exactly\n");
+        sb.append("- Output ONLY the character image, no text overlays\n");
+        return geminiAdapter.generateText(
+                "Translate and refine this character description into a concise, detailed English image generation prompt:\n\n" + sb
+        ).trim();
+    }
+
+    private String buildCharacterVariantPrompt(com.aivideo.studio.dto.Character character, String variantType, ProjectState state) {
+        String changeInstruction = switch (variantType) {
+            case "smile" -> "happy smiling expression, cheeks lifted, bright warm smile, slight squint, teeth visible";
+            case "cry" -> "tearful crying expression, tears streaming down cheeks, inner eyebrows raised and furrowed, trembling lower lip";
+            case "angry" -> "angry expression, brows sharply furrowed downward, eyes narrowed with intensity, jaw clenched, lips pressed tight";
+            case "back" -> "full back view, showing back of head and hair from behind, same outfit fully visible from behind";
+            case "side" -> "left-side 90-degree profile view, face in exact profile, same outfit visible, clean side angle";
+            default -> "neutral relaxed expression, front-facing, calm face";
+        };
+
+        // Direct English prompt — no Gemini translation needed; reference image anchors appearance
+        StringBuilder sb = new StringBuilder();
+        sb.append("CHARACTER IDENTITY LOCK — reference image [1] is IMMUTABLE. ");
+        sb.append("Reproduce exactly from reference: face geometry, skin tone, hair (color, length, style), ");
+        sb.append("eye shape and color, every detail of the outfit (colors, cut, accessories). ");
+        sb.append("Apply ONLY this single change: ").append(changeInstruction).append(". ");
+        sb.append("Character: ").append(character.getName()).append(". ");
+        if (state.getSelectedStyles() != null && !state.getSelectedStyles().isEmpty()) {
+            sb.append("Art style: ").append(String.join(", ", state.getSelectedStyles())).append(". ");
+        }
+        sb.append("Simple clean background. No text overlay. High-quality character reference sheet.");
+        return sb.toString();
+    }
+
+    /**
+     * 캐릭터 레퍼런스 이미지를 기준으로 자세/동작을 변경해 새 이미지를 생성합니다.
+     */
+    public com.aivideo.studio.dto.Character regenerateCharacterRefWithPose(String sessionId, String charId, int index, String koreanPrompt) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        com.aivideo.studio.dto.Character character = findCharacter(state, charId);
+        if (character == null) throw new IllegalArgumentException("캐릭터를 찾을 수 없습니다: " + charId);
+
+        List<String> refs = character.getReferenceImageUrls() == null
+                ? new ArrayList<>() : new ArrayList<>(character.getReferenceImageUrls());
+        if (index < 0 || index >= refs.size()) throw new IllegalArgumentException("유효하지 않은 인덱스: " + index);
+
+        String currentImageUrl = refs.get(index);
+        String englishPrompt = buildCharacterPoseChangePrompt(character, koreanPrompt, state);
+
+        String newImageUrl = imagenAdapter.generateImage(
+                englishPrompt,
+                "char-ref-" + charId + "-pose-" + index + "-" + System.currentTimeMillis(),
+                null,
+                List.of(currentImageUrl),
+                List.of(character.getAppearance() != null ? character.getAppearance() : ""),
+                false  // 포즈 변경: 텍스트가 포즈 우선, 레퍼런스는 외형만
+        );
+
+        refs.set(index, newImageUrl);
+        character.setReferenceImageUrls(refs);
+        if (index == 0) character.setImageUrl(newImageUrl);
+        sessionService.updateSession(sessionId, state);
+        log.info("[GenerationService] 캐릭터 레퍼런스 자세 변경 완료 — charId: {}, index: {}", charId, index);
+        return character;
+    }
+
+    /**
+     * 캐릭터 레퍼런스 이미지를 인페인팅(부분 수정)합니다.
+     */
+    public com.aivideo.studio.dto.Character editCharacterRefImage(String sessionId, String charId, int index, String prompt, String maskBase64) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        com.aivideo.studio.dto.Character character = findCharacter(state, charId);
+        if (character == null) throw new IllegalArgumentException("캐릭터를 찾을 수 없습니다: " + charId);
+
+        List<String> refs = character.getReferenceImageUrls() == null
+                ? new ArrayList<>() : new ArrayList<>(character.getReferenceImageUrls());
+        if (index < 0 || index >= refs.size()) throw new IllegalArgumentException("유효하지 않은 인덱스: " + index);
+
+        String currentImageUrl = refs.get(index);
+        String englishPrompt = (prompt != null && !prompt.isBlank()) ? buildInpaintingPrompt(prompt, state) : null;
+        String cleanMask = maskBase64 != null ? maskBase64.replaceFirst("^data:image/[^;]+;base64,", "") : "";
+
+        String newImageUrl = imagenAdapter.editImage(englishPrompt, currentImageUrl, cleanMask,
+                "char-ref-" + charId + "-edit-" + index);
+
+        refs.set(index, newImageUrl);
+        character.setReferenceImageUrls(refs);
+        if (index == 0) character.setImageUrl(newImageUrl);
+        sessionService.updateSession(sessionId, state);
+        log.info("[GenerationService] 캐릭터 레퍼런스 인페인팅 완료 — charId: {}, index: {}", charId, index);
+        return character;
+    }
+
+    private String buildCharacterPoseChangePrompt(com.aivideo.studio.dto.Character character, String koreanRequest, ProjectState state) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are an expert AI image prompt engineer.\n");
+        sb.append("A reference image of this character is provided. Keep ALL appearance details identical; only change pose/action/expression.\n\n");
+        sb.append("Character: ").append(character.getName()).append("\n");
+        if (character.getAppearance() != null && !character.getAppearance().isBlank()) {
+            sb.append("Appearance: ").append(character.getAppearance()).append("\n");
+        }
+        if (state.getSelectedStyles() != null && !state.getSelectedStyles().isEmpty()) {
+            sb.append("Art style: ").append(String.join(", ", state.getSelectedStyles())).append("\n");
+        }
+        sb.append("\nKeep IDENTICAL: face, skin tone, hair, eye color/shape, clothing/outfit, art style.\n");
+        sb.append("Change ONLY: the pose/action/expression described below.\n");
+        sb.append("Do NOT copy the pose from the reference image — fully replace with the new pose.\n\n");
+        sb.append("User request (Korean): ").append(koreanRequest).append("\n\n");
+        sb.append("Write a concise detailed English image generation prompt. Output ONLY the prompt.");
+        return geminiAdapter.generateText(sb.toString()).trim();
+    }
+
+    // ─── Edit (Inpainting) Methods ───────────────────────────────────────────
+
+    public Scene editSceneImage(String sessionId, String sceneId, String prompt, String maskBase64) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        Scene target = findScene(state.getScenes(), sceneId);
+        if (target == null) throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
+        if (target.getImageUrl() == null || target.getImageUrl().isBlank()) {
+            throw new IllegalArgumentException("편집할 씬 이미지가 없습니다.");
+        }
+
+        try {
+            String englishPrompt = null;
+            if (prompt != null && !prompt.isBlank()) {
+                englishPrompt = buildInpaintingPrompt(prompt, state);
+            }
+            String cleanMaskBase64 = maskBase64 != null ? maskBase64.replaceFirst("^data:image/[^;]+;base64,", "") : "";
+            String newImageUrl = imagenAdapter.editImage(englishPrompt, target.getImageUrl(), cleanMaskBase64, sceneId);
+            
+            target.setImageUrl(newImageUrl);
+            target.setStatus("done");
+            clearSceneError(target);
+            sessionService.updateSession(sessionId, state);
+            
+            return target;
+        } catch (Exception e) {
+            log.error("[GenerationService] 씬 {} 이미지 인페인팅 실패", sceneId, e);
+            target.setStatus("error");
+            applySceneError(target, e);
+            sessionService.updateSession(sessionId, state);
+            throw new RuntimeException("이미지 인페인팅 실패: " + e.getMessage(), e);
+        }
+    }
+
+    public Frame editFrameImage(String sessionId, String sceneId, String frameId, String prompt, String maskBase64) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        Scene target = findScene(state.getScenes(), sceneId);
+        if (target == null) throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
+
+        Frame targetFrame = findFrame(target.getFrames(), frameId);
+        if (targetFrame == null || targetFrame.getImageUrl() == null || targetFrame.getImageUrl().isBlank()) {
+            throw new IllegalArgumentException("편집할 프레임 이미지가 없습니다.");
+        }
+
+        try {
+            String englishPrompt = null;
+            if (prompt != null && !prompt.isBlank()) {
+                englishPrompt = buildInpaintingPrompt(prompt, state);
+            }
+            String cleanMaskBase64 = maskBase64 != null ? maskBase64.replaceFirst("^data:image/[^;]+;base64,", "") : "";
+            String newImageUrl = imagenAdapter.editImage(englishPrompt, targetFrame.getImageUrl(), cleanMaskBase64, buildFrameSceneKey(sceneId, targetFrame.getId()));
+            targetFrame.setImageUrl(newImageUrl);
+            
+            // If it's the first frame, update scene's main thumbnail as well
+            if (target.getFrames() != null && target.getFrames().indexOf(targetFrame) == 0) {
+                target.setImageUrl(newImageUrl);
+            }
+            
+            sessionService.updateSession(sessionId, state);
+            return targetFrame;
+        } catch (Exception e) {
+            log.error("[GenerationService] 프레임 {} 이미지 인페인팅 실패", targetFrame.getId(), e);
+            throw new RuntimeException("이미지 인페인팅 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 현재 프레임 이미지를 Subject Reference로 사용해 새 포즈/동작으로 재생성합니다.
+     * Inpainting과 달리 이미지 전체를 새로 생성하지만, 기존 이미지 외형을 레퍼런스로 유지합니다.
+     */
+    public Frame regenerateFrameWithReference(String sessionId, String sceneId, String frameId, String koreanPrompt) {
+        ProjectState state = sessionService.getSession(sessionId);
+        if (state == null) throw new IllegalArgumentException("세션을 찾을 수 없습니다: " + sessionId);
+
+        Scene target = findScene(state.getScenes(), sceneId);
+        if (target == null) throw new IllegalArgumentException("씬을 찾을 수 없습니다: " + sceneId);
+
+        Frame targetFrame = findFrame(target.getFrames(), frameId);
+        if (targetFrame == null || targetFrame.getImageUrl() == null || targetFrame.getImageUrl().isBlank()) {
+            throw new IllegalArgumentException("기준 이미지가 없습니다. 먼저 프레임 이미지를 생성해주세요.");
+        }
+
+        if (koreanPrompt == null || koreanPrompt.isBlank()) {
+            throw new IllegalArgumentException("변경할 내용을 입력해주세요.");
+        }
+
+        try {
+            String englishPrompt = buildReferenceRegenerationPrompt(koreanPrompt, state, targetFrame);
+            log.info("[GenerationService] 레퍼런스 재생성 — sceneId: {}, frameId: {}, prompt: {}", sceneId, frameId, englishPrompt);
+
+            List<String> refUrls = List.of(targetFrame.getImageUrl());
+            List<String> appearances = state.getCharacters() != null && !state.getCharacters().isEmpty()
+                    ? state.getCharacters().stream()
+                        .map(c -> c.getAppearance() != null ? c.getAppearance() : "")
+                        .collect(Collectors.toList())
+                    : List.of();
+
+            String newImageUrl = imagenAdapter.generateImage(
+                    englishPrompt,
+                    buildFrameSceneKey(sceneId, targetFrame.getId()) + "-ref",
+                    null,
+                    refUrls,
+                    appearances,
+                    false  // 포즈 변경: 얼굴만 참조, 포즈는 텍스트 우선
+            );
+
+            targetFrame.setImageUrl(newImageUrl);
+            if (target.getFrames() != null && target.getFrames().indexOf(targetFrame) == 0) {
+                target.setImageUrl(newImageUrl);
+            }
+            sessionService.updateSession(sessionId, state);
+            return targetFrame;
+        } catch (Exception e) {
+            log.error("[GenerationService] 레퍼런스 재생성 실패 — frameId: {}", frameId, e);
+            throw new RuntimeException("레퍼런스 재생성 실패: " + e.getMessage(), e);
+        }
+    }
+
     // ─── Private 헬퍼 ────────────────────────────────────────────────────────
+
+    /**
+     * 인페인팅용 영어 프롬프트를 생성합니다.
+     * 캐릭터 외형 정보를 포함해 마스크 영역 밖 외형이 유지되도록 지시합니다.
+     */
+    private String buildReferenceRegenerationPrompt(String koreanRequest, ProjectState state, Frame referenceFrame) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are an expert prompt engineer for AI image generation.\n");
+        sb.append("A reference image is provided for character identity only. Generate a new image with the requested pose/action change.\n\n");
+
+        if (state.getSelectedStyles() != null && !state.getSelectedStyles().isEmpty()) {
+            sb.append("[Art style — must be preserved exactly, do not change rendering or drawing style]\n");
+            sb.append(String.join(", ", state.getSelectedStyles())).append("\n\n");
+        }
+
+        if (state.getCharacters() != null && !state.getCharacters().isEmpty()) {
+            sb.append("[Character Appearance — reproduce exactly from reference]\n");
+            for (var c : state.getCharacters()) {
+                if (c.getName() != null && c.getAppearance() != null) {
+                    sb.append("- ").append(c.getName()).append(": ").append(c.getAppearance()).append("\n");
+                }
+            }
+            sb.append("\n");
+        }
+
+        String originalScript = referenceFrame.getScript();
+        if (originalScript != null && !originalScript.isBlank()) {
+            sb.append("[Original scene context]\n").append(originalScript).append("\n\n");
+        }
+
+        sb.append("[User change request (Korean)]\n").append(koreanRequest).append("\n\n");
+
+        sb.append("Task: Write a detailed English image generation prompt following ALL rules below:\n\n");
+
+        sb.append("RULE 1 — REFERENCE IMAGE USAGE:\n");
+        sb.append("  The reference image is used ONLY to copy: face, hair, skin tone, eye shape/color, and clothing style/color.\n");
+        sb.append("  CRITICAL: Do NOT copy the body pose or arm positions from the reference image.\n");
+        sb.append("  The reference image's arms/body will be completely REPLACED by the new pose described below.\n");
+        sb.append("  This prevents duplicate limbs — the character must have exactly the right number of arms in the new pose.\n\n");
+
+        sb.append("RULE 2 — WHAT STAYS THE SAME:\n");
+        sb.append("  - Same face, hair, skin tone, eye color, outfit (exact same colors and style)\n");
+        sb.append("  - Same background and environment as the original scene\n");
+        sb.append("  - Same art style, rendering style, lighting, and camera angle\n");
+        sb.append("  - Same body position (sitting/standing/etc.) UNLESS the request changes it\n\n");
+
+        sb.append("RULE 3 — NEW POSE (describe every joint/limb in anatomical detail, do NOT skip):\n");
+        sb.append("  For arms crossed: 'both arms folded across the chest, right forearm over left, hands tucked near opposite elbows, forearms parallel and horizontal'\n");
+        sb.append("  For sitting on a chair: 'character is now seated on a chair, torso upright, hips and knees bent at 90 degrees, feet flat on the floor, thighs parallel to the ground, hands resting on thighs or armrests'\n");
+        sb.append("  For sitting on the floor: 'character is seated cross-legged on the floor, torso straight, knees out to the sides, feet tucked beneath opposite knees, hands resting on knees'\n");
+        sb.append("  For standing with hands on hips: 'standing upright, both hands on hips, elbows bent outward, fingers pointing downward, weight evenly distributed on both feet'\n");
+        sb.append("  For lying down: 'character lying on their back, legs extended straight, arms resting at sides, head tilted slightly upward'\n");
+        sb.append("  For any other pose: describe exact torso orientation (sitting/standing/crouching), leg position (bent/straight/crossed), arm position, and weight distribution in detail.\n\n");
+
+        sb.append("CRITICAL: The user's requested pose change MUST be fully applied no matter what. \n");
+        sb.append("If the user requests sitting, the character MUST be sitting. If standing, MUST be standing. Do NOT keep the original body posture.\n\n");
+
+        sb.append("Write the final prompt incorporating all rules. ");
+        sb.append("End with: 'same art style as original, identical background, same character from reference, no duplicate limbs'\n\n");
+        sb.append("Output ONLY the final English prompt. No labels, no explanations.");
+
+        return geminiAdapter.generateText(sb.toString()).trim();
+    }
+
+    private String buildInpaintingPrompt(String userRequest, ProjectState state) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are a surgical inpainting prompt engineer. ");
+        sb.append("Only the white-masked region will be regenerated. Everything else stays pixel-perfect.\n\n");
+
+        if (state.getSelectedStyles() != null && !state.getSelectedStyles().isEmpty()) {
+            sb.append("[Art style — must be preserved exactly]\n");
+            sb.append(String.join(", ", state.getSelectedStyles())).append("\n\n");
+        }
+
+        if (state.getCharacters() != null && !state.getCharacters().isEmpty()) {
+            sb.append("[Character appearance — every detail must be reproduced exactly in the masked region]\n");
+            for (var c : state.getCharacters()) {
+                if (c.getName() != null && c.getAppearance() != null) {
+                    sb.append("- ").append(c.getName()).append(": ").append(c.getAppearance()).append("\n");
+                }
+            }
+            sb.append("\n");
+        }
+
+        sb.append("[User edit request (Korean)]\n").append(userRequest).append("\n\n");
+
+        sb.append("Instructions:\n");
+        sb.append("Step 1 — Identify the edit type:\n");
+        sb.append("  A) EXPRESSION CHANGE (angry, happy, sad, surprised, etc.)\n");
+        sb.append("  B) ACCESSORY/OBJECT ADDITION (glasses, hat, mask, etc.)\n");
+        sb.append("  C) OTHER\n\n");
+
+        sb.append("Step 2 — Write the inpainting prompt:\n\n");
+
+        sb.append("For type A (expression):\n");
+        sb.append("  First, reproduce the character's face exactly: face shape, jaw line, skin tone, eye shape and color, ");
+        sb.append("nose shape, lip shape, eyebrow shape and color, hair framing the face.\n");
+        sb.append("  Then apply ONLY these muscle changes for the emotion:\n");
+        sb.append("    angry: 'brows pulled sharply down and inward, deep vertical furrow between brows, ");
+        sb.append("eyes narrowed with tense lower lids, lips pressed hard together, jaw clenched'\n");
+        sb.append("    happy/smile: 'cheeks lifted, corners of mouth pulled up, teeth visible, slight squint'\n");
+        sb.append("    sad: 'inner brow corners raised and tilted, lower lip pushed up, downturned mouth'\n");
+        sb.append("  End with: 'SAME face shape, SAME eye shape and color, SAME nose, SAME skin tone, SAME hair — only expression muscles change, same art style'\n\n");
+
+        sb.append("For type B (accessory):\n");
+        sb.append("  First, reproduce all existing face features exactly as described above.\n");
+        sb.append("  Describe the new object: material, color, shape, exact placement on face.\n");
+        sb.append("  End with: 'eyes, mouth, nose, face shape, skin tone all completely unchanged, same art style'\n\n");
+
+        sb.append("Output ONLY the final English inpainting prompt. No labels, no explanations, no markdown.");
+
+        return geminiAdapter.generateText(sb.toString()).trim();
+    }
 
     /**
      * 프레임의 한국어 대본을 영어 프롬프트로 변환하며, Start Frame 정보를 바탕으로 컨텍스트를 유지합니다.
      */
-    private String buildEnglishFramePrompt(String koreanScript, Frame startFrame, Frame currentFrame, ProjectState state, SceneElements stageElements) {
+    private String buildEnglishFramePrompt(String koreanScript, Frame startFrame, Frame currentFrame, ProjectState state) {
         StringBuilder geminiPrompt = new StringBuilder();
-        geminiPrompt.append("You are an experienced video scriptwriter and expert prompt engineer. We are creating sequential frames for a single scene with a clear narrative structure (Intro, Body, Outro). Consistency of characters, clothing, and background is CRITICAL.\n\n");
-        
+        geminiPrompt.append("You are an expert prompt engineer for AI image generators. We are creating sequential frames for a single scene. Consistency of characters, clothing, and background is CRITICAL.\n\n");
+
         boolean isNotStartFrame = startFrame != null && !startFrame.getId().equals(currentFrame.getId());
-        
-        String characterHint = buildCharacterAppearanceHint(state);
-        if (!characterHint.isBlank()) {
-            geminiPrompt.append("CRITICAL REQUIREMENT: Character Appearance MUST strictly follow these details: [").append(characterHint).append("]. Do not invent new clothing or features.\n\n");
+        boolean hasCharacterRefs = state.getCharacters() != null && state.getCharacters().stream()
+                .anyMatch(c -> c.getReferenceImageUrls() != null && !c.getReferenceImageUrls().isEmpty());
+
+        if (state.getCharacters() != null && !state.getCharacters().isEmpty()) {
+            geminiPrompt.append("[Main Characters Info]\n");
+            for (var c : state.getCharacters()) {
+                geminiPrompt.append("- ").append(c.getName()).append(": ").append(c.getAppearance()).append("\n");
+            }
+            geminiPrompt.append("\n");
         }
 
-        if (stageElements != null) {
-            Map<String, String> merged = mergeWithDefaultElements(stageElements);
-            geminiPrompt.append("[Scene Element Design]\n");
-            merged.forEach((k, v) -> geminiPrompt.append("- ").append(k).append(": ").append(v).append("\n"));
-            geminiPrompt.append("\n");
+        if (hasCharacterRefs) {
+            geminiPrompt.append("[Character Reference Images]\n");
+            geminiPrompt.append("Reference images for the above characters are provided. The generated image MUST exactly reproduce every visual detail from the reference images: face geometry, hair color/length/style, skin tone, eye shape/color, and outfit (color, texture, cut, accessories).\n");
+            geminiPrompt.append("The reference image takes absolute priority over any text description of appearance.\n\n");
         }
 
         if (isNotStartFrame && startFrame.getScript() != null && !startFrame.getScript().isBlank()) {
@@ -277,397 +724,93 @@ public class GenerationService {
              geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt.\n");
              geminiPrompt.append("CRITICAL REQUIREMENT: To ensure visual consistency with the Start Frame, you MUST explicitly re-use the specific exact descriptions of the characters, their existing clothing/outfits, and the background/environment derived from the [Start Frame Description]. Then, apply the new action, pose, or camera angle from the [Current Frame Script].\n\n");
         } else {
-             geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt incorporating the Character Appearance provided above.\n\n");
+             geminiPrompt.append("Task: Translate the [Current Frame Script] into a highly detailed English image generation prompt.\n");
+             geminiPrompt.append("Make sure to explicitly include the detailed descriptions of the characters from the [Main Characters Info] if they appear in the script.\n\n");
         }
-        
-        geminiPrompt.append("Hyper-Detailed Requirement: Describe every element with extreme granularity. Specifically describe intricate textures, complex lighting (e.g., cinematic lighting, god rays, rim lighting), rich color grading, ultra-detailed backgrounds, and atmospheric effects (e.g., mist, dust particles, volumetric fog) to make the image breathtakingly detailed.\n\n");
-        geminiPrompt.append("CRITICAL FORMAT REQUIREMENT: The resulting image MUST be a single picture composed of a 4-cut photo collage (e.g., a 2x2 grid or a 4-panel comic layout). You MUST append keywords like 'A 4-panel comic strip layout', 'four-cut photography collage', '2x2 grid' directly into the English prompt.\n\n");
 
-        
         geminiPrompt.append("[Current Frame Script]\n").append(koreanScript).append("\n\n");
-        geminiPrompt.append("Output ONLY the translated, highly detailed English prompt, without any conversational text or markdown formatting. The prompt should flow logically as a single descriptive paragraph.");
+        geminiPrompt.append("Output ONLY the translated, highly detailed English prompt, without any conversational text or markdown formatting. The prompt should be ready to be passed directly to an image generation model.");
 
-        String generated = geminiAdapter.generateText(geminiPrompt.toString()).trim();
-        return enforceFourPanelLayoutPrompt(generated);
+        return geminiAdapter.generateText(geminiPrompt.toString()).trim();
     }
 
     /**
      * 씬의 영어 이미지 생성 프롬프트를 반환합니다.
-     * 이미 영어 prompt가 있으면 사용하고, 없으면 구조화된 템플릿으로 Gemini가 생성합니다.
-     * (2x2 레이아웃, 4컷 스토리보드 형태 생성 규칙 추가)
+     * 이미 영어 prompt가 있으면 사용하고, 없으면 씬 정보를 바탕으로 Gemini가 생성합니다.
      */
     private String buildEnglishPrompt(Scene scene, ProjectState state) {
-        String characterHint = buildCharacterAppearanceHint(state);
-        String backgroundHint = buildBackgroundReferenceHint(state);
+        String assetHint = buildPinnedAssetHint(scene, state);
+
+        // 이미 영어 prompt가 있으면 그대로 사용
+        if (scene.getPrompt() != null && !scene.getPrompt().isBlank()) {
+            return appendAssetHintToEnglishPrompt(scene.getPrompt(), assetHint);
+        }
+
+        // 씬 정보를 조합해 Gemini에게 영어 프롬프트 생성 요청
         String koreanInfo = buildKoreanSceneDescription(scene, state);
+        String geminiPrompt = "다음 씬 정보를 바탕으로 Imagen 이미지 생성에 사용할 영어 프롬프트를 작성해줘. " +
+                "프롬프트만 출력하고 다른 설명은 하지 마. 영문으로만 작성해.\n\n씬 정보:\n" + koreanInfo;
 
-        // Gemini 프롬프트 고도화: 2x2 레이아웃 및 4컷 스토리 진행 강제
-        StringBuilder geminiPrompt = new StringBuilder();
-        geminiPrompt.append("You are an experienced video scriptwriter, storyboard artist, and expert cinematic prompt engineer for Imagen 3.\n");
-        geminiPrompt.append("Your task is to take the following scene elements and write a highly detailed English prompt that generates a SINGLE image containing a 2x2 grid layout (4 panels) illustrating a sequential story with a clear Intro, Body, and Outro structure.\n\n");
-        
-        geminiPrompt.append("CRITICAL RULES:\n");
-        geminiPrompt.append("1. Layout Requirement: You MUST explicitly start the prompt with phrases like \"A 2x2 grid layout storyboard...\" or \"A 4-panel comic style...\"\n");
-        
-        int ruleIndex = 2;
-        if (!characterHint.isBlank()) {
-            geminiPrompt.append(ruleIndex++).append(". Character Consistency: Whenever you describe the characters across the panels, you MUST seamlessly integrate these exact appearance details: [").append(characterHint).append("]. Do not invent new clothing or features.\n");
-        }
-        if (!backgroundHint.isBlank()) {
-            geminiPrompt.append(ruleIndex++).append(". Background Consistency: The environment MUST be described incorporating these exact elements: [").append(backgroundHint).append("].\n");
-        }
-        
-        geminiPrompt.append(ruleIndex++).append(". Story Structure: Ensure the 4 panels represent a clear 'Hook/Intro', 'Body (logical progression)', and 'Outro (conclusion)' based on the [Scene Elements].\n");
-        geminiPrompt.append(ruleIndex++).append(". Visual Actions & Camera: Explicitly convert the script into specific visual actions and camera work.\n");
-        geminiPrompt.append(ruleIndex++).append(". Visual Style: Do NOT force a generic cinematic style. Allow the visual style to naturally adapt to the given [Lighting, Composition, Mood] of the scene elements.\n");
-        geminiPrompt.append(ruleIndex++).append(". Hyper-Detailed Descriptions: Provide extreme granularity. Specifically describe intricate textures, complex lighting (e.g., ray tracing, god rays, rim lighting), rich color grading, ultra-detailed backgrounds, and atmospheric effects (e.g., mist, dust particles, volumetric fog) to make the image breathtakingly detailed.\n");
-        geminiPrompt.append(ruleIndex).append(". Output ONLY the English prompt string. No conversational text, no explanations, and no markdown blocks.\n\n");
-        
-        geminiPrompt.append("[Scene Elements]:\n").append(koreanInfo);
-
-        String generated = geminiAdapter.generateText(geminiPrompt.toString()).trim();
-        String scenePrompt = enforceFourPanelLayoutPrompt(generated);
-
-        // [Fix B] 캐릭터 외형을 영어로 번역해서 Imagen 프롬프트 앞에 고정 prefix로 삽입
-        // Gemini가 씬마다 외형 묘사를 다르게 번역하더라도 Imagen은 앞부분 고정 묘사를 일관되게 따름
-        String appearancePrefix = buildTranslatedAppearancePrefix(state);
-        if (!appearancePrefix.isBlank()) {
-            scenePrompt = appearancePrefix + " " + scenePrompt;
-        }
-        return scenePrompt;
-    }
-
-    private String enforceFourPanelLayoutPrompt(String prompt) {
-        String base = (prompt == null ? "" : prompt.trim());
-        if (base.isBlank()) {
-            return "A 2x2 grid layout storyboard, single image split into 4 panels, clear sequential narrative from intro to outro.";
-        }
-
-        String lowered = base.toLowerCase();
-        boolean has2x2 = lowered.contains("2x2");
-        boolean hasFourPanel = lowered.contains("4-panel") || lowered.contains("four-panel") || lowered.contains("4 panel") || lowered.contains("four panel");
-        boolean hasSingleImage = lowered.contains("single image");
-        boolean hasCollage = lowered.contains("four-cut") || lowered.contains("4-cut") || lowered.contains("collage");
-
-        StringBuilder forced = new StringBuilder(base);
-        if (!hasSingleImage || !(has2x2 || hasFourPanel)) {
-            forced.insert(0, "A single image in a 2x2 grid 4-panel storyboard layout, ");
-        }
-        if (!hasCollage) {
-            forced.append(" Ensure a four-cut photography collage composition with visible panel boundaries.");
-        }
-        forced.append(" Never output a single full-frame scene; always keep four distinct panels in one image.");
-        return forced.toString().trim();
+        String generated = geminiAdapter.generateText(geminiPrompt).trim();
+        return appendAssetHintToEnglishPrompt(generated, assetHint);
     }
 
     private String buildKoreanSceneDescription(Scene scene, ProjectState state) {
-        Map<String, String> elements = mergeWithDefaultElements(scene != null ? scene.getElements() : null);
         StringBuilder sb = new StringBuilder();
         sb.append("제목: ").append(scene.getTitle()).append("\n");
         sb.append("설명: ").append(scene.getDescription()).append("\n");
 
-        appendIfNotEmpty(sb, "메인 캐릭터", elements.get("mainCharacter"));
-        appendIfNotEmpty(sb, "서브 캐릭터", elements.get("subCharacter"));
-        appendIfNotEmpty(sb, "행동", elements.get("action"));
-        appendIfNotEmpty(sb, "포즈", elements.get("pose"));
-        appendIfNotEmpty(sb, "배경", elements.get("background"));
-        appendIfNotEmpty(sb, "시간대", elements.get("time"));
-        appendIfNotEmpty(sb, "구도", elements.get("composition"));
-        appendIfNotEmpty(sb, "조명", elements.get("lighting"));
-        appendIfNotEmpty(sb, "분위기", elements.get("mood"));
-        appendIfNotEmpty(sb, "스토리", elements.get("story"));
-
+        if (scene.getElements() != null) {
+            var el = scene.getElements();
+            appendIfNotEmpty(sb, "배경", el.getBackground());
+            appendIfNotEmpty(sb, "분위기", el.getMood());
+            appendIfNotEmpty(sb, "조명", el.getLighting());
+            appendIfNotEmpty(sb, "구도", el.getComposition());
+            appendIfNotEmpty(sb, "시간대", el.getTime());
+            appendIfNotEmpty(sb, "메인 캐릭터", el.getMainCharacter());
+            appendIfNotEmpty(sb, "행동", el.getAction());
+        }
+        String assetHint = buildPinnedAssetHint(scene, state);
+        if (!assetHint.isBlank()) {
+            sb.append("고정 에셋: ").append(assetHint).append("\n");
+        }
         return sb.toString();
     }
 
-    private String buildCharacterAppearanceHint(ProjectState state) {
-        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
+    private String appendAssetHintToEnglishPrompt(String prompt, String assetHint) {
+        if (prompt == null || prompt.isBlank()) {
+            return prompt;
+        }
+        if (assetHint == null || assetHint.isBlank()) {
+            return prompt;
+        }
+        return prompt.trim() + "\n\nPinned asset requirements: " + assetHint;
+    }
+
+    private String buildPinnedAssetHint(Scene scene, ProjectState state) {
+        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
             return "";
         }
 
-        return state.getCharacters().stream()
-                .filter(Objects::nonNull)
-                .map(c -> {
-                    String name = c.getName() != null && !c.getName().isBlank() ? c.getName().trim() : "캐릭터";
-                    String appearance = c.getAppearance() != null ? c.getAppearance().trim() : "";
-                    if (appearance.isBlank()) return null;
-                    return name + " (" + appearance + ")";
-                })
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.joining("; "));
-    }
-
-    private String buildBackgroundReferenceHint(ProjectState state) {
-        if (state == null) return "";
-        String desc = state.getBackgroundReferenceDescription();
-        return desc == null ? "" : desc.trim();
-    }
-
-    /**
-     * [Fix B] 캐릭터 외형을 한 번 영어로 번역하여 Imagen 프롬프트 앞에 붙일 고정 prefix를 생성합니다.
-     * Gemini가 씬마다 외형을 다르게 해석하더라도, Imagen은 이 prefix를 항상 먼저 읽어 일관성을 유지합니다.
-     */
-    private String buildTranslatedAppearancePrefix(ProjectState state) {
-        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
+        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
+        if (customAssets == null || customAssets.isEmpty()) {
             return "";
         }
-        StringBuilder prefix = new StringBuilder();
-        for (com.aivideo.studio.dto.Character c : state.getCharacters()) {
-            if (c == null) continue;
-            String name = c.getName() != null && !c.getName().isBlank() ? c.getName().trim() : "character";
-            String appearance = c.getAppearance() != null ? c.getAppearance().trim() : "";
-            if (appearance.isBlank()) continue;
-            String englishAppearance = translateAppearanceToEnglish(name, appearance);
-            if (prefix.length() > 0) prefix.append(" | ");
-            prefix.append("CHARACTER APPEARANCE [DO NOT ALTER]: ").append(englishAppearance)
-                  .append(". Face, hair, outfit, skin tone MUST match exactly in every panel.");
-        }
-        return prefix.toString();
-    }
 
-    private List<String> buildOrderedReferenceImageUrls(ProjectState state, Scene currentScene) {
-        LinkedHashSet<String> ordered = new LinkedHashSet<>();
-
-        // 1) 첫 번째 생성 이미지를 절대 기준(anchor)으로 고정
-        String anchorRef = findFirstCompletedSceneImage(state);
-        if (isSupportedReferenceImageUrl(anchorRef)) {
-            ordered.add(anchorRef.trim());
-        }
-
-        // 2) 보조 연속성: 직전 완료 씬
-        String previousSceneRef = findMostRecentCompletedSceneImage(state, currentScene);
-        if (isSupportedReferenceImageUrl(previousSceneRef)) {
-            ordered.add(previousSceneRef.trim());
-        }
-
-        // 3) 배경 고정
-        String backgroundRef = state != null ? firstNonBlank(state.getBackgroundReferenceImageUrl()) : null;
-        if (isSupportedReferenceImageUrl(backgroundRef)) {
-            ordered.add(backgroundRef.trim());
-        }
-
-        // anchor를 못 찾은 경우에만 주인공 레퍼런스를 대체로 사용
-        if (ordered.isEmpty()) {
-            String mainCharacterRef = findMainCharacterReferenceImageUrl(state);
-            if (isSupportedReferenceImageUrl(mainCharacterRef)) {
-                ordered.add(mainCharacterRef.trim());
+        LinkedHashSet<String> descriptions = new LinkedHashSet<>();
+        for (String assetId : scene.getPinnedAssets()) {
+            if (assetId == null || assetId.isBlank()) continue;
+            CustomAssetData assetData = customAssets.get(assetId);
+            if (assetData == null) continue;
+            String description = assetData.getDescription();
+            if (description != null && !description.isBlank()) {
+                descriptions.add(description.trim());
             }
         }
-
-        return ordered.stream().limit(3).collect(Collectors.toList());
-    }
-
-    private String findFirstCompletedSceneImage(ProjectState state) {
-        if (state == null || state.getScenes() == null || state.getScenes().isEmpty()) {
-            return null;
+        if (descriptions.isEmpty()) {
+            return "";
         }
-        for (Scene s : state.getScenes()) {
-            if (s == null) continue;
-            if ("done".equals(s.getStatus())
-                    && s.getImageUrl() != null
-                    && !s.getImageUrl().isBlank()
-                    && isSupportedReferenceImageUrl(s.getImageUrl())) {
-                return s.getImageUrl().trim();
-            }
-        }
-        return null;
-    }
-
-    private String findMainCharacterReferenceImageUrl(ProjectState state) {
-        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
-            return null;
-        }
-        Character main = state.getCharacters().get(0);
-        if (main == null || main.getImageUrl() == null || main.getImageUrl().isBlank()) {
-            return null;
-        }
-        return main.getImageUrl().trim();
-    }
-
-    private List<String> collectReferenceImageUrls(ProjectState state) {
-        List<String> refs = new ArrayList<>();
-        refs.addAll(collectCharacterReferenceImageUrls(state));
-
-        String backgroundRef = state != null ? firstNonBlank(state.getBackgroundReferenceImageUrl()) : null;
-        if (backgroundRef != null && isSupportedReferenceImageUrl(backgroundRef)) {
-            refs.add(backgroundRef.trim());
-        }
-
-        return refs.stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .limit(2)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 레퍼런스 이미지 URL 목록에 대응하는 캐릭터 외형 묘사(영어) 목록을 생성합니다.
-     * characters의 appearance를 영어 프롬프트 형식으로 번역하여 반환합니다.
-     * 배경 레퍼런스의 경우 backgroundReferenceDescription을 사용합니다.
-     */
-    private List<String> collectReferenceAppearances(ProjectState state, List<String> referenceImageUrls) {
-        if (referenceImageUrls == null || referenceImageUrls.isEmpty() || state == null) {
-            return List.of();
-        }
-        List<String> appearances = new ArrayList<>(referenceImageUrls.size());
-        Map<String, String> charAppearanceByImage = new LinkedHashMap<>();
-        if (state.getCharacters() != null) {
-            for (Character c : state.getCharacters()) {
-                if (c == null || c.getImageUrl() == null || c.getImageUrl().isBlank()) continue;
-                String img = c.getImageUrl().trim();
-                if (!isSupportedReferenceImageUrl(img)) continue;
-                String name = c.getName() != null && !c.getName().isBlank() ? c.getName().trim() : "character";
-                String appearance = c.getAppearance() != null ? c.getAppearance().trim() : "";
-                String desc = !appearance.isBlank()
-                        ? translateAppearanceToEnglish(name, appearance)
-                        : name + " character reference";
-                charAppearanceByImage.putIfAbsent(img, desc);
-            }
-        }
-
-        String bgRef = firstNonBlank(state.getBackgroundReferenceImageUrl());
-        String bgDesc = state.getBackgroundReferenceDescription() != null && !state.getBackgroundReferenceDescription().isBlank()
-                ? state.getBackgroundReferenceDescription().trim()
-                : "background environment reference";
-
-        String anchorRef = findFirstCompletedSceneImage(state);
-        String mainCharRef = findMainCharacterReferenceImageUrl(state);
-
-        for (String refUrl : referenceImageUrls) {
-            if (refUrl == null || refUrl.isBlank()) {
-                appearances.add("reference subject");
-                continue;
-            }
-            String normalized = refUrl.trim();
-            if (anchorRef != null && normalized.equals(anchorRef)) {
-                String anchorDesc = (mainCharRef != null && charAppearanceByImage.containsKey(mainCharRef))
-                        ? charAppearanceByImage.get(mainCharRef)
-                        : "primary character identity lock reference (keep same face and outfit)";
-                appearances.add("PRIMARY IDENTITY LOCK: " + anchorDesc);
-            } else if (mainCharRef != null && normalized.equals(mainCharRef)) {
-                appearances.add(charAppearanceByImage.getOrDefault(normalized, "main character reference"));
-            } else if (bgRef != null && normalized.equals(bgRef.trim())) {
-                appearances.add(bgDesc);
-            } else if (charAppearanceByImage.containsKey(normalized)) {
-                appearances.add(charAppearanceByImage.get(normalized));
-            } else {
-                appearances.add("previous scene continuity reference");
-            }
-        }
-        return appearances;
-    }
-
-    /**
-     * 캐릭터 외형 묘사(한국어)를 Imagen 3 영어 프롬프트용 형식으로 번역합니다.
-     * 번역 실패 시 원본을 그대로 반환합니다.
-     */
-    private String translateAppearanceToEnglish(String name, String koreanAppearance) {
-        if (koreanAppearance == null || koreanAppearance.isBlank()) return name + " character reference";
-        // 이미 영문이 대부분인 경우(영어 단어 비율) 번역 스킵
-        long englishChars = koreanAppearance.chars().filter(c -> (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')).count();
-        if (englishChars > koreanAppearance.length() * 0.4) {
-            return name + ": " + koreanAppearance;
-        }
-        try {
-            String prompt = "Translate the following Korean character appearance description into concise English keywords " +
-                    "suitable for an image generation prompt. " +
-                    "Format: [hair], [face], [body], [outfit], [color/mood]. " +
-                    "No explanations. Output ONLY the English description as a single line.\n\n" +
-                    "Character name: " + name + "\n" +
-                    "Korean appearance: " + koreanAppearance;
-            String translated = geminiAdapter.generateText(prompt).trim();
-            if (translated.isBlank()) return name + ": " + koreanAppearance;
-            return name + ": " + translated;
-        } catch (Exception e) {
-            log.warn("[GenerationService] 외형 번역 실패 — name: {}, 원인: {}", name, e.getMessage());
-            return name + ": " + koreanAppearance;
-        }
-    }
-
-    /**
-     * 현재 씬보다 순서가 앞서고 이미 완료된 씬의 imageUrl 중 가장 최근 것을 반환합니다.
-     * 씬 간 캐릭터/배경 일관성을 위해 이전 씬 이미지를 subject reference로 직접 주입할 때 사용합니다.
-     */
-    private String findMostRecentCompletedSceneImage(ProjectState state, Scene currentScene) {
-        if (state == null || state.getScenes() == null || currentScene == null) return null;
-        List<Scene> scenes = state.getScenes();
-        String result = null;
-        for (Scene s : scenes) {
-            if (s == null || s == currentScene || s.getId() == currentScene.getId()) break;
-            if ("done".equals(s.getStatus())
-                    && s.getImageUrl() != null
-                    && !s.getImageUrl().isBlank()
-                    && isSupportedReferenceImageUrl(s.getImageUrl())) {
-                result = s.getImageUrl();
-            }
-        }
-        return result;
-    }
-
-    private List<String> collectCharacterReferenceImageUrls(ProjectState state) {
-        if (state == null || state.getCharacters() == null || state.getCharacters().isEmpty()) {
-            return List.of();
-        }
-        return state.getCharacters().stream()
-                .filter(Objects::nonNull)
-                .map(Character::getImageUrl)
-                .filter(url -> url != null && !url.isBlank())
-                .map(String::trim)
-                .filter(this::isSupportedReferenceImageUrl)
-                .distinct()
-                .limit(4) // Imagen 3 supports multiple subject references (up to 4+)
-                .collect(Collectors.toList());
-    }
-
-    private boolean isSupportedReferenceImageUrl(String url) {
-        if (url == null || url.isBlank()) return false;
-        String normalized = url.trim();
-        return normalized.startsWith("data:image/")
-                || normalized.startsWith("/generated-images/")
-                || normalized.startsWith("http://")
-                || normalized.startsWith("https://");
-    }
-
-    private SceneElements findStageElementsBySceneId(ProjectState state, Scene targetScene) {
-        if (state == null || targetScene == null || state.getPlotPlan() == null || state.getPlotPlan().getStages() == null) {
-            return null;
-        }
-
-        String sceneId = String.valueOf(targetScene.getId());
-        List<PlotStage> stages = state.getPlotPlan().getStages();
-        for (int i = 0; i < stages.size(); i++) {
-            PlotStage stage = stages.get(i);
-            if (stage == null) continue;
-            String derivedSceneId = "scene-" + (i + 1);
-            if (sceneId.equals(derivedSceneId)) {
-                return stage.getElements();
-            }
-        }
-        return null;
-    }
-
-    private SceneElements resolveFrameElements(ProjectState state, Scene targetScene) {
-        SceneElements fromStage = findStageElementsBySceneId(state, targetScene);
-        if (fromStage != null) {
-            return fromStage;
-        }
-        if (targetScene != null && targetScene.getElements() != null) {
-            return targetScene.getElements();
-        }
-        Map<String, String> defaults = mergeWithDefaultElements(null);
-        return SceneElements.builder()
-                .mainCharacter(defaults.get("mainCharacter"))
-                .subCharacter(defaults.get("subCharacter"))
-                .action(defaults.get("action"))
-                .pose(defaults.get("pose"))
-                .background(defaults.get("background"))
-                .time(defaults.get("time"))
-                .composition(defaults.get("composition"))
-                .lighting(defaults.get("lighting"))
-                .mood(defaults.get("mood"))
-                .story(defaults.get("story"))
-                .build();
+        return String.join("; ", descriptions);
     }
 
     private void appendIfNotEmpty(StringBuilder sb, String label, String value) {
@@ -758,46 +901,6 @@ public class GenerationService {
                 && !frame.getImageUrl().isBlank();
     }
 
-    private Integer resolveConsistencySeed(ProjectState state, String fallbackKey) {
-        Integer sceneOneSeed = resolveSceneOneSeed(state);
-        if (sceneOneSeed != null && sceneOneSeed > 0) {
-            return sceneOneSeed;
-        }
-
-        String base = null;
-        if (state != null && state.getCharacters() != null && !state.getCharacters().isEmpty()) {
-            base = state.getCharacters().stream()
-                    .filter(Objects::nonNull)
-                    .map(c -> firstNonBlank(c.getImageUrl(), c.getAppearance(), c.getName()))
-                    .filter(Objects::nonNull)
-                    .findFirst()
-                    .orElse(null);
-        }
-        String seedSource = firstNonBlank(base, fallbackKey, "aivideo-consistency-seed");
-        
-        // 안정적인 양수 Seed 생성 로직 (해시 충돌 방지 및 고정 형태)
-        long hash = seedSource.hashCode();
-        hash = (hash ^ (hash >>> 32)) * 0x45d9f3b;
-        return (int) (Math.abs(hash) % 9999999) + 10000;
-    }
-
-    private Integer resolveSceneOneSeed(ProjectState state) {
-        if (state == null || state.getScenes() == null || state.getScenes().isEmpty()) {
-            return null;
-        }
-
-        Scene sceneOne = state.getScenes().stream()
-                .filter(Objects::nonNull)
-                .filter(s -> "scene-1".equals(String.valueOf(s.getId())))
-                .findFirst()
-                .orElse(state.getScenes().get(0));
-
-        if (sceneOne == null || sceneOne.getParams() == null) {
-            return null;
-        }
-        return sceneOne.getParams().getSeed();
-    }
-
     /**
      * Phase 3: 이미지가 생성된 씬(의 imageUrl)을 바탕으로 Veo 3.1 모델을 호출하여 영상을 생성
      */
@@ -837,32 +940,17 @@ public class GenerationService {
 
         // 상태를 생성 중으로 업데이트
         target.setStatus("generating_video");
+        clearSceneError(target);
         sessionService.updateSession(sessionId, state);
 
         try {
-            // 카메라와 모션 워크를 명시하도록 Veo 특화 프롬프트 작성
-            String koreanPrompt = buildVideoKoreanPrompt(target, state);
-            
-            String geminiVideoPrompt = "You are an experienced video scriptwriter and master AI video prompt engineer for Veo 3.1.\n" +
-                "Convert the following scene description into a professional video generation prompt. You MUST structure the prompt by incorporating these specific elements:\n\n" +
-                "1. Theme: Describe the objects, people, animals, or landscapes (e.g., cityscapes, nature, vehicles, dogs).\n" +
-                "2. Action: Describe exactly what the subject is doing (e.g., walking, running, turning head).\n" +
-                "3. Style: Use specific cinematic style keywords to set creative direction (e.g., Sci-fi, Horror, Film Noir, Anime, Cartoon, etc.).\n" +
-                "4. Camera: Describe the camera position and motion (e.g., Aerial shot, Eye-level, Top-down, Dolly shot, Tracking, Low angle, etc.).\n" +
-                "5. Composition: Describe the framing (e.g., Wide shot, Close-up, Single shot, Two-shot, etc.).\n" +
-                "6. Focus & Lens: Describe specific visual effects (e.g., Shallow focus, Deep focus, Soft focus, Macro lens, Wide-angle lens, etc.).\n" +
-                "7. Mood: Describe how color and lighting contribute to the scene (e.g., Blue tones, Night-time, Warm hues, Dramatic lighting, etc.).\n\n" +
-                "CRITICAL REQUIREMENTS:\n" +
-                "1. Descriptive Language: Use vivid adjectives and adverbs to paint a clear picture for Veo.\n" +
-                "2. Face Detail Enhancement: If there are people, mention 'Portrait' to focus on facial details.\n" +
-                "3. Copyright/Safety Bypass: DO NOT use real person names, trademarked characters (e.g., Pororo), or sensitive IP. Genericize them by appearance (e.g., 'a young animated penguin').\n" +
-                "4. Narrative Hook: Start by describing the [Start Frame] visual state and ensure the action perfectly concludes within 4 seconds.\n" +
-                "5. Formatting: Output ONLY the English prompt string. No conversational text.\n\n" +
-                "[Scene Description]:\n" + koreanPrompt;
+            // 카메라 워킹 및 추가 모션 프롬프트 구성을 위해 한국어 씬 설명 번역
+            String koreanPrompt = buildKoreanSceneDescription(target, state);
+            String englishPrompt = geminiAdapter.generateText(
+                "Translate this scene description to a highly detailed, cinematic English prompt for an AI video generator. Only provide the translated prompt without any conversational text:\n" + koreanPrompt
+            ) + " Cinematic, realistic motion, highly detailed.";
 
-            String englishPrompt = geminiAdapter.generateText(geminiVideoPrompt).trim();
-
-            List<String> referenceImageUrls = collectReferenceImageUrls(state);
+            List<String> referenceImageUrls = collectReferenceImageUrls(target, state);
             String firstFrameUrl = firstNonBlank(findFirstFrameImageUrl(target), target.getImageUrl());
             String lastFrameUrl = findLastFrameImageUrl(target);
 
@@ -877,20 +965,58 @@ public class GenerationService {
             // 생성 완료 시 상태 갱신
             target.setVideoUrl(videoUrl);
             target.setStatus("completed");
+            clearSceneError(target);
             log.info("Finished video generation for scene: {}. URL: {}", sceneId, videoUrl);
         } catch (Exception e) {
             log.error("Failed to generate video for scene: {}", sceneId, e);
             target.setStatus("error");
-            if (e.getMessage() != null && e.getMessage().contains("구글 안전 필터 차단")) {
-                target.setLastErrorMessage("구글 안전 정책(폭력, 선정성 등)에 의해 영상 생성이 차단되었습니다. 아래에서 표현을 순화해주시면 다시 시도할 수 있습니다.");
-                target.setLastErrorRetryable(true);
-            } else {
-                target.setLastErrorMessage(e.getMessage() != null ? e.getMessage() : "알 수 없는 오류");
-            }
+            applySceneError(target, e);
             throw new RuntimeException("비디오 생성 실패: " + e.getMessage(), e);
         } finally {
             sessionService.updateSession(sessionId, state);
         }
+    }
+
+    private void clearSceneError(Scene scene) {
+        if (scene == null) {
+            return;
+        }
+        scene.setLastErrorCode(null);
+        scene.setLastErrorMessage(null);
+        scene.setLastErrorRetryable(null);
+        scene.setLastErrorRequestId(null);
+    }
+
+    private void applySceneError(Scene scene, Throwable throwable) {
+        if (scene == null) {
+            return;
+        }
+        ApiErrorInfo info = ErrorClassifier.classify(throwable);
+        scene.setLastErrorCode(info.code());
+        scene.setLastErrorMessage(info.userMessage());
+        scene.setLastErrorRetryable(info.retryable());
+        scene.setLastErrorRequestId(UUID.randomUUID().toString());
+    }
+
+    private List<String> collectReferenceImageUrls(Scene scene, ProjectState state) {
+        if (scene == null || state == null || scene.getPinnedAssets() == null || scene.getPinnedAssets().isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, CustomAssetData> customAssets = state.getCustomAssets();
+        if (customAssets == null || customAssets.isEmpty()) {
+            return List.of();
+        }
+
+        return scene.getPinnedAssets().stream()
+                .map(customAssets::get)
+                .filter(Objects::nonNull)
+                .map(CustomAssetData::getImageUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .map(String::trim)
+                .distinct()
+                .limit(3)
+                .collect(Collectors.toList());
     }
 
     private String findFirstFrameImageUrl(Scene scene) {
@@ -917,86 +1043,5 @@ public class GenerationService {
             }
         }
         return null;
-    }
-
-    private String buildVideoKoreanPrompt(Scene scene, ProjectState state) {
-        String source = buildKoreanSceneDescription(scene, state);
-        String normalized = normalizeStartEndFrameNarrative(source);
-        return softenSensitiveWording(normalized);
-    }
-
-    private String normalizeStartEndFrameNarrative(String text) {
-        if (text == null || text.isBlank()) {
-            return text;
-        }
-        String startTag = "[Start Frame]";
-        String endTag = "[End Frame]";
-        int s = text.indexOf(startTag);
-        int e = text.indexOf(endTag);
-        if (s < 0 || e < 0 || e <= s) {
-            return text;
-        }
-        String before = text.substring(0, s).trim();
-        String start = text.substring(s + startTag.length(), e).trim();
-        String afterEnd = text.substring(e + endTag.length()).trim();
-        String transformed = "시작 장면: " + start + "\n전개 및 마무리 장면: " + afterEnd;
-        return (before.isBlank() ? transformed : before + "\n" + transformed).trim();
-    }
-
-    private String softenSensitiveWording(String text) {
-        if (text == null || text.isBlank()) {
-            return text;
-        }
-        String softened = text;
-        softened = softened.replace("살인", "강한 충돌");
-        softened = softened.replace("죽인다", "압도한다");
-        softened = softened.replace("죽음", "이별");
-        softened = softened.replace("피가", "강렬한 흔적이");
-        softened = softened.replace("유혈", "긴장감 있는");
-        softened = softened.replace("고문", "극한의 압박");
-        softened = softened.replace("잔인", "강렬");
-        softened = softened.replace("노출", "세련된 스타일");
-        softened = softened.replace("성적", "감정적");
-        softened = softened.replace("혐오", "불편한");
-        return softened;
-    }
-
-    private static Map<String, String> buildDefaultSceneElements() {
-        Map<String, String> defaults = new LinkedHashMap<>();
-        defaults.put("mainCharacter", "핵심 인물 (인물 사진Portrait 스타일의 세밀한 묘사)");
-        defaults.put("subCharacter", "주변 사물 또는 동물 (배경의 생동감 부여)");
-        defaults.put("action", "피사체의 자연스러운 움직임 (예: 천천히 걷기, 고개 돌리기, 상호작용)");
-        defaults.put("pose", "편안하고 특징적인 자세");
-        defaults.put("background", "상세한 질감이 살아있는 초고화질 배경");
-        defaults.put("time", "분위기를 극대화하는 시간대 (예: 골든 아워, 푸른 밤)");
-        defaults.put("composition", "와이드 샷 혹은 클로즈업 등 의도된 카메라 구도");
-        defaults.put("lighting", "입체감을 살리는 시네마틱 조명 (예: 림 라이팅, 풍부한 채도)");
-        defaults.put("mood", "장면의 정서를 반영하는 독특한 스타일과 분위기");
-        defaults.put("story", "사용자의 의도를 반영한 짧지만 강력한 시각적 서사");
-        return defaults;
-    }
-
-    private Map<String, String> mergeWithDefaultElements(SceneElements elements) {
-        Map<String, String> merged = new LinkedHashMap<>(DEFAULT_SCENE_ELEMENTS);
-        if (elements == null) {
-            return merged;
-        }
-        putIfNotBlank(merged, "mainCharacter", elements.getMainCharacter());
-        putIfNotBlank(merged, "subCharacter", elements.getSubCharacter());
-        putIfNotBlank(merged, "action", elements.getAction());
-        putIfNotBlank(merged, "pose", elements.getPose());
-        putIfNotBlank(merged, "background", elements.getBackground());
-        putIfNotBlank(merged, "time", elements.getTime());
-        putIfNotBlank(merged, "composition", elements.getComposition());
-        putIfNotBlank(merged, "lighting", elements.getLighting());
-        putIfNotBlank(merged, "mood", elements.getMood());
-        putIfNotBlank(merged, "story", elements.getStory());
-        return merged;
-    }
-
-    private void putIfNotBlank(Map<String, String> target, String key, String value) {
-        if (value != null && !value.isBlank()) {
-            target.put(key, value.trim());
-        }
     }
 }

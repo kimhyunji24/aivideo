@@ -108,27 +108,44 @@ public class VeoAdapter {
 
         log.info("[Veo] video generation start - model: {}, refs: {}, firstFrame: {}, lastFrame: {}",
                 modelName, refs.size(), first != null, last != null);
-        
-        try {
-            GoogleCredentials credentials = loadCredentials();
-            credentials.refreshIfExpired();
-            String accessToken = credentials.getAccessToken().getTokenValue();
 
-            String operationName = requestVideoGeneration(accessToken, prompt, refs, first, last);
-            JsonNode operation = pollOperationUntilDone(accessToken, operationName);
-            String videoUri = extractVideoUri(operation);
-            log.info("[Veo] video generation completed - operation: {}, videoUri: {}", operationName, videoUri);
-            return videoUri;
+        int attempt = 0;
+        while (true) {
+            try {
+                GoogleCredentials credentials = loadCredentials();
+                credentials.refreshIfExpired();
+                String accessToken = credentials.getAccessToken().getTokenValue();
 
-        } catch (IOException e) {
-            log.error("Failed to authenticate or connect to Vertex AI Veo API", e);
-            throw new RuntimeException("Vertex AI Video Generation failed", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Veo API polling interrupted", e);
-        } catch (Exception e) {
-            log.error("Error during Veo video generation", e);
-            throw new RuntimeException("Veo API Error", e);
+                String operationName = requestVideoGeneration(accessToken, prompt, refs, first, last);
+                JsonNode operation = pollOperationUntilDone(accessToken, operationName);
+                String videoUri = extractVideoUri(operation);
+                log.info("[Veo] video generation completed - operation: {}, videoUri: {}", operationName, videoUri);
+                return videoUri;
+
+            } catch (RetryableVeoException e) {
+                attempt++;
+                if (attempt > MAX_RETRIES) {
+                    log.error("[Veo] 최대 재시도 횟수({}) 초과. 최종 실패.", MAX_RETRIES);
+                    throw new RuntimeException("Veo 서버 과부하로 영상 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
+                }
+                long delayMs = RETRY_BASE_DELAY_MS * (1L << (attempt - 1)); // 30s, 60s, 120s, 240s
+                log.warn("[Veo] 재시도 {}/{} — {}ms 후 재요청. 사유: {}", attempt, MAX_RETRIES, delayMs, e.getMessage());
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Veo API 재시도 중 인터럽트", ie);
+                }
+            } catch (IOException e) {
+                log.error("Failed to authenticate or connect to Vertex AI Veo API", e);
+                throw new RuntimeException("Vertex AI Video Generation failed", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Veo API polling interrupted", e);
+            } catch (Exception e) {
+                log.error("Error during Veo video generation", e);
+                throw new RuntimeException("Veo API Error", e);
+            }
         }
     }
 
@@ -257,6 +274,9 @@ public class VeoAdapter {
         return operationName;
     }
 
+    private static final int MAX_RETRIES = 4;
+    private static final long RETRY_BASE_DELAY_MS = 30_000; // 30초 base, exponential backoff
+
     private JsonNode pollOperationUntilDone(String accessToken, String operationName) throws IOException, InterruptedException {
         String url = String.format(
                 "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:fetchPredictOperation",
@@ -281,6 +301,12 @@ public class VeoAdapter {
             if (root.path("done").asBoolean(false)) {
                 if (root.has("error")) {
                     String errorMsg = root.path("error").toString();
+                    // code 8 = RESOURCE_EXHAUSTED (일시적 과부하) → 재시도 대상
+                    if (isRetryableVeoError(root.path("error"))) {
+                        log.warn("[Veo] 일시적 과부하 에러 감지 (code 8). 폴링을 계속합니다. operationName={}", operationName);
+                        // done=true이지만 일시적 실패인 경우 — operation을 재제출해야 하므로 throw로 상위 재시도로 위임
+                        throw new RetryableVeoException("Veo 서버 과부하 (일시적). 재시도 중...");
+                    }
                     if (errorMsg.contains("sensitive words that violate Google's Responsible AI practices")) {
                         throw new RuntimeException("구글 안전 필터 차단: 번역된 비디오 프롬프트에 구글 정책(폭력, 선정성 등)에 위배되는 민감한 단어가 포함되어 영상 생성이 차단되었습니다. 기획 대본이나 로그라인을 더 부드럽고 건전한 단어로 수정해 주세요.");
                     }
@@ -294,6 +320,17 @@ public class VeoAdapter {
             }
             Thread.sleep(pollIntervalMs);
         }
+    }
+
+    /** gRPC code 8 (RESOURCE_EXHAUSTED) — 일시적 과부하로 재시도 가능 */
+    private boolean isRetryableVeoError(JsonNode errorNode) {
+        int code = errorNode.path("code").asInt(-1);
+        return code == 8;
+    }
+
+    /** 재시도 가능한 Veo 에러를 구분하기 위한 내부 예외 */
+    private static class RetryableVeoException extends RuntimeException {
+        RetryableVeoException(String msg) { super(msg); }
     }
 
     private String extractVideoUri(JsonNode operation) {
