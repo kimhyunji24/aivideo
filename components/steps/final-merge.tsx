@@ -16,56 +16,127 @@ import {
 } from "@/components/ui/select"
 import {
   Download,
-  Play,
   RefreshCw,
   Check,
   Loader2,
   Music,
   Clock,
   Film,
-  Share2,
   RotateCcw,
   Volume2,
+  CheckSquare,
+  Square,
+  Merge,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useRef } from "react"
+import { cn } from "@/lib/utils"
 
 interface FinalMergeProps {
   project: ProjectState
   setProject: (project: ProjectState) => void
   onBack: () => void
   onRestart: () => void
+  sessionId?: string | null
 }
 
-export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMergeProps) {
-  const [isMerging, setIsMerging] = useState(false)
-  const [mergeProgress, setMergeProgress] = useState(0)
-  const [isMerged, setIsMerged] = useState(false)
+type MergeStatus = "idle" | "processing" | "completed" | "error"
 
-  // Settings
-  const [addMusic, setAddMusic] = useState(true)
-  const [musicTrack, setMusicTrack] = useState("epic-orchestral")
+export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }: FinalMergeProps) {
+  const mergeBase = sessionId
+    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/merge`
+    : null
+
+  // 씬 선택
+  const [selectedSceneIds, setSelectedSceneIds] = useState<Set<string>>(new Set())
+
+  // 병합 상태
+  const [mergeStatus, setMergeStatus] = useState<MergeStatus>("idle")
+  const [mergeJobId, setMergeJobId] = useState<string | null>(null)
+  const [mergeError, setMergeError] = useState<string | null>(null)
+  const mergeVideoRef = useRef<HTMLVideoElement>(null)
+
+  // 출력 설정
+  const [addMusic, setAddMusic] = useState(false)
   const [musicVolume, setMusicVolume] = useState(70)
   const [transition, setTransition] = useState("crossfade")
-  const [outputQuality, setOutputQuality] = useState("1080p")
 
-  const videosReady = project.scenes.filter((s) => s.videoUrl).length
-  const totalDuration = project.scenes.reduce((sum, s) => sum + s.duration, 0)
+  const scenesWithVideo = project.scenes.filter((s) => s.videoUrl)
+  const totalDuration = project.scenes.reduce((sum, s) => sum + (s.duration ?? 0), 0)
 
-  const handleMerge = async () => {
-    setIsMerging(true)
-    setMergeProgress(0)
-
-    for (let i = 0; i <= 100; i += 5) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-      setMergeProgress(i)
-    }
-
-    setIsMerging(false)
-    setIsMerged(true)
+  const toggleSceneSelection = (sceneId: string) => {
+    setSelectedSceneIds(prev => {
+      const next = new Set(prev)
+      next.has(sceneId) ? next.delete(sceneId) : next.add(sceneId)
+      return next
+    })
   }
 
-  const handleDownload = () => {
-    alert("다운로드가 시작되었습니다! (프로토타입)")
+  const selectAll = () => {
+    setSelectedSceneIds(new Set(scenesWithVideo.map(s => String(s.id))))
+  }
+
+  const startMerge = async () => {
+    if (!mergeBase || selectedSceneIds.size < 2) return
+
+    const orderedIds = project.scenes
+      .filter(s => selectedSceneIds.has(String(s.id)))
+      .map(s => String(s.id))
+
+    setMergeStatus("processing")
+    setMergeError(null)
+    setMergeJobId(null)
+
+    try {
+      const res = await fetch(mergeBase, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sceneIds: orderedIds,
+          transitionType: transition,
+          transitionDuration: transition === "cut" || transition === "none" ? 0 : 1.0,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text().catch(() => `요청 실패 (${res.status})`))
+      const data = await res.json()
+      setMergeJobId(data.jobId)
+      pollStatus(data.jobId)
+    } catch (e: unknown) {
+      setMergeStatus("error")
+      setMergeError(e instanceof Error ? e.message : "병합 요청 중 오류가 발생했습니다.")
+    }
+  }
+
+  const pollStatus = (jobId: string) => {
+    if (!mergeBase) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${mergeBase}/${encodeURIComponent(jobId)}/status`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.status === "completed") {
+          clearInterval(interval)
+          setMergeStatus("completed")
+        } else if (data.status === "error") {
+          clearInterval(interval)
+          setMergeStatus("error")
+          setMergeError(data.errorMessage || "병합 중 오류가 발생했습니다.")
+        }
+      } catch {
+        clearInterval(interval)
+        setMergeStatus("error")
+        setMergeError("상태 조회 중 네트워크 오류가 발생했습니다.")
+      }
+    }, 3000)
+  }
+
+  const downloadVideo = () => {
+    if (!mergeBase || !mergeJobId) return
+    const a = document.createElement("a")
+    a.href = `${mergeBase}/${encodeURIComponent(mergeJobId)}/video?download=true`
+    a.download = "merged.mp4"
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   return (
@@ -73,7 +144,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
       <div className="text-center space-y-2">
         <h2 className="text-xl font-semibold text-black">최종 병합</h2>
         <p className="text-sm text-muted-foreground">
-          영상 클립을 하나로 합치고 배경음악과 전환 효과를 추가하세요.
+          영상 클립을 선택하고 하나로 합치세요
         </p>
       </div>
 
@@ -84,9 +155,9 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
             <div>
               <div className="flex items-center justify-center gap-2 text-xl font-semibold">
                 <Film className="h-5 w-5 text-muted-foreground" />
-                {videosReady}
+                {scenesWithVideo.length}
               </div>
-              <p className="text-xs text-muted-foreground">영상 클립</p>
+              <p className="text-xs text-muted-foreground">완료된 클립</p>
             </div>
             <div className="h-10 w-px bg-border" />
             <div>
@@ -99,194 +170,149 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
             <div className="h-10 w-px bg-border" />
             <div>
               <div className="flex items-center justify-center gap-2 text-xl font-semibold">
-                {isMerged ? (
-                  <Check className="h-5 w-5" />
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
+                {mergeStatus === "completed"
+                  ? <Check className="h-5 w-5" />
+                  : <span className="text-muted-foreground text-base">{selectedSceneIds.size}</span>
+                }
               </div>
               <p className="text-xs text-muted-foreground">
-                {isMerged ? "완료!" : "대기 중"}
+                {mergeStatus === "completed" ? "완료!" : "선택된 씬"}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Scene Timeline Preview */}
+      {/* 씬 선택 */}
       <Card className="glass-surface">
         <CardHeader className="py-3">
-          <CardTitle className="text-sm">타임라인 미리보기</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">병합할 씬 선택</CardTitle>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={selectAll}>
+              전체 선택
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="pb-4">
           <div className="flex gap-2 overflow-x-auto pb-2">
-            {project.scenes.map((scene, index) => (
-              <div key={String(scene.id)} className="flex-shrink-0 w-20">
-                <div className="aspect-video bg-muted rounded overflow-hidden mb-1">
-                  {scene.imageUrl ? (
-                    <img
-                      src={scene.imageUrl}
-                      alt={scene.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      <Film className="h-4 w-4" />
+            {scenesWithVideo.length === 0 ? (
+              <p className="text-xs text-muted-foreground">완료된 영상 클립이 없습니다.</p>
+            ) : (
+              scenesWithVideo.map((scene, index) => {
+                const sid = String(scene.id)
+                const selected = selectedSceneIds.has(sid)
+                return (
+                  <button
+                    key={sid}
+                    onClick={() => toggleSceneSelection(sid)}
+                    className={cn(
+                      "flex-shrink-0 w-24 rounded-lg p-1.5 border-2 transition-all text-left",
+                      selected ? "border-black bg-black/5" : "border-transparent"
+                    )}
+                  >
+                    <div className="aspect-video bg-muted rounded overflow-hidden mb-1 relative">
+                      {scene.imageUrl ? (
+                        <img src={scene.imageUrl} alt={scene.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Film className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="absolute top-1 right-1">
+                        {selected
+                          ? <CheckSquare className="h-3.5 w-3.5 text-black drop-shadow" />
+                          : <Square className="h-3.5 w-3.5 text-white drop-shadow" />
+                        }
+                      </div>
                     </div>
-                  )}
-                </div>
-                <p className="text-xs text-center truncate">{scene.title}</p>
-                <p className="text-xs text-center text-muted-foreground">{scene.duration}초</p>
-              </div>
-            ))}
+                    <p className="text-xs truncate font-medium">씬 {index + 1}</p>
+                    <p className="text-[10px] text-muted-foreground">{scene.duration}초</p>
+                  </button>
+                )
+              })
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Settings */}
+      {/* 출력 설정 */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Music Settings */}
         <Card className="glass-surface">
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Music className="h-3.5 w-3.5" />
-              배경음악
+              배경음악 <span className="text-[10px] text-muted-foreground font-normal">(준비 중)</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-4 space-y-4">
             <div className="flex items-center justify-between">
               <label className="text-sm">음악 추가</label>
-              <Switch checked={addMusic} onCheckedChange={setAddMusic} />
+              <Switch checked={addMusic} onCheckedChange={setAddMusic} disabled />
             </div>
-
             {addMusic && (
-              <>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium">음악 트랙</label>
-                  <Select value={musicTrack} onValueChange={setMusicTrack}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="epic-orchestral">웅장한 오케스트라</SelectItem>
-                      <SelectItem value="emotional-piano">감성 피아노</SelectItem>
-                      <SelectItem value="upbeat-electronic">업비트 일렉트로닉</SelectItem>
-                      <SelectItem value="ambient-chill">앰비언트 칠</SelectItem>
-                      <SelectItem value="dramatic-tension">드라마틱 텐션</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium flex items-center gap-1">
+                    <Volume2 className="h-3 w-3" />
+                    볼륨: {musicVolume}%
+                  </label>
                 </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium flex items-center gap-1">
-                      <Volume2 className="h-3 w-3" />
-                      볼륨: {musicVolume}%
-                    </label>
-                  </div>
-                  <Slider
-                    value={[musicVolume]}
-                    onValueChange={([v]) => setMusicVolume(v)}
-                    max={100}
-                    step={5}
-                  />
-                </div>
-              </>
+                <Slider value={[musicVolume]} onValueChange={([v]) => setMusicVolume(v)} max={100} step={5} />
+              </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Output Settings */}
         <Card className="glass-surface">
           <CardHeader className="py-3">
-            <CardTitle className="text-sm">출력 설정</CardTitle>
+            <CardTitle className="text-sm">전환 효과</CardTitle>
           </CardHeader>
-          <CardContent className="pb-4 space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-medium">전환 스타일</label>
-              <Select value={transition} onValueChange={setTransition}>
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="crossfade">크로스페이드</SelectItem>
-                  <SelectItem value="cut">하드 컷</SelectItem>
-                  <SelectItem value="fade-black">페이드 투 블랙</SelectItem>
-                  <SelectItem value="slide">슬라이드</SelectItem>
-                  <SelectItem value="none">없음</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium">출력 품질</label>
-              <Select value={outputQuality} onValueChange={setOutputQuality}>
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="720p">720p HD</SelectItem>
-                  <SelectItem value="1080p">1080p Full HD</SelectItem>
-                  <SelectItem value="4k">4K Ultra HD</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <CardContent className="pb-4">
+            <Select value={transition} onValueChange={setTransition}>
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="crossfade">크로스페이드</SelectItem>
+                <SelectItem value="fadeblack">페이드 투 블랙</SelectItem>
+                <SelectItem value="slideleft">슬라이드</SelectItem>
+                <SelectItem value="cut">하드 컷</SelectItem>
+                <SelectItem value="none">없음</SelectItem>
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
       </div>
 
-      {/* Merge Progress / Actions */}
+      {/* 병합 액션 */}
       <Card className="glass-surface">
         <CardContent className="py-4">
-          {isMerging ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm font-medium">영상 클립 병합 중...</span>
-                </div>
-                <span className="text-xs text-muted-foreground">{mergeProgress}%</span>
-              </div>
-              <Progress value={mergeProgress} className="h-1.5" />
+          {mergeStatus === "processing" ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              영상을 병합하는 중입니다… (시간이 걸릴 수 있습니다)
             </div>
-          ) : isMerged ? (
+          ) : mergeStatus === "completed" && mergeJobId && mergeBase ? (
             <div className="space-y-4">
               <div className="flex items-center justify-center gap-2">
                 <Check className="h-5 w-5" />
                 <span className="text-sm font-medium">영상 준비 완료!</span>
               </div>
-
-              {/* Video Preview Placeholder */}
-              <div className="aspect-video bg-muted rounded flex items-center justify-center">
-                <div className="text-center">
-                  <div className="h-12 w-12 rounded-full bg-foreground/10 flex items-center justify-center mx-auto mb-2">
-                    <Play className="h-6 w-6 ml-0.5" />
-                  </div>
-                  <p className="text-xs text-muted-foreground">클릭하여 미리보기</p>
-                </div>
-              </div>
-
+              <video
+                ref={mergeVideoRef}
+                src={`${mergeBase}/${encodeURIComponent(mergeJobId)}/video`}
+                controls
+                preload="metadata"
+                className="w-full rounded-lg bg-black aspect-video"
+              />
               <div className="flex gap-2">
+                <Button className="flex-1 bg-black hover:bg-gray-800 text-white press-down" onClick={downloadVideo}>
+                  <Download className="h-4 w-4 mr-2" />
+                  다운로드
+                </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button className="flex-1" onClick={handleDownload}>
-                      <Download className="h-4 w-4 mr-2" />
-                      다운로드
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>영상 파일 다운로드</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline">
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>공유하기</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" onClick={() => setIsMerged(false)}>
+                    <Button variant="outline" onClick={() => { setMergeStatus("idle"); setMergeJobId(null) }}>
                       <RefreshCw className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -295,10 +321,22 @@ export function FinalMerge({ project, setProject, onBack, onRestart }: FinalMerg
               </div>
             </div>
           ) : (
-            <Button className="w-full bg-black hover:bg-gray-800 text-white press-down btn-unified" onClick={handleMerge}>
-              <Film className="h-4 w-4 mr-2" />
-              최종 영상 생성
-            </Button>
+            <div className="space-y-2">
+              <Button
+                className="w-full bg-black hover:bg-gray-800 text-white press-down btn-unified"
+                disabled={selectedSceneIds.size < 2 || !mergeBase}
+                onClick={startMerge}
+              >
+                <Merge className="h-4 w-4 mr-2" />
+                최종 영상 생성 {selectedSceneIds.size >= 2 ? `(${selectedSceneIds.size}개 씬)` : ""}
+              </Button>
+              {mergeStatus === "error" && mergeError && (
+                <p className="text-xs text-destructive text-center">{mergeError}</p>
+              )}
+              {selectedSceneIds.size < 2 && (
+                <p className="text-xs text-muted-foreground text-center">씬을 2개 이상 선택해주세요</p>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

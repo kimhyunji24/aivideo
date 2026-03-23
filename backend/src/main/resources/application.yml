@@ -8,6 +8,9 @@ spring:
 
 
 aivideo:
+  mock-mode: ${MOCK_MODE:false}
+  mock-image-url: ${MOCK_IMAGE_URL:https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80}
+  mock-video-url: ${MOCK_VIDEO_URL:https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4}
   generated-files-path: ${user.home}/aivideo-generated
 
 google:
@@ -28,14 +31,13 @@ vertex:
   location: ${VERTEX_LOCATION:us-central1}
 
 imagen:
-  model: ${IMAGEN_MODEL:imagen-3.0-capability-001}
-  fallback-model: ${IMAGEN_FALLBACK_MODEL:imagen-3.0-generate-002}
+  model: ${IMAGEN_MODEL:imagen-3.0-generate-002}
   output-dir: ${IMAGEN_OUTPUT_DIR:${user.home}/aivideo-generated/images}
 
 veo:
-  model: ${VEO_MODEL:veo-3.1-fast-generate-preview}
-  storage-uri: ${VEO_STORAGE_URI:}
-  duration-seconds: ${VEO_DURATION_SECONDS:4}
+  model: ${VEO_MODEL:veo-3.1-generate-preview}
+  storage-uri: ${VEO_STORAGE_URI:gs://gongmojeon-veo3-model}
+  duration-seconds: ${VEO_DURATION_SECONDS:8}
   poll-interval-ms: ${VEO_POLL_INTERVAL_MS:10000}
   poll-timeout-ms: ${VEO_POLL_TIMEOUT_MS:600000}
   output-dir: ${VEO_OUTPUT_DIR:${user.home}/aivideo-generated/videos}

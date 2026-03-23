@@ -230,7 +230,7 @@ public class PlanningService {
             "    {\n" +
             "      \"id\": \"stage-0\",\n" +
             "      \"label\": \"발단\",\n" +
-            "      \"content\": \"[Start Frame] 주인공이 방에 들어온다. [End Frame] 주인공이 의자에 앉아 편지를 읽는다. (총 150자 이내)\",\n" +
+            "      \"content\": \"주인공이 방에 들어와 의자에 앉아 편지를 읽는다. (총 150자 이내의 단일 장면 묘사, Start Frame/End Frame 구분 없이 하나의 장면으로 작성)\",\n" +
             "      \"elements\": {\n" +
             "        \"mainCharacter\": \"메인 인물 (외형, 인상 포함)\",\n" +
             "        \"subCharacter\": \"서브 인물 (또는 사물, 동물 등)\",\n" +

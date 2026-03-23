@@ -10,7 +10,7 @@ import type {
   PlanningSeedRequest,
   PlanningSeedResponse,
 } from "@/lib/types"
-import { analyzeBackgroundReferenceImage, analyzeCharacterImage, generateCharacters, regenerateCharacter, generatePlot, updateSession } from "@/lib/api"
+import { analyzeBackgroundReferenceImage, generateCharacters, regenerateCharacter, generatePlot, updateSession } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -28,7 +28,6 @@ import {
   X,
   RefreshCcw,
   User,
-  Loader2,
 } from "lucide-react"
 import {
   Dialog,
@@ -111,21 +110,16 @@ function generatePlotStages(
 }
 
 function generateCharactersFromLogline(
-  logline: string,
-  selectedGenres: string[],
-  selectedWorldviews: string[]
+  logline: string
 ): Character[] {
   const now = Date.now()
-  const genreHint = selectedGenres.length > 0 ? selectedGenres.join(", ") : "기본"
-  const worldviewHint =
-    selectedWorldviews.length > 0 ? selectedWorldviews.join(", ") : "현실 세계"
   const shortLogline = logline.length > 60 ? `${logline.slice(0, 60)}...` : logline
 
   return [
     {
       id: `char-auto-main-${now}`,
       name: "주인공",
-      appearance: `${worldviewHint}에서 살아가는 인물`,
+      appearance: `이 이야기의 주인공`,
       personality: "결핍이 있지만 끝까지 포기하지 않는 성격",
       values: "소중한 관계와 약속을 지키는 것",
       trauma: shortLogline || "예상치 못한 사건으로 생긴 상처",
@@ -133,7 +127,7 @@ function generateCharactersFromLogline(
     {
       id: `char-auto-support-${now + 1}`,
       name: "대립/조력 인물",
-      appearance: `${genreHint} 톤을 강화하는 대비적 인물`,
+      appearance: `이 이야기의 대립/조력 인물`,
       personality: "냉정하지만 결정적인 순간에 변화를 만드는 성격",
       values: "현실적 선택과 생존",
       trauma: "주인공과 얽힌 과거 사건",
@@ -187,22 +181,8 @@ function toPlotPlanSeed(
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function LoglineSection({
-  logline,
-  selectedGenres,
-  selectedWorldviews,
-}: {
-  logline: string
-  selectedGenres: string[]
-  selectedWorldviews: string[]
-}) {
-  const genreStyleText =
-    selectedGenres.length > 0 ? selectedGenres.join(", ") : "선택된 장르·스타일 없음"
-  const worldviewText =
-    selectedWorldviews.length > 0 ? selectedWorldviews.join(", ") : "선택된 세계관·배경 없음"
-
+function LoglineSection({ logline }: { logline: string }) {
   const loglineText = logline || "로그라인이 아직 확정되지 않았습니다."
-  const summaryText = `로그라인 : ${loglineText}\n장르&스타일 : ${genreStyleText}\n세계관&배경 : ${worldviewText}`
 
   return (
     <section className="space-y-6">
@@ -215,7 +195,7 @@ function LoglineSection({
 
       <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl">
         <CardContent className="p-4 sm:p-5">
-          <p className="text-sm leading-7 text-gray-800 break-keep whitespace-pre-line">{summaryText}</p>
+          <p className="text-sm leading-7 text-gray-800 break-keep whitespace-pre-line">{loglineText}</p>
         </CardContent>
       </Card>
     </section>
@@ -310,8 +290,8 @@ function CharactersSection({
                 className="border border-[#E0E0E0] shadow-none bg-white rounded-2xl overflow-hidden p-5 relative flex flex-col justify-between hover-lift animate-fade-up min-h-[240px]"
               >
                 <div className="absolute top-4 right-4 z-10">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     className={`icon-btn p-1 ${regeneratingId === char.id ? 'animate-spin opacity-50 cursor-not-allowed' : ''}`}
                     onClick={(e) => { e.stopPropagation(); onRegenerate(char.id); }}
                     disabled={isConfirmed || isGenerating || regeneratingId !== null || analyzingId !== null}
@@ -319,7 +299,7 @@ function CharactersSection({
                     <RefreshCcw className="w-4 h-4" />
                   </button>
                 </div>
-                
+
                 <div className={`flex-1 flex flex-col ${regeneratingId === char.id ? 'opacity-30 pointer-events-none transition-opacity' : 'transition-opacity'}`}>
                   <div className="flex items-start gap-4 mb-4">
                     <div
@@ -331,7 +311,7 @@ function CharactersSection({
                       ) : (
                         <User className="h-8 w-8 text-gray-400" />
                       )}
-                      
+
                       {/* Image upload input hidden */}
                       <input
                         type="file"
@@ -341,7 +321,7 @@ function CharactersSection({
                         onChange={(e) => e.target.files?.[0] && onImageUpload(char.id, e.target.files[0])}
                       />
                     </div>
-                    
+
                     <div className="flex flex-col flex-1 pt-2 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                         <span className="font-bold text-gray-900 text-base truncate">{displayName}</span>
@@ -434,10 +414,7 @@ function PlotSection({
             style={{ backgroundColor: COLORS.primary }}
           >
             {isGenerating ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                생성 중...
-              </>
+              <>생성 중...</>
             ) : (
               <>
                 <Wand2 className="h-4 w-4" />
@@ -454,56 +431,38 @@ function PlotSection({
             key={n}
             onClick={() => onStageCountChange(n)}
             disabled={isGenerating || !isCharacterConfirmed}
-            className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${
-              plotPlan.stageCount === n
-                ? "bg-white text-gray-900 shadow-sm border border-[#E0E0E0]"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${plotPlan.stageCount === n
+              ? "bg-white text-gray-900 shadow-sm border border-[#E0E0E0]"
+              : "text-gray-600 hover:text-gray-900"
+              }`}
           >
             {n}단계
           </button>
         ))}
       </div>
 
-      <div className="rounded-2xl border border-[#E0E0E0] bg-[#F5F5F5] px-4 py-3 flex items-center justify-between">
-        <Textarea
-          value={userPrompt}
-          onChange={(e) => {
-            onUserPromptChange(e.target.value)
-            e.target.style.height = 'auto'
-            e.target.style.height = `${e.target.scrollHeight}px`
-          }}
-          placeholder="추가 요구사항 작성 창"
-          className="border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 w-full resize-none overflow-hidden min-h-[40px] max-h-[200px] py-2"
-          rows={1}
-        />
-        <button type="button" className="text-gray-500 hover:text-gray-800 ml-2">
-           <RefreshCcw className="w-4 h-4" />
-        </button>
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {plotPlan.stages.map((stage, i) => (
           <Card
             key={stage.id}
-          className="border border-[#E0E0E0] shadow-sm bg-white rounded-2xl overflow-hidden flex flex-col p-5 hover-lift animate-fade-up"
+            className="border border-[#E0E0E0] shadow-sm bg-white rounded-2xl overflow-hidden flex flex-col p-5 hover-lift animate-fade-up"
           >
             <div className="flex items-center justify-between border-b border-[#E0E0E0] pb-3 mb-4">
-               <div className="flex items-center gap-2">
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full border border-gray-300 text-xs font-semibold text-gray-700">
-                    {i + 1}
-                  </span>
-                  <span className="text-sm font-bold text-gray-900">{stage.label}</span>
-               </div>
-               <button type="button" className="icon-btn p-1">
-                  <RefreshCcw className="w-4 h-4" />
-               </button>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center justify-center w-6 h-6 rounded-full border border-gray-300 text-xs font-semibold text-gray-700">
+                  {i + 1}
+                </span>
+                <span className="text-sm font-bold text-gray-900">{stage.label}</span>
+              </div>
+              <button type="button" className="icon-btn p-1">
+                <RefreshCcw className="w-4 h-4" />
+              </button>
             </div>
-            
+
             <p className="flex-1 text-xs leading-relaxed text-gray-700 whitespace-pre-wrap mb-6 line-clamp-6">
-               {stage.content || `${stage.label} 단계의 내용이 들어갑니다.`}
+              {stage.content || `${stage.label} 단계의 내용이 들어갑니다.`}
             </p>
-            
+
             <Button
               className="w-full rounded-full text-white text-sm font-medium h-10 btn-unified press-down mt-auto"
               style={{ backgroundColor: COLORS.primary }}
@@ -676,9 +635,8 @@ function CharacterEditModal({
                         key={g}
                         type="button"
                         onClick={() => setDraft((p) => (p ? { ...p, gender: g } : null))}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-                          draft.gender === g ? "bg-gray-800 text-white" : "bg-[#F0F0F0] text-gray-800 border border-[#BABABA]"
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium ${draft.gender === g ? "bg-gray-800 text-white" : "bg-[#F0F0F0] text-gray-800 border border-[#BABABA]"
+                          }`}
                       >
                         {GENDER_LABEL[g]}
                       </button>
@@ -707,7 +665,7 @@ function CharacterEditModal({
                 />
               </div>
             </div>
-            
+
 
             <DialogFooter className="flex flex-col-reverse sm:flex-row justify-between gap-2 pt-4 mt-4 border-t border-[#E0E0E0]">
               <Button
@@ -881,8 +839,6 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
   const backgroundRefInputRef = useRef<HTMLInputElement | null>(null)
 
   const logline = project.logline?.trim() || project.idea || ""
-  const selectedGenres = project.selectedGenres ?? []
-  const selectedWorldviews = project.selectedWorldviews ?? []
   const charactersConfirmed = project.charactersConfirmed ?? false
   const characters: Character[] = project.characters ?? []
   const plotPlan: PlotPlan | null = project.plotPlan ?? null
@@ -1026,13 +982,13 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
         stages: plotPlan.stages.map((s) =>
           s.id === id
             ? {
-                ...s,
-                content,
-                elements: {
-                  ...mergeStageElements(s.elements, content),
-                  story: content || s.elements?.story || DEFAULT_STAGE_ELEMENTS.story,
-                },
-              }
+              ...s,
+              content,
+              elements: {
+                ...mergeStageElements(s.elements, content),
+                story: content || s.elements?.story || DEFAULT_STAGE_ELEMENTS.story,
+              },
+            }
             : s
         ),
       },
@@ -1114,11 +1070,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       {/* ── 본문: 반응형 패딩·간격 ── */}
       <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
         <div className="max-w-4xl mx-auto space-y-8 sm:space-y-12">
-          <LoglineSection
-            logline={logline}
-            selectedGenres={selectedGenres}
-            selectedWorldviews={selectedWorldviews}
-          />
+          <LoglineSection logline={logline} />
           <CharactersSection
             characters={characters}
             isConfirmed={charactersConfirmed}
@@ -1145,7 +1097,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-lg border-[#E0E0E0] text-gray-800 hover:bg-[#F0F0F0]"
+                  className="rounded-lg border-[#E0E0E0] text-gray-800"
                   onClick={() => backgroundRefInputRef.current?.click()}
                   disabled={analyzingBackgroundRef}
                 >

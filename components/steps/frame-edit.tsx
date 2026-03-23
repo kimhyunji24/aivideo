@@ -1,14 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Sparkles, Loader2, Plus, Trash2 } from "lucide-react"
+import {
+  Edit3, Image as ImageIcon, Sparkles, Loader2, Pencil, Wand2, Check,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProjectState, Frame } from "@/lib/types"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { MaskCanvas } from "@/components/ui/mask-canvas"
+import { CharacterRefPanel } from "@/components/steps/character-ref-panel"
 
 interface FrameEditProps {
   project: ProjectState
@@ -22,6 +26,8 @@ interface FrameEditProps {
   sessionId?: string | null
 }
 
+type GenStatus = "idle" | "generating" | "done" | "error"
+
 export function FrameEdit({
   project,
   setProject,
@@ -29,313 +35,355 @@ export function FrameEdit({
   onComplete,
   onBack,
   onNext,
-  selectedFrameIndex: selectedFrameIndexProp = 0,
-  onSelectedFrameIndexChange,
   sessionId,
 }: FrameEditProps) {
   const safeScenes = Array.isArray(project?.scenes) ? project.scenes : []
   const scene = safeScenes[sceneIndex]
   if (!scene) return null
 
-  const [selectedFrameIndex, setSelectedFrameIndex] = useState(selectedFrameIndexProp)
-  const [isGenerating, setIsGenerating] = useState(false)
+  const BASE = sessionId
+    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}`
+    : null
+
+  // Start / End frame 상태
   const frames = scene.frames ?? []
-  const safeSelectedFrameIndex =
-    frames.length === 0 ? 0 : Math.max(0, Math.min(selectedFrameIndex, frames.length - 1))
-  const currentFrame = frames[safeSelectedFrameIndex]
-  const isMiddleFrame =
-    frames.length >= 3 && safeSelectedFrameIndex > 0 && safeSelectedFrameIndex < frames.length - 1
-  const startGenerated = Boolean(frames[0]?.imageUrl?.trim())
-  const endGenerated = Boolean(frames[frames.length - 1]?.imageUrl?.trim())
-  const canGenerateCurrentFrame = !isMiddleFrame || (startGenerated && endGenerated)
+  const startFrame: Frame = frames[0] ?? { id: `f-start-${Date.now()}`, script: scene.description || "", imageUrl: undefined }
+  const endFrame: Frame   = frames[1] ?? { id: `f-end-${Date.now()}`,   script: "", imageUrl: undefined }
 
-  useEffect(() => {
-    setSelectedFrameIndex(selectedFrameIndexProp)
-  }, [selectedFrameIndexProp])
+  const [startScript, setStartScript] = useState(startFrame.script || scene.description || "")
+  const [endScript, setEndScript]     = useState(endFrame.script || "")
 
-  useEffect(() => {
-    if (frames.length !== 1) {
-      const existingFrame = frames.length > 0 ? frames[0] : null
-      const defaultFrames: Frame[] = [
-        existingFrame ? existingFrame : { id: `f-${Date.now()}`, script: scene.description || "", imageUrl: scene.imageUrl }
-      ]
-      setProject((prev) => ({
-        ...prev,
-        scenes: (Array.isArray(prev.scenes) ? prev.scenes : []).map((s, i) => (i === sceneIndex ? { ...s, frames: defaultFrames } : s)),
-      }))
-    }
-  }, [frames.length, scene.description, scene.imageUrl, sceneIndex, setProject])
+  const [splitLoading, setSplitLoading] = useState(false)
+  const [splitError, setSplitError]     = useState<string | null>(null)
 
-  useEffect(() => {
-    if (safeSelectedFrameIndex !== selectedFrameIndex) {
-      setSelectedFrameIndex(safeSelectedFrameIndex)
-    }
-  }, [safeSelectedFrameIndex, selectedFrameIndex])
+  const [startStatus, setStartStatus] = useState<GenStatus>("idle")
+  const [endStatus, setEndStatus]     = useState<GenStatus>("idle")
+  const [genError, setGenError]       = useState<string | null>(null)
 
-  const syncSelectedFrameIndex = (nextIndex: number) => {
-    setSelectedFrameIndex(nextIndex)
-    onSelectedFrameIndexChange?.(nextIndex)
-  }
+  // 부분수정 / 자세변경 다이얼로그
+  const [editTarget, setEditTarget]         = useState<"start" | "end" | null>(null)
+  const [regenTarget, setRegenTarget]       = useState<"start" | "end" | null>(null)
+  const [regenPrompt, setRegenPrompt]       = useState("")
 
-  const readErrorMessage = async (response: Response): Promise<string> => {
+  const hasCharacters = (project.characters ?? []).length > 0
+
+  // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+  const readError = async (res: Response) => {
     try {
-      const json = await response.json()
-      if (json && typeof json === "object") {
-        const message =
-          typeof json.userMessage === "string" && json.userMessage.trim()
-            ? json.userMessage.trim()
-            : (typeof json.message === "string" && json.message.trim() ? json.message.trim() : "")
-        const requestId = typeof json.requestId === "string" ? json.requestId.trim() : ""
-        if (message) {
-          return requestId ? `${message}\n(오류 ID: ${requestId})` : message
-        }
-      }
+      const j = await res.json()
+      const msg = j?.userMessage || j?.message || ""
+      return msg || `요청 실패 (${res.status})`
     } catch {
-      // ignore json parse failure
-    }
-
-    const text = await response.text().catch(() => "")
-    if (text && text.trim()) return text.trim()
-    return `프레임 생성에 실패했습니다. (HTTP ${response.status})`
-  }
-
-  const resolveSessionId = () => {
-    if (sessionId && sessionId.trim()) return sessionId
-    if (typeof window === "undefined") return null
-    return sessionStorage.getItem("aivideo:sessionId")
-  }
-
-  const updateFrameScript = (script: string) => {
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) => {
-        if (i !== sceneIndex) return s
-        const existingFrames = s.frames ?? []
-        if (existingFrames.length === 0) return s
-        const newFrames = [...existingFrames]
-        newFrames[safeSelectedFrameIndex] = { ...newFrames[safeSelectedFrameIndex], script }
-        return { ...s, frames: newFrames }
-      }),
-    }))
-  }
-
-  // ── Drag and Drop Handlers ──
-  const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
-
-  const handleDragStart = (e: React.DragEvent, idx: number) => {
-    setDraggedIdx(idx)
-    e.dataTransfer.effectAllowed = "move"
-  }
-
-  const handleDragEnter = (e: React.DragEvent, idx: number) => {
-    e.preventDefault()
-    setDragOverIdx(idx)
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-  }
-
-  const handleDrop = (e: React.DragEvent, targetIdx: number) => {
-    e.preventDefault()
-    if (draggedIdx === null || draggedIdx === targetIdx) {
-      setDraggedIdx(null)
-      setDragOverIdx(null)
-      return
-    }
-
-    setProject(prev => {
-      const newScenes = [...prev.scenes]
-      const currentScene = newScenes[sceneIndex]
-      if (!currentScene.frames) return prev
-      
-      const newFrames = [...currentScene.frames]
-      const [moved] = newFrames.splice(draggedIdx, 1)
-      newFrames.splice(targetIdx, 0, moved)
-      
-      newScenes[sceneIndex] = {
-        ...currentScene,
-        frames: newFrames,
-        imageUrl: newFrames[0]?.imageUrl || currentScene.imageUrl,
-      }
-      
-      if (safeSelectedFrameIndex === draggedIdx) {
-        syncSelectedFrameIndex(targetIdx)
-      } else if (safeSelectedFrameIndex > draggedIdx && safeSelectedFrameIndex <= targetIdx) {
-        syncSelectedFrameIndex(safeSelectedFrameIndex - 1)
-      } else if (safeSelectedFrameIndex < draggedIdx && safeSelectedFrameIndex >= targetIdx) {
-        syncSelectedFrameIndex(safeSelectedFrameIndex + 1)
-      }
-      
-      return { ...prev, scenes: newScenes }
-    })
-    setDraggedIdx(null)
-    setDragOverIdx(null)
-  }
-
-  const handleDragEnd = () => {
-    setDraggedIdx(null)
-    setDragOverIdx(null)
-  }
-
-  const handleAddFrame = () => {
-    if (frames.length >= 4) return
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) => {
-        if (i !== sceneIndex) return s
-        const existingFrames = s.frames ?? []
-        const seedScript = s.description?.trim() || s.prompt?.trim() || ""
-        const newFrames = [
-          ...existingFrames,
-          { id: `f-${Date.now()}-${existingFrames.length + 1}`, script: seedScript, imageUrl: undefined },
-        ]
-        return { ...s, frames: newFrames }
-      }),
-    }))
-    syncSelectedFrameIndex(frames.length)
-  }
-
-  const handleRemoveFrame = (idx: number) => {
-    if (frames.length <= 1) return
-    setProject((prev) => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) => {
-        if (i !== sceneIndex) return s
-        const existingFrames = s.frames ?? []
-        if (existingFrames.length <= 1) return s
-        const newFrames = [...existingFrames]
-        newFrames.splice(idx, 1)
-        return {
-          ...s,
-          frames: newFrames,
-          imageUrl: newFrames[0]?.imageUrl || s.imageUrl,
-        }
-      }),
-    }))
-    if (selectedFrameIndex >= frames.length - 1) {
-      syncSelectedFrameIndex(Math.max(0, frames.length - 2))
+      return `요청 실패 (${res.status})`
     }
   }
 
-  const handleGenerateFrame = async () => {
-    if (!currentFrame) return
-    if (!canGenerateCurrentFrame) {
-      alert("프레임이 3개 이상이면 Start/End 프레임 이미지를 먼저 생성해야 합니다.")
-      return
-    }
-    const script = currentFrame.script?.trim() || scene.description?.trim() || scene.prompt?.trim() || ""
-    if (!script) {
-      alert("프레임 생성에 사용할 스크립트가 없습니다. 스크립트를 입력해 주세요.")
-      return
-    }
-
-    let sid = resolveSessionId()
-    if (!sid) {
-      const createRes = await fetch("/api/v1/sessions", { method: "POST" })
-      if (!createRes.ok) {
-        alert("세션 생성에 실패해 프레임 이미지를 만들 수 없습니다.")
-        return
-      }
-
-      sid = (await createRes.text()).replace(/"/g, "").trim()
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("aivideo:sessionId", sid)
-      }
-    }
-
-    // Always ensure the latest edited script and frames are saved to the backend before generating image
+  const syncSession = async () => {
+    if (!BASE) return
     try {
-      await fetch("/api/v1/sessions/" + encodeURIComponent(sid), {
+      await fetch(`${BASE}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(project),
       })
-    } catch(e) {
-      console.warn("Failed to sync project state before generating frame", e)
+    } catch { /* silent */ }
+  }
+
+  const updateFrameInProject = (which: "start" | "end", updatedFrame: Frame) => {
+    setProject(prev => ({
+      ...prev,
+      scenes: prev.scenes.map((s, i) => {
+        if (i !== sceneIndex) return s
+        const fs = s.frames ? [...s.frames] : [
+          { id: startFrame.id, script: startScript, imageUrl: startFrame.imageUrl },
+          { id: endFrame.id,   script: endScript,   imageUrl: endFrame.imageUrl },
+        ]
+        if (which === "start") {
+          fs[0] = updatedFrame
+          return { ...s, frames: fs, imageUrl: updatedFrame.imageUrl || s.imageUrl }
+        } else {
+          if (fs.length < 2) fs.push(updatedFrame)
+          else fs[1] = updatedFrame
+          return { ...s, frames: fs }
+        }
+      }),
+    }))
+  }
+
+  // ── AI 분리 ──────────────────────────────────────────────────────────────
+
+  const handleSplit = async () => {
+    if (!BASE) return
+    setSplitLoading(true)
+    setSplitError(null)
+    try {
+      const res = await fetch(`${BASE}/generation/frames/${encodeURIComponent(String(scene.id ?? sceneIndex))}/split`, {
+        method: "POST",
+      })
+      if (!res.ok) throw new Error(await readError(res))
+      const data = await res.json()
+      setStartScript(data.startScript || "")
+      setEndScript(data.endScript || "")
+    } catch (e: unknown) {
+      setSplitError(e instanceof Error ? e.message : "분리 중 오류가 발생했습니다.")
+    } finally {
+      setSplitLoading(false)
+    }
+  }
+
+  // ── 프레임 생성 ───────────────────────────────────────────────────────────
+
+  const generateFrame = async (which: "start" | "end", frameId: string, script: string): Promise<Frame | null> => {
+    if (!BASE || !script.trim()) return null
+    const sceneId = String(scene.id ?? sceneIndex)
+    const res = await fetch(`${BASE}/generation/frames/${encodeURIComponent(sceneId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ frameId, script: script.trim() }),
+    })
+    if (!res.ok) throw new Error(await readError(res))
+    return res.json()
+  }
+
+  const handleGenerateBoth = async () => {
+    if (!BASE) return
+    if (!startScript.trim()) { setGenError("Start Frame 스크립트를 입력해주세요."); return }
+    if (!endScript.trim())   { setGenError("End Frame 스크립트를 입력해주세요."); return }
+    setGenError(null)
+
+    // 먼저 최신 스크립트를 세션에 동기화
+    setProject(prev => ({
+      ...prev,
+      scenes: prev.scenes.map((s, i) => {
+        if (i !== sceneIndex) return s
+        const newFrames: Frame[] = [
+          { id: startFrame.id, script: startScript, imageUrl: startFrame.imageUrl },
+          { id: endFrame.id,   script: endScript,   imageUrl: endFrame.imageUrl },
+        ]
+        return { ...s, frames: newFrames }
+      }),
+    }))
+    await syncSession()
+
+    // Start Frame 생성
+    setStartStatus("generating")
+    try {
+      const sf = await generateFrame("start", startFrame.id, startScript)
+      if (sf) {
+        updateFrameInProject("start", sf)
+        setStartStatus("done")
+      }
+    } catch (e: unknown) {
+      setStartStatus("error")
+      setGenError((e instanceof Error ? e.message : "") || "Start Frame 생성에 실패했습니다.")
+      return
     }
 
-    setIsGenerating(true)
+    // End Frame 자동 연속 생성
+    setEndStatus("generating")
     try {
-      const response = await fetch(
-        `/api/v1/sessions/${encodeURIComponent(sid)}/generation/frames/${encodeURIComponent(String(scene.id ?? sceneIndex))}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            frameId: currentFrame.id,
-            script: script || undefined,
-          }),
-        }
-      )
-
-      if (!response.ok) {
-        const message = await readErrorMessage(response)
-        throw new Error(message)
+      const ef = await generateFrame("end", endFrame.id, endScript)
+      if (ef) {
+        updateFrameInProject("end", ef)
+        setEndStatus("done")
       }
+    } catch (e: unknown) {
+      setEndStatus("error")
+      setGenError((e instanceof Error ? e.message : "") || "End Frame 생성에 실패했습니다.")
+    }
+  }
 
-      const generatedFrame = (await response.json()) as Frame
+  const handleGenerateOne = async (which: "start" | "end") => {
+    if (!BASE) return
+    const script = which === "start" ? startScript : endScript
+    const frame  = which === "start" ? startFrame  : endFrame
+    if (!script.trim()) { setGenError(`${which === "start" ? "Start" : "End"} Frame 스크립트를 입력해주세요.`); return }
+    setGenError(null)
+    which === "start" ? setStartStatus("generating") : setEndStatus("generating")
+    try {
+      const result = await generateFrame(which, frame.id, script)
+      if (result) {
+        updateFrameInProject(which, result)
+        which === "start" ? setStartStatus("done") : setEndStatus("done")
+      }
+    } catch (e: unknown) {
+      which === "start" ? setStartStatus("error") : setEndStatus("error")
+      setGenError((e instanceof Error ? e.message : "") || "생성에 실패했습니다.")
+    }
+  }
 
-      setProject((prev) => ({
-        ...prev,
-        scenes: prev.scenes.map((s, i) => {
-          if (i !== sceneIndex) return s
-          const existingFrames = s.frames ?? []
-          if (existingFrames.length === 0) {
-            return {
-              ...s,
-              frames: [generatedFrame],
-              imageUrl: generatedFrame.imageUrl || s.imageUrl,
-            }
-          }
+  // ── 자세/동작 변경 ─────────────────────────────────────────────────────────
 
-          const nextFrames = [...existingFrames]
-          const frameIndex = nextFrames.findIndex((f) => f.id === generatedFrame.id)
-          const indexToUpdate = frameIndex >= 0 ? frameIndex : safeSelectedFrameIndex
-          nextFrames[indexToUpdate] = {
-            ...nextFrames[indexToUpdate],
-            ...generatedFrame,
-            script:
-              nextFrames[indexToUpdate].script ||
-              generatedFrame.script ||
-              script ||
-              scene.description ||
-              scene.prompt ||
-              "",
-          }
-          return {
-            ...s,
-            frames: nextFrames,
-            imageUrl: nextFrames[0]?.imageUrl || s.imageUrl,
-          }
-        }),
-      }))
-    } catch (error) {
-      console.error("Frame generation error:", error)
-      const message = error instanceof Error && error.message?.trim()
-        ? error.message.trim()
-        : "프레임 생성에 실패했습니다. 잠시 후 다시 시도해주세요."
-      alert(message)
-    } finally {
-      setIsGenerating(false)
+  const handleRegen = async () => {
+    if (!BASE || !regenTarget || !regenPrompt.trim()) return
+    const frame = regenTarget === "start" ? startFrame : endFrame
+    regenTarget === "start" ? setStartStatus("generating") : setEndStatus("generating")
+    setRegenTarget(null)
+    try {
+      const res = await fetch(`${BASE}/generation/images/${encodeURIComponent(String(scene.id ?? sceneIndex))}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frameId: frame.id, prompt: regenPrompt.trim() }),
+      })
+      if (!res.ok) throw new Error(await readError(res))
+      const updated = await res.json()
+      updateFrameInProject(regenTarget!, updated)
+      regenTarget === "start" ? setStartStatus("done") : setEndStatus("done")
+      setRegenPrompt("")
+    } catch (e: unknown) {
+      regenTarget === "start" ? setStartStatus("error") : setEndStatus("error")
+      setGenError((e instanceof Error ? e.message : "") || "재생성에 실패했습니다.")
+    }
+  }
+
+  // ── 부분 수정 ──────────────────────────────────────────────────────────────
+
+  const handleEdit = async (maskBase64: string) => {
+    if (!BASE || !editTarget) return
+    const frame = editTarget === "start" ? startFrame : endFrame
+    if (!frame.imageUrl) return
+    editTarget === "start" ? setStartStatus("generating") : setEndStatus("generating")
+    setEditTarget(null)
+    try {
+      const res = await fetch(`${BASE}/generation/images/${encodeURIComponent(String(scene.id ?? sceneIndex))}/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frameId: frame.id, maskBase64, prompt: "" }),
+      })
+      if (!res.ok) throw new Error(await readError(res))
+      const updated = await res.json()
+      updateFrameInProject(editTarget!, updated)
+      editTarget === "start" ? setStartStatus("done") : setEndStatus("done")
+    } catch (e: unknown) {
+      editTarget === "start" ? setStartStatus("error") : setEndStatus("error")
+      setGenError((e instanceof Error ? e.message : "") || "부분 수정에 실패했습니다.")
     }
   }
 
   const handleComplete = () => {
+    setProject(prev => ({
+      ...prev,
+      scenes: prev.scenes.map((s, i) => {
+        if (i !== sceneIndex) return s
+        const newFrames: Frame[] = [
+          { id: startFrame.id, script: startScript, imageUrl: s.frames?.[0]?.imageUrl },
+          { id: endFrame.id,   script: endScript,   imageUrl: s.frames?.[1]?.imageUrl },
+        ]
+        return { ...s, frames: newFrames, imageUrl: newFrames[0]?.imageUrl || s.imageUrl }
+      }),
+    }))
     onComplete()
   }
 
-  if (!currentFrame) {
-    return (
-      <div className="h-[calc(100vh-180px)] flex items-center justify-center text-sm text-muted-foreground">
-        프레임을 준비하는 중입니다...
+  const isGenerating = startStatus === "generating" || endStatus === "generating"
+
+  // ── 프레임 카드 렌더러 ────────────────────────────────────────────────────
+
+  const FrameCard = ({
+    label, which, frame, script, setScript, status,
+  }: {
+    label: string
+    which: "start" | "end"
+    frame: Frame
+    script: string
+    setScript: (s: string) => void
+    status: GenStatus
+  }) => (
+    <Card className="flex flex-col glass-card border-border/60 shadow-sm">
+      <CardHeader className="py-3 px-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Badge variant={which === "start" ? "default" : "secondary"} className="text-xs">
+              {label}
+            </Badge>
+            {status === "done" && <Check className="h-3.5 w-3.5 text-green-600" />}
+            {status === "generating" && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            {status === "error" && <span className="text-xs text-destructive">오류</span>}
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1 text-muted-foreground"
+            disabled={isGenerating}
+            onClick={() => handleGenerateOne(which)}
+          >
+            <Sparkles className="h-3 w-3" />
+            단독 생성
+          </Button>
+        </div>
+      </CardHeader>
+
+      {/* 이미지 영역 */}
+      <div className="relative mx-4 mb-3 bg-black/5 rounded-lg overflow-hidden flex items-center justify-center h-[150px]">
+        {status === "generating" ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/20 backdrop-blur-[2px]">
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+            <span className="text-xs text-white mt-2">생성 중...</span>
+          </div>
+        ) : frame.imageUrl ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={frame.imageUrl} alt={label} className="w-full h-full object-contain rounded-lg" />
+            <div className="absolute bottom-2 right-2 flex gap-1.5">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 text-xs gap-1 bg-black/60 hover:bg-black/80 text-white border-0 backdrop-blur-sm"
+                onClick={() => { setRegenTarget(which); setRegenPrompt("") }}
+              >
+                <Sparkles className="h-3 w-3" />
+                자세 변경
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 text-xs gap-1 bg-black/60 hover:bg-black/80 text-white border-0 backdrop-blur-sm"
+                onClick={() => setEditTarget(which)}
+              >
+                <Pencil className="h-3 w-3" />
+                부분 수정
+              </Button>
+            </div>
+          </>
+        ) : (
+          <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-black/5 transition-colors rounded-lg">
+            <ImageIcon className="h-10 w-10 text-muted-foreground/50 mb-1" />
+            <span className="text-xs text-muted-foreground">클릭하여 이미지 업로드</span>
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              const reader = new FileReader()
+              reader.onload = () => {
+                const url = typeof reader.result === "string" ? reader.result : undefined
+                if (!url) return
+                updateFrameInProject(which, { ...frame, imageUrl: url })
+              }
+              reader.readAsDataURL(file)
+            }} />
+          </label>
+        )}
       </div>
-    )
-  }
+
+      {/* 스크립트 */}
+      <CardContent className="pt-0 px-4 pb-4">
+        <label className="text-xs font-medium text-muted-foreground mb-1.5 block">스크립트</label>
+        <Textarea
+          value={script}
+          onChange={(e) => setScript(e.target.value)}
+          placeholder={`${label} 장면을 묘사하세요...`}
+          rows={3}
+          className="text-sm resize-none"
+        />
+      </CardContent>
+    </Card>
+  )
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 h-[calc(100vh-180px)] flex flex-col">
+    <div className="h-[calc(100vh-180px)] flex flex-col">
+      {/* 헤더 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="px-3 py-1 text-sm font-semibold rounded-full">
@@ -354,139 +402,119 @@ export function FrameEdit({
         </Button>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-        <Card className="col-span-1 lg:col-span-8 flex flex-col border-border/60 shadow-sm glass-card">
-          <div className="relative flex-1 min-h-[220px] max-h-[420px] bg-black/5 flex items-center justify-center p-4">
-            {currentFrame.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={currentFrame.imageUrl}
-                alt={`Frame ${safeSelectedFrameIndex + 1}`}
-                className="w-full h-full object-contain rounded-lg"
-              />
-            ) : (
-              <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-black/5 transition-colors rounded-lg group">
-                <ImageIcon className="w-16 h-16 mb-2 opacity-50 group-hover:opacity-80 transition-opacity text-gray-500" />
-                <p className="text-sm font-medium text-gray-500 group-hover:text-gray-700">여기를 클릭하여 이미지 업로드</p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) {
-                      const reader = new FileReader()
-                      reader.onload = () => {
-                        const dataUrl = typeof reader.result === "string" ? reader.result : undefined
-                        if (!dataUrl) return
-                        setProject((prev) => ({
-                          ...prev,
-                          scenes: prev.scenes.map((s, i) => {
-                            if (i !== sceneIndex || !s.frames) return s
-                            const newFrames = [...s.frames]
-                            newFrames[safeSelectedFrameIndex] = { ...newFrames[safeSelectedFrameIndex], imageUrl: dataUrl }
-                            return {
-                              ...s,
-                              frames: newFrames,
-                              imageUrl: newFrames[0]?.imageUrl || s.imageUrl,
-                            }
-                          })
-                        }))
-                      }
-                      reader.readAsDataURL(file)
-                    }
-                  }}
-                />
-              </label>
-            )}
-            <div className="absolute top-6 left-6">
-              <Badge className="bg-black/70 hover:bg-black/70 text-white backdrop-blur-md border-0 gap-1.5 py-1.5 px-3">
-                <Edit3 className="h-3.5 w-3.5" />
-                {safeSelectedFrameIndex === 0 ? "Start Frame" : `Frame ${safeSelectedFrameIndex + 1}`} 편집 중
-              </Badge>
-            </div>
-          </div>
-
-          <div className="p-4 bg-white border-t">
-            <div className="flex items-center gap-2 mb-3">
-              <input type="checkbox" id="frame-flow" className="rounded border-gray-300 text-black h-3 w-3 focus:ring-black" defaultChecked disabled />
-              <label htmlFor="frame-flow" className="text-xs font-semibold text-gray-700 tracking-wide">프레임 이미지 (4컷 통합)</label>
-            </div>
-
-            <div className="flex items-center gap-4">
-              {frames.map((frame, idx) => (
-                <div 
-                  key={frame.id} 
-                  className={cn("flex items-center gap-4 flex-1 relative group transition-all", dragOverIdx === idx ? "opacity-40 scale-95" : "")}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, idx)}
-                  onDragEnter={(e) => handleDragEnter(e, idx)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, idx)}
-                  onDragEnd={handleDragEnd}
-                >
-                  <button
-                    onClick={() => syncSelectedFrameIndex(idx)}
-                    className={cn(
-                      "relative aspect-video w-full rounded-lg overflow-hidden border transition-all p-0 focus:outline-none cursor-grab active:cursor-grabbing",
-                      safeSelectedFrameIndex === idx
-                        ? "border-black ring-2 ring-black/10 shadow-md transform scale-[1.02]"
-                        : "border-gray-200 bg-gray-50 hover:bg-gray-100 opacity-60 hover:opacity-100"
-                    )}
-                  >
-                    {frame.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={frame.imageUrl} alt={`F${idx + 1}`} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gradient-to-br from-gray-50 to-gray-200">
-                        <div className="absolute inset-0 bg-white/40 mask-diagonal-stripes" />
-                      </div>
-                    )}
-                  </button>
-                  {/* 삭제 버튼 제거됨 */}
-                  {(idx < frames.length - 1 || frames.length < 4) && <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />}
-                </div>
-              ))}
-              {/* 추가 버튼 영역 제거됨 */}
-            </div>
-          </div>
-        </Card>
-
-        <Card className="col-span-1 lg:col-span-4 flex flex-col border-border/60 shadow-sm glass-card">
-          <div className="p-4 border-b flex items-center justify-between bg-white rounded-t-xl">
-            <div className="flex items-center gap-2">
-              <span className="font-serif text-lg font-bold text-black">T</span>
-              <span className="font-semibold text-sm tracking-wide text-gray-800">스크립트</span>
-            </div>
-            <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 font-medium">F{safeSelectedFrameIndex + 1} 종속</Badge>
-          </div>
-          <ScrollArea className="flex-1 p-4 flex flex-col">
-            <Textarea
-              value={currentFrame.script}
-              onChange={(e) => updateFrameScript(e.target.value)}
-              placeholder={`F${safeSelectedFrameIndex + 1} 프레임에 대한 스크립트를 입력하세요...`}
-              className="min-h-[250px] resize-none border-0 focus-visible:ring-0 p-0 text-sm leading-relaxed text-gray-700 bg-transparent mb-4"
-            />
-            <div className="mt-8 pt-4 border-t border-border/50">
-              <Button
-                size="sm"
-                onClick={handleGenerateFrame}
-                disabled={isGenerating || !canGenerateCurrentFrame}
-                className="w-full gap-2 bg-black hover:bg-gray-800 text-white shadow-md h-11 rounded-lg press-down text-sm font-semibold"
-              >
-                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                F{safeSelectedFrameIndex + 1} 프레임 생성하기
-              </Button>
-              {!canGenerateCurrentFrame && (
-                <p className="mt-2 text-xs text-red-500">
-                  프레임이 3개 이상이면 Start/End 프레임 이미지를 먼저 생성해야 합니다.
-                </p>
-              )}
-            </div>
-          </ScrollArea>
-        </Card>
+      {/* AI 분리 버튼 */}
+      <div className="flex items-center gap-3 mb-4">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 h-8 text-sm"
+          disabled={splitLoading || isGenerating}
+          onClick={handleSplit}
+        >
+          {splitLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+          AI로 Start/End 스크립트 분리
+        </Button>
+        {splitError && <span className="text-xs text-destructive">{splitError}</span>}
+        {genError   && <span className="text-xs text-destructive">{genError}</span>}
       </div>
 
+      {/* 메인 레이아웃 */}
+      <div className={cn(
+        "flex-1 grid gap-4 min-h-0",
+        hasCharacters ? "grid-cols-[260px_1fr_1fr]" : "grid-cols-1 md:grid-cols-2"
+      )}>
+        {/* 캐릭터 레퍼런스 패널 */}
+        {hasCharacters && (
+          <div className="rounded-xl border border-border/60 shadow-sm overflow-hidden flex flex-col">
+            <CharacterRefPanel project={project} setProject={setProject} sessionId={sessionId} />
+          </div>
+        )}
+
+        {/* Start Frame */}
+        <FrameCard
+          label="Start Frame"
+          which="start"
+          frame={{ ...startFrame, imageUrl: scene.frames?.[0]?.imageUrl }}
+          script={startScript}
+          setScript={setStartScript}
+          status={startStatus}
+        />
+
+        {/* End Frame */}
+        <FrameCard
+          label="End Frame"
+          which="end"
+          frame={{ ...endFrame, imageUrl: scene.frames?.[1]?.imageUrl }}
+          script={endScript}
+          setScript={setEndScript}
+          status={endStatus}
+        />
+      </div>
+
+      {/* 하단 생성 버튼 */}
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="text-gray-500 hover:text-black">
+          ← 이전
+        </Button>
+
+        <Button
+          className="flex-1 max-w-xs bg-black hover:bg-gray-800 text-white press-down btn-unified h-10 gap-2"
+          disabled={isGenerating || (!startScript.trim() && !endScript.trim())}
+          onClick={handleGenerateBoth}
+        >
+          {isGenerating
+            ? <><Loader2 className="h-4 w-4 animate-spin" />생성 중...</>
+            : <><Sparkles className="h-4 w-4" />Start → End 순차 생성</>
+          }
+        </Button>
+
+        <Button variant="outline" size="sm" onClick={onNext} className="text-gray-700 hover:text-black">
+          다음 →
+        </Button>
+      </div>
+
+      {/* 자세/동작 변경 다이얼로그 */}
+      <Dialog open={regenTarget !== null} onOpenChange={(open) => { if (!open) setRegenTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>자세/동작 변경</DialogTitle>
+            <DialogDescription>원하는 새 자세나 동작을 설명해주세요. 얼굴과 의상은 유지됩니다.</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={regenPrompt}
+            onChange={(e) => setRegenPrompt(e.target.value)}
+            placeholder="예: 팔짱을 끼고 당당하게 서있는 자세"
+            rows={3}
+            autoFocus
+          />
+          <div className="flex gap-2 justify-end mt-2">
+            <Button variant="outline" onClick={() => setRegenTarget(null)}>취소</Button>
+            <Button disabled={!regenPrompt.trim()} onClick={handleRegen}>재생성</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 부분 수정 다이얼로그 */}
+      {editTarget !== null && (() => {
+        const editFrame = editTarget === "start"
+          ? { ...startFrame, imageUrl: scene.frames?.[0]?.imageUrl }
+          : { ...endFrame,   imageUrl: scene.frames?.[1]?.imageUrl }
+        return editFrame.imageUrl ? (
+          <Dialog open onOpenChange={() => setEditTarget(null)}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>부분 수정</DialogTitle>
+                <DialogDescription>수정할 영역을 마스크로 칠하세요.</DialogDescription>
+              </DialogHeader>
+              <MaskCanvas
+                imageUrl={editFrame.imageUrl}
+                onConfirm={handleEdit}
+                onCancel={() => setEditTarget(null)}
+              />
+            </DialogContent>
+          </Dialog>
+        ) : null
+      })()}
     </div>
   )
 }
