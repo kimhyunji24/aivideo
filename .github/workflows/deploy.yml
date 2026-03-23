@@ -14,8 +14,8 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.GCP_VM_HOST }}
-          username: ${{ secrets.GCP_VM_USERNAME }}
+          username: hyunji
           key: ${{ secrets.GCP_VM_SSH_KEY }}
           script: |
-            chmod +x /home/${{ secrets.GCP_VM_USERNAME }}/aivideo/deploy.sh
-            bash /home/${{ secrets.GCP_VM_USERNAME }}/aivideo/deploy.sh
+            chmod +x /home/hyunji/aivideo/deploy.sh
+            bash /home/hyunji/aivideo/deploy.sh
