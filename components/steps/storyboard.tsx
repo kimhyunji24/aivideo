@@ -26,11 +26,11 @@ interface StoryboardProps {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DETAIL_ROWS: { left: { key: keyof SceneElements; label: string }; right: { key: keyof SceneElements; label: string } }[] = [
-  { left: { key: "mainCharacter", label: "주제/인물" },  right: { key: "subCharacter",  label: "서브 인물" } },
-  { left: { key: "action",        label: "동작" },        right: { key: "pose",          label: "자세" } },
-  { left: { key: "background",    label: "배경" },        right: { key: "time",          label: "시간대" } },
-  { left: { key: "composition",   label: "카메라/구도" },  right: { key: "lighting",      label: "조명/렌즈" } },
-  { left: { key: "mood",          label: "분위기/스타일" }, right: { key: "story",         label: "서사" } },
+  { left: { key: "mainCharacter", label: "주제" },  right: { key: "quality",       label: "품질" } },
+  { left: { key: "action",       label: "동작" },  right: { key: "lighting",     label: "조명" } },
+  { left: { key: "background",   label: "배경" },  right: { key: "pose",         label: "영글" } },
+  { left: { key: "composition",  label: "렌즈" },  right: { key: "subCharacter", label: "날짜" } },
+  { left: { key: "mood",         label: "색감" },  right: { key: "time",         label: "시간" } },
 ]
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -46,10 +46,11 @@ export function Storyboard({
 }: StoryboardProps) {
   const router = useRouter()
   const apiBase = sessionId
-    ? `/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
+    ? `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
     : null
 
   const selectedScene = project.scenes[selectedSceneIndex]
+  const hasCharacters = (project.characters ?? []).length > 0
 
   const resolvePlayableVideoUrl = (sceneId: string | number, videoUrl?: string): string | undefined => {
     if (!videoUrl || !videoUrl.trim()) return undefined
@@ -70,6 +71,55 @@ export function Storyboard({
     }, 50)
   }
 
+  // ── 시작 프레임 이미지 생성 ──
+  const handleGenerateStartFrame = async (sceneId: string | number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!sessionId) return
+    setProject(prev => ({
+      ...prev,
+      scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "generating" as const } : s),
+    }))
+    try {
+      const scene = project.scenes.find(s => s.id === sceneId)
+      const currentFrame = scene?.frames?.[0]
+      const res = await fetch(
+        `http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}/generation/frames/${encodeURIComponent(String(sceneId))}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            frameId: currentFrame?.id,
+            script: currentFrame?.script || scene?.description || scene?.prompt || "",
+          }),
+        }
+      )
+      if (res.ok) {
+        const generatedFrame = await res.json()
+        setProject(prev => {
+          const updatedScenes = prev.scenes.map(s => {
+            if (s.id !== sceneId) return s
+            const existingFrames = s.frames ?? []
+            const newFrames = [...existingFrames]
+            if (newFrames.length === 0) newFrames.push(generatedFrame)
+            else newFrames[0] = { ...newFrames[0], ...generatedFrame }
+            return { ...s, status: "completed" as const, frames: newFrames, imageUrl: generatedFrame.imageUrl }
+          })
+          const updatedProject = { ...prev, scenes: updatedScenes }
+          fetch(`http://localhost:8080/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatedProject)
+          }).catch(console.error)
+          return updatedProject
+        })
+      } else {
+        setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
+      }
+    } catch {
+      setProject(prev => ({ ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, status: "error" as const } : s) }))
+    }
+  }
+
   // ── 수정하기 ──
   const handleEdit = (globalIndex: number, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -81,23 +131,26 @@ export function Storyboard({
       readyToMerge: false,
       selectedSceneIndex: globalIndex,
     }
-    try {
-      sessionStorage.setItem("aivideo:return-state", JSON.stringify(returnState))
-    } catch (err) {
-      console.error("Failed to persist return state for edit page", err)
-    }
-    // scenes 전체를 querystring으로 넘기면 URL이 과도하게 길어져 라우팅/렌더링이 깨질 수 있다.
-    router.push(`/edit?sceneIndex=${globalIndex}`)
-  }
+    sessionStorage.setItem("aivideo:return-state", JSON.stringify(returnState))
 
-  const hasCharacters = (project.characters ?? []).length > 0
+    const scenesPayload = project.scenes.map((scene) => ({
+      id: scene.id,
+      title: scene.title,
+      description: scene.description,
+      elements: scene.elements,
+    }))
+    const params = new URLSearchParams({
+      sceneIndex: String(globalIndex),
+      scenes: JSON.stringify(scenesPayload),
+    })
+    router.push(`/edit?${params.toString()}`)
+  }
 
   return (
     <div className="storyboard-root bg-white h-full flex flex-col">
 
       {/* ── 콘텐츠 영역: 캐릭터 레퍼런스 사이드바 + 스토리보드 ── */}
       <div className="flex-1 flex overflow-hidden">
-
         {/* 캐릭터 레퍼런스 사이드바 */}
         {hasCharacters && (
           <div className="w-[260px] flex-shrink-0 overflow-y-auto border-r border-gray-100">
@@ -179,7 +232,26 @@ export function Storyboard({
                         </div>
                       )}
                       <div className="scene-image-overlay">
-                        <div className="scene-overlay-buttons" />
+                        <div className="scene-overlay-buttons">
+                          <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                              <button 
+                                className="scene-overlay-btn" 
+                                onClick={(e) => handleGenerateStartFrame(scene.id, e)}
+                                disabled={scene.status === "generating"}
+                              >
+                                {scene.status === "generating" ? (
+                                  <RefreshCw size={16} className="animate-spin text-gray-500" />
+                                ) : (
+                                  <ImageIcon size={16} />
+                                )}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">
+                              {scene.status === "generating" ? "프레임 생성 중..." : "이미지 생성"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                       </div>
                     </div>
 
@@ -273,10 +345,9 @@ export function Storyboard({
         </div>
       </div>
 
-        {/* 스토리보드 본문 div 닫힘 */}
-        </div>
-
-      {/* flex-1 flex overflow-hidden (콘텐츠+사이드바 행) 닫힘 */}
+      {/* flex-1 overflow-auto (B) 닫힘 */}
+      </div>
+      {/* flex-1 flex overflow-hidden 닫힘 */}
       </div>
 
       {/* ── 하단 네비게이션 ── */}
