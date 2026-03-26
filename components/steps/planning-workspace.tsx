@@ -49,9 +49,9 @@ const COLORS = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STAGE_LABELS: Record<3 | 4 | 5, string[]> = {
-  3: ["발단", "전개", "결말"],
-  4: ["발단", "전개", "위기", "결말"],
-  5: ["발단", "전개", "위기", "절정", "결말"],
+  3: ["발단 (1/2)", "발단 (2/2)", "전개 (1/2)", "전개 (2/2)", "결말 (1/2)", "결말 (2/2)"],
+  4: ["발단 (1/2)", "발단 (2/2)", "전개 (1/2)", "전개 (2/2)", "위기 (1/2)", "위기 (2/2)", "결말 (1/2)", "결말 (2/2)"],
+  5: ["발단 (1/2)", "발단 (2/2)", "전개 (1/2)", "전개 (2/2)", "위기 (1/2)", "위기 (2/2)", "절정 (1/2)", "절정 (2/2)", "결말 (1/2)", "결말 (2/2)"],
 }
 
 const GENDER_LABEL: Record<"male" | "female", string> = { male: "남", female: "여" }
@@ -96,17 +96,20 @@ function generatePlotStages(
     결말: `모든 갈등이 해소되고 ${name}은(는) 변화한 모습으로 새로운 길을 걷는다. ${logline || "이 이야기"}의 여정은 끝났지만, 그가 남긴 여운은 오래도록 지속된다.`,
   }
 
-  return labels.map((label, i) => ({
-    id: `stage-${i}`,
-    label,
-    content: templates[label] ?? `${label} 단계의 내용을 작성해 주세요.`,
-    elements: mergeStageElements(
-      {
-        mainCharacter: name,
-      },
-      templates[label] ?? `${label} 단계의 내용을 작성해 주세요.`
-    ),
-  }))
+  return labels.map((label, i) => {
+    const baseLabel = label.split(" ")[0]
+    return {
+      id: `stage-${i}`,
+      label,
+      content: templates[baseLabel] ?? `${label} 내용이 들어갑니다.`,
+      elements: mergeStageElements(
+        {
+          mainCharacter: name,
+        },
+        templates[baseLabel] ?? `${label} 내용이 들어갑니다.`
+      ),
+    }
+  })
 }
 
 function generateCharactersFromLogline(

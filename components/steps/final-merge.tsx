@@ -27,6 +27,8 @@ import {
   CheckSquare,
   Square,
   Merge,
+  Upload,
+  X,
 } from "lucide-react"
 import { useState, useRef } from "react"
 import { cn } from "@/lib/utils"
@@ -58,10 +60,12 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
   // 출력 설정
   const [addMusic, setAddMusic] = useState(false)
   const [musicVolume, setMusicVolume] = useState(70)
+  const [musicFile, setMusicFile] = useState<File | null>(null)
   const [transition, setTransition] = useState("crossfade")
+  const musicInputRef = useRef<HTMLInputElement>(null)
 
   const scenesWithVideo = project.scenes.filter((s) => s.videoUrl)
-  const mergeClipDurationSeconds = 8
+  const mergeClipDurationSeconds = 4
   const totalDuration = scenesWithVideo.length * mergeClipDurationSeconds
 
   const toggleSceneSelection = (sceneId: string) => {
@@ -88,6 +92,20 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
     setMergeJobId(null)
 
     try {
+      // 배경음악 파일이 있으면 먼저 업로드
+      let musicFileId: string | undefined
+      if (addMusic && musicFile) {
+        const formData = new FormData()
+        formData.append("file", musicFile)
+        const musicRes = await fetch(`${mergeBase}/music`, {
+          method: "POST",
+          body: formData,
+        })
+        if (!musicRes.ok) throw new Error("음악 파일 업로드에 실패했습니다.")
+        const musicData = await musicRes.json()
+        musicFileId = musicData.musicFileId
+      }
+
       const res = await fetch(mergeBase, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,6 +113,8 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
           sceneIds: orderedIds,
           transitionType: transition,
           transitionDuration: transition === "cut" || transition === "none" ? 0 : 1.0,
+          musicFileId: musicFileId ?? null,
+          musicVolume: addMusic ? musicVolume : 0,
         }),
       })
       if (!res.ok) throw new Error(await res.text().catch(() => `요청 실패 (${res.status})`))
@@ -242,23 +262,57 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Music className="h-3.5 w-3.5" />
-              배경음악 <span className="text-[10px] text-muted-foreground font-normal">(준비 중)</span>
+              배경음악
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-4 space-y-4">
             <div className="flex items-center justify-between">
               <label className="text-sm">음악 추가</label>
-              <Switch checked={addMusic} onCheckedChange={setAddMusic} disabled />
+              <Switch checked={addMusic} onCheckedChange={(v) => {
+                setAddMusic(v)
+                if (!v) setMusicFile(null)
+              }} />
             </div>
             {addMusic && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
+              <div className="space-y-3">
+                {/* 파일 업로드 */}
+                <div>
+                  <input
+                    ref={musicInputRef}
+                    type="file"
+                    accept="audio/*,.mp3,.wav,.aac,.m4a,.ogg,.flac"
+                    className="hidden"
+                    onChange={(e) => setMusicFile(e.target.files?.[0] ?? null)}
+                  />
+                  {musicFile ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                      <Music className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs truncate flex-1">{musicFile.name}</span>
+                      <button
+                        onClick={() => { setMusicFile(null); if (musicInputRef.current) musicInputRef.current.value = "" }}
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => musicInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 py-3 text-xs text-muted-foreground hover:bg-muted/40 transition-colors"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      오디오 파일 선택 (mp3, wav, aac…)
+                    </button>
+                  )}
+                </div>
+                {/* 볼륨 */}
+                <div className="space-y-2">
                   <label className="text-xs font-medium flex items-center gap-1">
                     <Volume2 className="h-3 w-3" />
                     볼륨: {musicVolume}%
                   </label>
+                  <Slider value={[musicVolume]} onValueChange={([v]) => setMusicVolume(v)} max={100} step={5} />
                 </div>
-                <Slider value={[musicVolume]} onValueChange={([v]) => setMusicVolume(v)} max={100} step={5} />
               </div>
             )}
           </CardContent>
@@ -325,7 +379,7 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
             <div className="space-y-2">
               <Button
                 className="w-full bg-black hover:bg-gray-800 text-white press-down btn-unified"
-                disabled={selectedSceneIds.size < 2 || !mergeBase}
+                disabled={selectedSceneIds.size < 2 || !mergeBase || (addMusic && !musicFile)}
                 onClick={startMerge}
               >
                 <Merge className="h-4 w-4 mr-2" />
@@ -336,6 +390,9 @@ export function FinalMerge({ project, setProject, onBack, onRestart, sessionId }
               )}
               {selectedSceneIds.size < 2 && (
                 <p className="text-xs text-muted-foreground text-center">씬을 2개 이상 선택해주세요</p>
+              )}
+              {addMusic && !musicFile && (
+                <p className="text-xs text-muted-foreground text-center">음악 파일을 선택하거나 음악 추가를 끄세요</p>
               )}
             </div>
           )}

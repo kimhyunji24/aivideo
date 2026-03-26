@@ -18,6 +18,7 @@ interface FrameEditProps {
   project: ProjectState
   setProject: React.Dispatch<React.SetStateAction<ProjectState>>
   sceneIndex: number
+  totalScenes?: number
   onComplete: () => void
   onBack: () => void
   onNext: () => void
@@ -32,6 +33,7 @@ export function FrameEdit({
   project,
   setProject,
   sceneIndex,
+  totalScenes,
   onComplete,
   onBack,
   onNext,
@@ -79,13 +81,13 @@ export function FrameEdit({
     }
   }
 
-  const syncSession = async () => {
+  const syncSession = async (projectToSync: typeof project) => {
     if (!BASE) return
     try {
       await fetch(`${BASE}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(project),
+        body: JSON.stringify(projectToSync),
       })
     } catch { /* silent */ }
   }
@@ -152,19 +154,21 @@ export function FrameEdit({
     if (!endScript.trim())   { setGenError("End Frame 스크립트를 입력해주세요."); return }
     setGenError(null)
 
-    // 먼저 최신 스크립트를 세션에 동기화
-    setProject(prev => ({
-      ...prev,
-      scenes: prev.scenes.map((s, i) => {
+    // 최신 스크립트 + imageUrl을 null로 룏은 업데이트된 project를 몇저 생성
+    // (이전 imageUrl이 남아있으면 백엔드가 이를 레퍼런스로 사용해 실제 생성 대신 레퍼런스 이미지를 돌려줌)
+    const newFrames: Frame[] = [
+      { id: startFrame.id, script: startScript, imageUrl: undefined },
+      { id: endFrame.id,   script: endScript,   imageUrl: undefined },
+    ]
+    const updatedProject = {
+      ...project,
+      scenes: project.scenes.map((s, i) => {
         if (i !== sceneIndex) return s
-        const newFrames: Frame[] = [
-          { id: startFrame.id, script: startScript, imageUrl: startFrame.imageUrl },
-          { id: endFrame.id,   script: endScript,   imageUrl: endFrame.imageUrl },
-        ]
         return { ...s, frames: newFrames }
       }),
-    }))
-    await syncSession()
+    }
+    setProject(updatedProject)
+    await syncSession(updatedProject)
 
     // Start Frame 생성
     setStartStatus("generating")
@@ -453,8 +457,15 @@ export function FrameEdit({
 
       {/* 하단 생성 버튼 */}
       <div className="mt-4 flex items-center justify-between gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-gray-500 hover:text-black">
-          ← 이전
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          className="text-gray-500 hover:text-black gap-1"
+        >
+          {sceneIndex === 0
+            ? "← 목록으로"
+            : `← S#${sceneIndex} 이전 씬`}
         </Button>
 
         <Button
@@ -468,8 +479,15 @@ export function FrameEdit({
           }
         </Button>
 
-        <Button variant="outline" size="sm" onClick={onNext} className="text-gray-700 hover:text-black">
-          다음 →
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onNext}
+          className="text-gray-700 hover:text-black gap-1"
+        >
+          {totalScenes !== undefined && sceneIndex >= totalScenes - 1
+            ? "목록으로 →"
+            : `S#${sceneIndex + 2} 다음 씬 →`}
         </Button>
       </div>
 
@@ -508,7 +526,7 @@ export function FrameEdit({
               </DialogHeader>
               <MaskCanvas
                 imageUrl={editFrame.imageUrl}
-                onConfirm={handleEdit}
+                onSave={handleEdit}
                 onCancel={() => setEditTarget(null)}
               />
             </DialogContent>

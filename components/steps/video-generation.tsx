@@ -33,6 +33,8 @@ interface VideoGenerationProps {
 export function VideoGeneration({ project, setProject, onNext, onBack, sessionId }: VideoGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [sceneErrors, setSceneErrors] = useState<Record<string, string>>({})
+  // 실패 시 수정할 description을 별도 state로 관리 (key: String(scene.id))
+  const [sceneDescriptions, setSceneDescriptions] = useState<Record<string, string>>({})
 
   const apiBase = sessionId
     ? `/api/v1/sessions/${encodeURIComponent(sessionId)}/generation`
@@ -412,11 +414,11 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
                       <textarea
                         className="w-full text-xs p-2 border border-destructive/30 rounded bg-white text-black"
                         rows={3}
-                        value={scene.description || ""}
+                        value={sceneDescriptions[String(scene.id)] ?? scene.description ?? ""}
                         onChange={(e) => {
-                          setProject(prev => ({
+                          setSceneDescriptions(prev => ({
                             ...prev,
-                            scenes: prev.scenes.map(s => s.id === scene.id ? { ...s, description: e.target.value } : s)
+                            [String(scene.id)]: e.target.value,
                           }))
                         }}
                         placeholder="수정할 씬 대본을 입력하세요..."
@@ -426,10 +428,23 @@ export function VideoGeneration({ project, setProject, onNext, onBack, sessionId
                         variant="outline" 
                         className="h-7 text-xs border-destructive/50 hover:bg-destructive/10 text-destructive w-full"
                         onClick={() => {
+                          // 최신 description을 project에 반영한 실제 데이터를 생성
+                          const newDesc = sceneDescriptions[String(scene.id)] ?? scene.description ?? ""
+                          const updatedProject: ProjectState = {
+                            ...project,
+                            scenes: project.scenes.map(s =>
+                              s.id === scene.id ? { ...s, description: newDesc } : s
+                            ),
+                          }
+                          // project state 업데이트
+                          setProject(updatedProject)
+                          // 업데이트된 값으로 세션 동기화 후 재시도
                           if (sessionId) {
-                              updateSession(sessionId, project).then(() => regenerateVideo(scene.id));
+                            updateSession(sessionId, updatedProject)
+                              .then(() => regenerateVideo(scene.id))
+                              .catch(() => regenerateVideo(scene.id))
                           } else {
-                              regenerateVideo(scene.id);
+                            regenerateVideo(scene.id)
                           }
                         }}
                       >
