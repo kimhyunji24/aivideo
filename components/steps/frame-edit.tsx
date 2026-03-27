@@ -406,8 +406,8 @@ export function FrameEdit({
         </Button>
       </div>
 
-      {/* AI 분리 버튼 */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* 상단 자동 생성 버튼들 */}
+      <div className="flex items-center justify-center gap-3 mb-4">
         <Button
           variant="outline"
           size="sm"
@@ -417,6 +417,17 @@ export function FrameEdit({
         >
           {splitLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
           AI로 Start/End 스크립트 분리
+        </Button>
+        <Button
+          size="sm"
+          className="gap-2 h-8 text-sm bg-black hover:bg-gray-800 text-white"
+          disabled={isGenerating || (!startScript.trim() && !endScript.trim())}
+          onClick={handleGenerateBoth}
+        >
+          {isGenerating
+            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />생성 중...</>
+            : <><Sparkles className="h-3.5 w-3.5" />Start → End 순차 생성</>
+          }
         </Button>
         {splitError && <span className="text-xs text-destructive">{splitError}</span>}
         {genError   && <span className="text-xs text-destructive">{genError}</span>}
@@ -455,7 +466,7 @@ export function FrameEdit({
         />
       </div>
 
-      {/* 하단 생성 버튼 */}
+      {/* 하단 이동 버튼 */}
       <div className="mt-4 flex items-center justify-between gap-3">
         <Button
           variant="ghost"
@@ -466,17 +477,6 @@ export function FrameEdit({
           {sceneIndex === 0
             ? "← 목록으로"
             : `← S#${sceneIndex} 이전 씬`}
-        </Button>
-
-        <Button
-          className="flex-1 max-w-xs bg-black hover:bg-gray-800 text-white press-down btn-unified h-10 gap-2"
-          disabled={isGenerating || (!startScript.trim() && !endScript.trim())}
-          onClick={handleGenerateBoth}
-        >
-          {isGenerating
-            ? <><Loader2 className="h-4 w-4 animate-spin" />생성 중...</>
-            : <><Sparkles className="h-4 w-4" />Start → End 순차 생성</>
-          }
         </Button>
 
         <Button
