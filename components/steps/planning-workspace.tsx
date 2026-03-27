@@ -192,9 +192,13 @@ function toPlotPlanSeed(
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function LoglineSection({ logline }: { logline: string }) {
-  const loglineText = logline || "로그라인이 아직 확정되지 않았습니다."
-
+function LoglineSection({
+  logline,
+  onChange,
+}: {
+  logline: string
+  onChange: (value: string) => void
+}) {
   return (
     <section className="space-y-6">
       <div className="flex items-center gap-2">
@@ -206,7 +210,13 @@ function LoglineSection({ logline }: { logline: string }) {
 
       <Card className="border border-[#E0E0E0] shadow-none bg-white rounded-xl">
         <CardContent className="p-4 sm:p-5">
-          <p className="text-sm leading-7 text-gray-800 break-keep whitespace-pre-line">{loglineText}</p>
+          <Textarea
+            value={logline}
+            onChange={(e) => onChange(e.target.value)}
+            rows={5}
+            placeholder="기획 요약(로그라인)을 수정해 주세요."
+            className="min-h-[120px] resize-none rounded-xl border-[#E0E0E0] bg-white px-4 py-3 text-sm leading-7 text-gray-800"
+          />
         </CardContent>
       </Card>
     </section>
@@ -849,7 +859,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
   const hasAutoSeededRef = useRef(false)
   const backgroundRefInputRef = useRef<HTMLInputElement | null>(null)
 
-  const logline = project.logline?.trim() || project.idea || ""
+  const logline = project.logline ?? project.idea ?? ""
   const charactersConfirmed = project.charactersConfirmed ?? false
   const characters: Character[] = project.characters ?? []
   const plotPlan: PlotPlan | null = project.plotPlan ?? null
@@ -1081,7 +1091,10 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       {/* ── 본문: 반응형 패딩·간격 ── */}
       <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8">
         <div className="max-w-4xl mx-auto space-y-8 sm:space-y-12">
-          <LoglineSection logline={logline} />
+          <LoglineSection
+            logline={logline}
+            onChange={(value) => setProject({ ...project, logline: value })}
+          />
           <CharactersSection
             characters={characters}
             isConfirmed={charactersConfirmed}
