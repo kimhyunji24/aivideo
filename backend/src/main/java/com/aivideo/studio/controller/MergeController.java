@@ -9,6 +9,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -28,10 +31,33 @@ public class MergeController {
             @PathVariable String sessionId,
             @RequestBody MergeRequest request) {
 
-        log.info("[MergeController] 병합 요청 — sessionId: {}, sceneIds: {}", sessionId, request.getSceneIds());
+        log.info("[MergeController] 병합 요청 — sessionId: {}, sceneIds: {}, musicFileId: {}",
+                sessionId, request.getSceneIds(), request.getMusicFileId());
         MergeJobStatus status = mergeService.startMerge(
-                sessionId, request.getSceneIds(), request.getTransitionType(), request.getTransitionDuration());
+                sessionId, request.getSceneIds(), request.getTransitionType(), request.getTransitionDuration(),
+                request.getMusicFileId(), request.getMusicVolume());
         return ResponseEntity.accepted().body(status);
+    }
+
+    /**
+     * 배경음악 파일 업로드
+     * POST /api/v1/sessions/{sessionId}/merge/music
+     * multipart: file (audio)
+     * returns: { musicFileId: "uuid" }
+     */
+    @PostMapping("/music")
+    public ResponseEntity<Map<String, String>> uploadMusic(
+            @PathVariable String sessionId,
+            @RequestParam("file") MultipartFile file) {
+
+        try {
+            String musicFileId = mergeService.storeMusicFile(file.getBytes(), file.getOriginalFilename());
+            log.info("[MergeController] 음악 업로드 — sessionId: {}, musicFileId: {}", sessionId, musicFileId);
+            return ResponseEntity.ok(Map.of("musicFileId", musicFileId));
+        } catch (Exception e) {
+            log.error("[MergeController] 음악 업로드 실패 — sessionId: {}", sessionId, e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     /**

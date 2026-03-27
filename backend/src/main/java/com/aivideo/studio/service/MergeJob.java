@@ -13,18 +13,23 @@ class MergeJob {
     private final List<String> sceneIds;
     private final String transitionType;
     private final double transitionDuration;
+    private final Path musicFilePath;
+    private final int musicVolume;
 
     private volatile String status = "pending";
     private volatile String errorMessage;
     private volatile Path outputPath;
     private volatile Path tempDir;
 
-    MergeJob(String jobId, String sessionId, List<String> sceneIds, String transitionType, double transitionDuration) {
+    MergeJob(String jobId, String sessionId, List<String> sceneIds, String transitionType, double transitionDuration,
+             Path musicFilePath, int musicVolume) {
         this.jobId = jobId;
         this.sessionId = sessionId;
         this.sceneIds = sceneIds;
         this.transitionType = transitionType != null ? transitionType : "crossfade";
         this.transitionDuration = transitionDuration;
+        this.musicFilePath = musicFilePath;
+        this.musicVolume = musicVolume;
     }
 
     String getJobId()               { return jobId; }
@@ -32,6 +37,8 @@ class MergeJob {
     List<String> getSceneIds()      { return sceneIds; }
     String getTransitionType()      { return transitionType; }
     double getTransitionDuration()  { return transitionDuration; }
+    Path getMusicFilePath()         { return musicFilePath; }
+    int getMusicVolume()            { return musicVolume; }
 
     String getStatus()              { return status; }
     void setStatus(String s)        { this.status = s; }

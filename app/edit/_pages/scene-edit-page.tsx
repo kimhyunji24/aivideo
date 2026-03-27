@@ -1,9 +1,11 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ChevronLeft, ChevronRight, FileText, Box, ArrowLeft, ArrowRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, FileText, Box, ArrowLeft, ArrowRight, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 import { FrameEdit } from "@/components/steps/frame-edit"
 import type { ProjectState, SceneElements } from "@/lib/types"
 
@@ -24,10 +26,6 @@ type ReturnState = {
 }
 
 const ELEMENT_FIELDS = ["주제/인물", "서브 인물", "동작", "자세", "배경", "시간대", "카메라/구도", "조명/렌즈", "분위기/스타일", "서사"]
-const DEFAULT_DETAIL_VALUES = ELEMENT_FIELDS.reduce<Record<string, string>>((acc, field) => {
-  acc[field] = ""
-  return acc
-}, {})
 const EMPTY_ELEMENTS = {
   mainCharacter: "",
   subCharacter: "",
@@ -113,7 +111,7 @@ function buildFallbackProject(scenes: EditScene[]): ProjectState {
       title: scene.title,
       description: scene.description,
       prompt: scene.description,
-      duration: 8,
+      duration: 4,
       status: "pending",
       elements: normalizeElements(scene.elements, scene.description),
     })),
@@ -145,6 +143,12 @@ export default function SceneEditPage() {
   const [frameIndexByScene, setFrameIndexByScene] = useState<Record<string, number>>({})
   const [isEditingFrame, setIsEditingFrame] = useState(false)
 
+  // 세부요소 모달 상태
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editModalField, setEditModalField] = useState<string | null>(null)
+  const [editModalValue, setEditModalValue] = useState("")
+  const editModalTextareaRef = useRef<HTMLTextAreaElement>(null)
+
   const projectScenes = Array.isArray(project?.scenes) ? project.scenes : []
   const scenes = projectScenes.length > 0 ? projectScenes : queryScenes
   const safeSelectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, scenes.length - 1)))
@@ -175,7 +179,9 @@ export default function SceneEditPage() {
     setDetailByScene((prev) => ({
       ...prev,
       [selectedSceneKey]: {
-        ...(prev[selectedSceneKey] ?? DEFAULT_DETAIL_VALUES),
+        // prev에 해당 씬 키가 없으면 DEFAULT_DETAIL_VALUES(빈값) 대신
+        // 씬의 실제 elements 데이터로 초기화해야 다른 세부요소가 사라지지 않음
+        ...(prev[selectedSceneKey] ?? buildDetailValuesFromElements(selectedScene?.elements)),
         [field]: value,
       },
     }))
@@ -196,16 +202,47 @@ export default function SceneEditPage() {
     })
   }, [selectedSceneKey])
 
+  const openDetailModal = (field: string) => {
+    setEditModalField(field)
+    setEditModalValue(selectedDetail[field] ?? "")
+    setEditModalOpen(true)
+    // 열리면 textarea 끝으로 포커스
+    setTimeout(() => editModalTextareaRef.current?.focus(), 50)
+  }
+
+  const closeDetailModal = (save: boolean) => {
+    if (save && editModalField !== null) {
+      handleDetailChange(editModalField, editModalValue)
+    }
+    setEditModalOpen(false)
+    setEditModalField(null)
+    setEditModalValue("")
+  }
+
   if (isEditingFrame) {
     return (
       <main className="h-screen bg-white p-4 sm:p-6">
         <FrameEdit
+          key={safeSelectedIndex}
           project={project}
           setProject={setProject}
           sceneIndex={safeSelectedIndex}
+          totalScenes={scenes.length}
           onComplete={() => setIsEditingFrame(false)}
-          onBack={() => setIsEditingFrame(false)}
-          onNext={() => setIsEditingFrame(false)}
+          onBack={() => {
+            if (safeSelectedIndex > 0) {
+              setSelectedIndex(safeSelectedIndex - 1)
+            } else {
+              setIsEditingFrame(false)
+            }
+          }}
+          onNext={() => {
+            if (safeSelectedIndex < scenes.length - 1) {
+              setSelectedIndex(safeSelectedIndex + 1)
+            } else {
+              setIsEditingFrame(false)
+            }
+          }}
           selectedFrameIndex={currentFrameIndex}
           onSelectedFrameIndexChange={handleSelectedFrameIndexChange}
           sessionId={sessionId}
@@ -294,19 +331,71 @@ export default function SceneEditPage() {
             <div className="mt-5 space-y-4 border-t border-[#E0E0E0] pt-5">
               <h3 className="text-sm font-semibold text-gray-900">세부 요소</h3>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {ELEMENT_FIELDS.map((label) => (
-                  <label key={label} className="space-y-1">
-                    <span className="text-xs text-gray-500">{label}</span>
-                    <input
-                      value={selectedDetail[label] ?? ""}
-                      onChange={(e) => handleDetailChange(label, e.target.value)}
-                      placeholder="(default)"
-                      className="h-9 w-full rounded-xl border border-[#E0E0E0] bg-white px-3 text-sm text-gray-700 outline-none focus:border-gray-400 transition-colors"
-                    />
-                  </label>
-                ))}
+                {ELEMENT_FIELDS.map((label) => {
+                  const val = selectedDetail[label] ?? ""
+                  return (
+                    <div key={label} className="space-y-1">
+                      <span className="text-xs text-gray-500">{label}</span>
+                      <button
+                        type="button"
+                        onClick={() => openDetailModal(label)}
+                        title={val || "(default)"}
+                        className="group relative h-9 w-full rounded-xl border border-[#E0E0E0] bg-white px-3 text-left text-sm text-gray-700 outline-none hover:border-gray-400 focus:border-gray-400 transition-colors flex items-center justify-between gap-1 overflow-hidden"
+                      >
+                        <span className="flex-1 truncate min-w-0">
+                          {val || <span className="text-gray-400">(default)</span>}
+                        </span>
+                        <Pencil className="h-3 w-3 text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" />
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             </div>
+
+            {/* 세부요소 편집 모달 */}
+            <Dialog open={editModalOpen} onOpenChange={(open) => { if (!open) closeDetailModal(false) }}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-base font-semibold text-gray-900">
+                    {editModalField} 편집
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 pt-1">
+                  <Textarea
+                    ref={editModalTextareaRef}
+                    value={editModalValue}
+                    onChange={(e) => setEditModalValue(e.target.value)}
+                    placeholder={`${editModalField ?? ""}을(를) 입력하세요`}
+                    rows={5}
+                    className="resize-none rounded-xl border-[#E0E0E0] text-sm text-gray-700 focus:border-gray-400"
+                    onKeyDown={(e) => {
+                      // Ctrl+Enter / Cmd+Enter로 저장
+                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                        e.preventDefault()
+                        closeDetailModal(true)
+                      }
+                      // Escape로 취소
+                      if (e.key === "Escape") {
+                        e.preventDefault()
+                        closeDetailModal(false)
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-gray-400">Ctrl+Enter로 저장 · Esc로 취소</p>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => closeDetailModal(false)}
+                      className="rounded-lg text-gray-600 border-[#E0E0E0] hover:bg-gray-50">
+                      취소
+                    </Button>
+                    <Button size="sm" onClick={() => closeDetailModal(true)}
+                      className="rounded-lg bg-black text-white hover:bg-gray-800 press-down btn-unified">
+                      저장
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* 사물 섹션 */}
             <div className="mt-4 space-y-3 border-t border-[#E0E0E0] pt-4">

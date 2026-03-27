@@ -56,7 +56,7 @@ function buildScenesFromPlan(project: ProjectState): Scene[] {
     title: stage.label,
     description: stage.content,
     prompt: stage.content,
-    duration: 8,
+    duration: 4,
     status: "pending" as const,
     elements: {
       ...DEFAULT_ELEMENTS,

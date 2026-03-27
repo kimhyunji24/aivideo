@@ -30,6 +30,8 @@ public class MergeService {
     private String generatedFilesPath;
 
     private final ConcurrentHashMap<String, MergeJob> jobs = new ConcurrentHashMap<>();
+    /** 업로드된 음악 파일: musicFileId → 파일 경로 */
+    private final ConcurrentHashMap<String, Path> musicFiles = new ConcurrentHashMap<>();
 
     /** 병합 결과 파일의 안정적 저장 경로 (재시작 후에도 파일 유지) */
     private Path mergedOutputDir() throws IOException {
@@ -47,15 +49,37 @@ public class MergeService {
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
+     * 음악 파일을 저장하고 musicFileId를 반환합니다.
+     */
+    public String storeMusicFile(byte[] bytes, String originalFilename) throws IOException {
+        String musicFileId = UUID.randomUUID().toString();
+        Path musicDir = Path.of(generatedFilesPath).resolve("music");
+        Files.createDirectories(musicDir);
+        String ext = (originalFilename != null && originalFilename.contains("."))
+                ? originalFilename.substring(originalFilename.lastIndexOf('.'))
+                : ".mp3";
+        Path dest = musicDir.resolve(musicFileId + ext);
+        Files.write(dest, bytes);
+        musicFiles.put(musicFileId, dest);
+        log.info("[MergeService] 음악 파일 저장 — id: {}, path: {}", musicFileId, dest);
+        return musicFileId;
+    }
+
+    /**
      * 비동기 병합 작업을 시작하고 즉시 jobId를 반환합니다.
      */
-    public MergeJobStatus startMerge(String sessionId, List<String> sceneIds, String transitionType, double transitionDuration) {
+    public MergeJobStatus startMerge(String sessionId, List<String> sceneIds, String transitionType,
+                                     double transitionDuration, String musicFileId, int musicVolume) {
         if (sceneIds == null || sceneIds.size() < 2) {
             throw new IllegalArgumentException("병합하려면 씬을 2개 이상 선택해야 합니다.");
         }
 
+        Path musicFilePath = (musicFileId != null && !musicFileId.isBlank())
+                ? musicFiles.get(musicFileId) : null;
+
         String jobId = UUID.randomUUID().toString();
-        MergeJob job = new MergeJob(jobId, sessionId, sceneIds, transitionType, transitionDuration);
+        MergeJob job = new MergeJob(jobId, sessionId, sceneIds, transitionType, transitionDuration,
+                musicFilePath, musicVolume);
         jobs.put(jobId, job);
 
         Thread worker = new Thread(() -> performMerge(job), "merge-" + jobId.substring(0, 8));
@@ -142,6 +166,14 @@ public class MergeService {
                 mergeWithConcat(videoPaths, outputPath);
             } else {
                 mergeWithCrossfade(videoPaths, outputPath, job.getTransitionType(), job.getTransitionDuration());
+            }
+
+            // 배경음악 오버레이 (선택)
+            if (job.getMusicFilePath() != null && Files.exists(job.getMusicFilePath())) {
+                Path musicOutput = mergedOutputDir().resolve(job.getJobId() + "_music.mp4");
+                applyBackgroundMusic(outputPath, job.getMusicFilePath(), musicOutput, job.getMusicVolume());
+                Files.move(musicOutput, outputPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                log.info("[MergeService] 배경음악 적용 완료 — jobId: {}", job.getJobId());
             }
 
             job.setOutputPath(outputPath);
@@ -324,6 +356,55 @@ public class MergeService {
             throw new RuntimeException(
                     "ffmpeg 병합 실패 (exit " + exitCode + "): " +
                     ffmpegOutput.substring(tailStart));
+        }
+    }
+
+    /**
+     * 병합된 영상에 배경음악을 오버레이합니다.
+     * 음악이 영상보다 짧으면 반복(-stream_loop -1), 영상 길이에 맞게 트림됩니다.
+     * 기존 영상 오디오와 음악을 amix로 혼합합니다.
+     */
+    private void applyBackgroundMusic(Path videoPath, Path musicPath, Path outputPath, int volumePct)
+            throws IOException, InterruptedException {
+
+        double vol = Math.max(0, Math.min(100, volumePct)) / 100.0;
+
+        List<String> cmd = new ArrayList<>();
+        cmd.add("ffmpeg");
+        cmd.add("-y");
+        cmd.add("-i");
+        cmd.add(videoPath.toAbsolutePath().toString());
+        // 음악을 무한 반복하여 영상 길이에 맞게 트림
+        cmd.add("-stream_loop");
+        cmd.add("-1");
+        cmd.add("-i");
+        cmd.add(musicPath.toAbsolutePath().toString());
+        cmd.add("-filter_complex");
+        cmd.add(String.format(Locale.US,
+                "[1:a]volume=%.3f[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=3[aout]", vol));
+        cmd.add("-map");
+        cmd.add("0:v");
+        cmd.add("-map");
+        cmd.add("[aout]");
+        cmd.add("-c:v");
+        cmd.add("copy");
+        cmd.add("-c:a");
+        cmd.add("aac");
+        cmd.add("-b:a");
+        cmd.add("192k");
+        cmd.add("-shortest");
+        cmd.add(outputPath.toAbsolutePath().toString());
+
+        log.info("[MergeService] 배경음악 적용 명령: {}", String.join(" ", cmd));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String out = new String(process.getInputStream().readAllBytes());
+        int exit = process.waitFor();
+        if (exit != 0) {
+            throw new RuntimeException("ffmpeg 음악 오버레이 실패 (exit " + exit + "): "
+                    + out.substring(Math.max(0, out.length() - 500)));
         }
     }
 

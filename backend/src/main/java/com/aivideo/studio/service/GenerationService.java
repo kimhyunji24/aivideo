@@ -855,18 +855,22 @@ public class GenerationService {
             throw new IllegalArgumentException("씬 설명이 없어 스크립트를 분리할 수 없습니다.");
         }
 
+        int targetLen = Math.max(50, description.length() / 2);
+
         String prompt = """
                 다음 씬 설명을 'Start Frame'과 'End Frame' 스크립트로 분리해줘.
                 - Start Frame: 씬이 시작되는 순간의 장면 묘사 (첫 컷)
                 - End Frame: 씬이 끝나는 순간의 장면 묘사 (마지막 컷)
                 각각 이미지 생성 프롬프트로 쓸 수 있는 한국어 문장으로 작성해줘.
                 원본 씬 설명의 인물, 배경, 분위기를 유지하면서 시간적 흐름이 느껴지게 분리해줘.
+                중요: 원본 씬 설명의 분량을 두 스크립트에 고르게 나눠야 해.
+                Start Frame과 End Frame 각각 %d자 내외로 작성해줘 (원본의 절반 분량).
 
                 씬 설명: %s
 
                 반드시 아래 JSON만 출력하고 다른 설명은 하지 마:
                 {"startScript": "...", "endScript": "..."}
-                """.formatted(description);
+                """.formatted(targetLen, description);
 
         String json = geminiAdapter.generateJson(prompt);
 
