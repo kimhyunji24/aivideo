@@ -69,6 +69,14 @@ const DEFAULT_STAGE_ELEMENTS: SceneElements = {
   story: "작은 단서를 통해 다음 장면으로 이어지는 흐름",
 }
 
+function toRetryAlertMessage(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "")
+  if (/\b500\b|Internal Server Error/i.test(raw)) {
+    return "서버 오류(500)가 발생했습니다. 플롯/설정을 수정한 뒤 다시 시도해 주세요."
+  }
+  return `${fallback}${raw ? `: ${raw}` : ""}`
+}
+
 function mergeStageElements(seed?: Partial<SceneElements> | null, content?: string): SceneElements {
   return {
     ...DEFAULT_STAGE_ELEMENTS,
@@ -1007,7 +1015,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       setProject(nextState)
     } catch (e) {
       console.error(e);
-      alert("API Error in Plot/Characters: " + e);
+      alert(toRetryAlertMessage(e, "플롯 생성에 실패했습니다"));
     } finally {
       setIsGenerating(false)
     }
@@ -1040,7 +1048,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
         if (!cancelled) setProject({ ...project, ...nextState, scenes: nextState.scenes ?? project.scenes ?? [] })
       } catch (e) {
         console.error(e);
-        alert("API Error in autoSeed Characters: " + e);
+        alert(toRetryAlertMessage(e, "캐릭터 자동 생성에 실패했습니다"));
       }
     }
 

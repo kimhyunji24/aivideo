@@ -25,6 +25,14 @@ interface IdeaChatProps {
 
 const LOGLINE_LOADING_MESSAGE = "로그라인 생성중..."
 
+function toRetryAlertMessage(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "")
+  if (/\b500\b|Internal Server Error/i.test(raw)) {
+    return "서버 오류(500)가 발생했습니다. 입력 내용을 수정한 뒤 다시 시도해 주세요."
+  }
+  return `${fallback}${raw ? `: ${raw}` : ""}`
+}
+
 function appendLoglineContext(existing: string | undefined, next: string): string {
   const incoming = next.trim()
   if (!incoming) return (existing ?? "").trim()
@@ -134,7 +142,7 @@ export function IdeaChat({ project, setProject, initialView = "chat", onNext, se
     } catch (err) {
       if (sessionId) {
         console.error("Failed to generate logline via API:", err)
-        alert("API Error in Logline: " + err)
+        alert(toRetryAlertMessage(err, "로그라인 생성에 실패했습니다"))
         setLoglineDraft(generatedLogline)
       } else {
         setLoglineDraft(generatedLogline)
