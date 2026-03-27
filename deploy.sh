@@ -50,8 +50,11 @@ echo "🚀 Building Frontend..."
 npm install
 BACKEND_URL="http://localhost:$TARGET_BACKEND_PORT" npm run build
 
-# 5. Target 환경 실행
+# 5. Target 환경 실행 (이미 실행 중인 동명 프로세스 먼저 제거)
 echo "🚀 Starting $TARGET_COLOR environment applications..."
+pm2 delete "backend-$TARGET_COLOR" 2>/dev/null || true
+pm2 delete "frontend-$TARGET_COLOR" 2>/dev/null || true
+
 pm2 start "java -jar backend/build/libs/aivideo-studio-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod --server.port=$TARGET_BACKEND_PORT" --name "backend-$TARGET_COLOR"
 
 pm2 start "npm start -- -p $TARGET_FRONTEND_PORT" --name "frontend-$TARGET_COLOR" --update-env --env BACKEND_URL="http://localhost:$TARGET_BACKEND_PORT"
