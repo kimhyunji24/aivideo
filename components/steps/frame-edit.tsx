@@ -386,7 +386,8 @@ export function FrameEdit({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-[calc(100vh-180px)] flex flex-col">
+    <div className="h-[calc(100vh-180px)] flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -465,9 +466,10 @@ export function FrameEdit({
           status={endStatus}
         />
       </div>
+      </div>
 
       {/* 하단 이동 버튼 */}
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-3 shrink-0 border-t bg-white/95 backdrop-blur px-1 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] flex items-center justify-between gap-3">
         <Button
           variant="ghost"
           size="sm"
