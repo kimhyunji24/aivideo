@@ -45,10 +45,10 @@ chmod +x gradlew
 ./gradlew bootJar
 cd ..
 
-# 4. 프런트엔드 빌드
+# 4. 프런트엔드 빌드 (BACKEND_URL을 빌드 시점에 주입)
 echo "🚀 Building Frontend..."
 npm install
-npm run build
+BACKEND_URL="http://localhost:$TARGET_BACKEND_PORT" npm run build
 
 # 5. Target 환경 실행
 echo "🚀 Starting $TARGET_COLOR environment applications..."
@@ -62,21 +62,46 @@ sleep 30
 
 # 7. Nginx 스위칭
 echo "🔄 Switching Nginx to point to $TARGET_COLOR port ($TARGET_FRONTEND_PORT)..."
-echo "
+sudo tee /etc/nginx/sites-available/aivideo > /dev/null << NGINX_EOF
 server {
     listen 80;
     server_name _;
 
+    location /api/ {
+        proxy_pass http://localhost:${TARGET_BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 120s;
+    }
+
+    location /generated-images/ {
+        proxy_pass http://localhost:${TARGET_BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_read_timeout 120s;
+    }
+
+    location /generated-videos/ {
+        proxy_pass http://localhost:${TARGET_BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_read_timeout 120s;
+    }
+
     location / {
-        proxy_pass http://localhost:$TARGET_FRONTEND_PORT;
+        proxy_pass http://localhost:${TARGET_FRONTEND_PORT};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 120s;
     }
 }
-" | sudo tee /etc/nginx/sites-available/aivideo > /dev/null
+NGINX_EOF
 
 sudo ln -sf /etc/nginx/sites-available/aivideo /etc/nginx/sites-enabled/
 # 기본 default 사이트가 있다면 삭제
