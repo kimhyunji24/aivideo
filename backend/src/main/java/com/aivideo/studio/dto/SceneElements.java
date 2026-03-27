@@ -1,5 +1,6 @@
 package com.aivideo.studio.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,7 +12,10 @@ import java.io.Serializable;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SceneElements implements Serializable {
+    @JsonDeserialize(using = StringOrObjectToTextDeserializer.class)
     private String mainCharacter;
+
+    @JsonDeserialize(using = StringOrObjectToTextDeserializer.class)
     private String subCharacter;
     private String action;
     private String pose;
