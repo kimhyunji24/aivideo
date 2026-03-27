@@ -855,7 +855,7 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
   const [analyzingBackgroundRef, setAnalyzingBackgroundRef] = useState(false)
   const [characterModalId, setCharacterModalId] = useState<string | null>(null)
   const [plotModalStageId, setPlotModalStageId] = useState<string | null>(null)
-  const [plotUserPrompt, setPlotUserPrompt] = useState("")
+  const [plotUserPrompt, setPlotUserPrompt] = useState(project.planningPrompt ?? "")
   const hasAutoSeededRef = useRef(false)
   const backgroundRefInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -1020,9 +1020,11 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
     if (!sessionId) return
     setIsGenerating(true)
     try {
-      await updateSession(sessionId, project)
+      const projectWithPrompt: ProjectState = { ...project, planningPrompt: plotUserPrompt }
+      setProject(projectWithPrompt)
+      await updateSession(sessionId, projectWithPrompt)
       const nextState = await generatePlot(sessionId, targetStageCount, plotUserPrompt)
-      setProject(nextState)
+      setProject({ ...nextState, planningPrompt: plotUserPrompt })
     } catch (e) {
       console.error(e);
       alert(toRetryAlertMessage(e, "플롯 생성에 실패했습니다"));
@@ -1067,6 +1069,10 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
       cancelled = true
     }
   }, [characters, logline, project, sessionId, setProject])
+
+  useEffect(() => {
+    setPlotUserPrompt(project.planningPrompt ?? "")
+  }, [project.planningPrompt])
 
   const plot = project.plotPlan ?? {
     stageCount: 3 as const,
@@ -1157,7 +1163,10 @@ export function PlanningWorkspace({ project, setProject, onNext, onBack, session
             <PlotSection
               plotPlan={plot}
               userPrompt={plotUserPrompt}
-              onUserPromptChange={setPlotUserPrompt}
+              onUserPromptChange={(value) => {
+                setPlotUserPrompt(value)
+                setProject({ ...project, planningPrompt: value })
+              }}
               onStageCountChange={setStageCount}
               onStageUpdate={updateStage}
               onAutoGenerate={handleAutoGenerate}

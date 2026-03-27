@@ -69,6 +69,26 @@ function buildDetailValuesFromElements(elements?: Partial<SceneElements> | null)
   }, {})
 }
 
+function composeScenePrompt(elements: SceneElements, fallbackDescription: string): string {
+  const chunks = [
+    elements.mainCharacter,
+    elements.subCharacter,
+    elements.action,
+    elements.pose,
+    elements.background,
+    elements.time,
+    elements.composition,
+    elements.lighting,
+    elements.mood,
+  ].map((v) => v?.trim()).filter(Boolean)
+
+  const head = chunks.join(", ")
+  const tail = (elements.story || fallbackDescription || "").trim()
+  if (!head) return tail
+  if (!tail) return head
+  return `${head}. ${tail}`
+}
+
 function parseScenes(raw: string | null): EditScene[] {
   if (!raw) return []
   try {
@@ -164,8 +184,40 @@ export default function SceneEditPage() {
   const currentFrame = frames[currentFrameIndex]
 
   const persistAndReturn = () => {
+    const nextProject: ProjectState = {
+      ...project,
+      scenes: (project.scenes ?? []).map((scene, index) => {
+        const sceneKey = String(scene.id ?? index)
+        const edited = detailByScene[sceneKey]
+        if (!edited) return scene
+
+        const mergedElements = normalizeElements({
+          ...(scene.elements ?? {}),
+          mainCharacter: edited["주제/인물"] ?? scene.elements?.mainCharacter ?? "",
+          subCharacter: edited["서브 인물"] ?? scene.elements?.subCharacter ?? "",
+          action: edited["동작"] ?? scene.elements?.action ?? "",
+          pose: edited["자세"] ?? scene.elements?.pose ?? "",
+          background: edited["배경"] ?? scene.elements?.background ?? "",
+          time: edited["시간대"] ?? scene.elements?.time ?? "",
+          composition: edited["카메라/구도"] ?? scene.elements?.composition ?? "",
+          lighting: edited["조명/렌즈"] ?? scene.elements?.lighting ?? "",
+          mood: edited["분위기/스타일"] ?? scene.elements?.mood ?? "",
+          story: edited["서사"] ?? scene.elements?.story ?? scene.description ?? "",
+        }, scene.description)
+
+        const nextDescription = (mergedElements.story || scene.description || "").trim()
+        const nextPrompt = composeScenePrompt(mergedElements, nextDescription)
+        return {
+          ...scene,
+          elements: mergedElements,
+          description: nextDescription,
+          prompt: nextPrompt,
+        }
+      }),
+    }
+
     const returnState: ReturnState = {
-      project,
+      project: nextProject,
       currentStep: 2,
       planPhase,
       readyToMerge,
